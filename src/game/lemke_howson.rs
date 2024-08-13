@@ -1,3 +1,11 @@
+/*
+ * Implementation of the Lemke-Howson algorithm.
+ *
+ * References:
+ * http://ints.io/daveagp/co456/lemke-howson.pdf
+ * https://github.com/s3rvac/lemke-howson
+ */
+
 use crate::game::bimatrix_game::*;
 use ndarray::prelude::*;
 use ndarray::Zip;
