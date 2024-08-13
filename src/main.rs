@@ -4,7 +4,7 @@ use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
 
 pub mod game;
-//use game::bimatrix_game;
+use game::bimatrix_game::*;
 
 fn main() {
     let a = Array::random((30, 40), Uniform::new(0., 10.));
@@ -12,9 +12,9 @@ fn main() {
     //let a = array![[3., 5., 6.], [6., 1., 5.],];
     //let b = array![[4., 2., 3.], [2., 4., 1.],];
 
-    let game = game::bimatrix_game::BimatrixGame::new(a, b);
+    let game = BimatrixGame::new(a, b);
 
-    let eq = game.lemke_howson();
+    let eq = game::lemke_howson::lemke_howson(&game);
 
     println!("{:?}", game.strategy_payoff(&eq));
     println!("regret: {:?}", game.regret(&eq));
