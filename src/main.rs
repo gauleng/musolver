@@ -4,7 +4,7 @@ use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
 
 pub mod game;
-use game::bimatrix_game::*;
+use game::*;
 
 pub mod mus;
 
@@ -16,7 +16,7 @@ fn main() {
 
     let game = BimatrixGame::new(a, b);
 
-    let eq = game::lemke_howson::lemke_howson(&game);
+    let eq = lemke_howson(&game);
 
     println!("{:?}", game.strategy_payoff(&eq));
     println!("regret: {:?}", game.regret(&eq));

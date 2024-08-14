@@ -7,3 +7,4 @@ edition = "2021"
 approx = "0.5.1"
 ndarray = {version = "0.16.0", features=["approx"]}
 ndarray-rand = "0.15.0"
+thiserror = "1.0.63"
