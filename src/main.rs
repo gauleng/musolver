@@ -6,6 +6,8 @@ use ndarray_rand::RandomExt;
 pub mod game;
 use game::bimatrix_game::*;
 
+pub mod mus;
+
 fn main() {
     let a = Array::random((30, 40), Uniform::new(0., 10.));
     let b = Array::random((30, 40), Uniform::new(0., 10.));
