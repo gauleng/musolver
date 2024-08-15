@@ -29,6 +29,23 @@ impl Carta {
     }
 }
 
+impl From<Carta> for char {
+    fn from(other: Carta) -> char {
+        match other {
+            Carta::As => '1',
+            Carta::Dos => '2',
+            Carta::Tres => '3',
+            Carta::Cuatro => '4',
+            Carta::Cinco => '5',
+            Carta::Seis => '6',
+            Carta::Siete => '7',
+            Carta::Sota => 'S',
+            Carta::Caballo => 'C',
+            Carta::Rey => 'R',
+        }
+    }
+}
+
 impl TryFrom<char> for Carta {
     type Error = MusError;
 
