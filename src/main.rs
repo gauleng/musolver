@@ -3,10 +3,7 @@ use ndarray::Array;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
 
-pub mod game;
-use game::*;
-
-pub mod mus;
+use musolver::*;
 
 fn main() {
     let a = Array::random((30, 40), Uniform::new(0., 10.));
