@@ -29,8 +29,8 @@ impl Carta {
     }
 }
 
-impl From<Carta> for char {
-    fn from(other: Carta) -> char {
+impl From<&Carta> for char {
+    fn from(other: &Carta) -> char {
         match other {
             Carta::As => '1',
             Carta::Dos => '2',

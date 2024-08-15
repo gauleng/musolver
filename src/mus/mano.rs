@@ -21,6 +21,24 @@ impl TryFrom<&str> for Mano {
             let carta = Carta::try_from(c)?;
             cartas.push(carta);
         }
-        Ok(Self(cartas))
+        Ok(Self::new(cartas))
+    }
+}
+
+impl std::fmt::Display for Mano {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let a: String = self.0.iter().map(|c| char::from(c)).collect();
+        write!(f, "{a}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        let m = Mano::new(vec![Carta::Caballo, Carta::Tres, Carta::Dos, Carta::Siete]);
+        assert_eq!(format!("{m}"), "27C3");
     }
 }
