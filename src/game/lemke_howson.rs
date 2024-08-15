@@ -93,17 +93,14 @@ impl Tableaux {
         t.coefficients[[min_row, l_var_col]] = -1.;
         t.coefficients[[min_row, e_var_col]] = 0.;
 
-        t.coefficients
-            .row_mut(min_row)
-            .iter_mut()
-            .for_each(|b| *b = *b / e_var_coeff);
+        Zip::from(t.coefficients.row_mut(min_row)).for_each(|b| *b = *b / e_var_coeff);
 
         let r = t.coefficients.row(min_row).into_owned();
-        for mut row in t.coefficients.rows_mut() {
-            let e_var_coeff = row[e_var_col];
-            row.scaled_add(e_var_coeff, &r);
-            row[e_var_col] = 0.;
-        }
+        let c = t.coefficients.column(e_var_col).into_owned();
+        Zip::from(&c)
+            .and(t.coefficients.rows_mut())
+            .for_each(|e, mut row| row.scaled_add(*e, &r));
+        t.coefficients.column_mut(e_var_col).fill(0.);
 
         return l_var;
     }
