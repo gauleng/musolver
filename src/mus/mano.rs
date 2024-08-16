@@ -17,6 +17,26 @@ impl Mano {
             | (self.0[2].valor() as usize) << 8
             | self.0[3].valor() as usize
     }
+
+    pub fn num_parejas(&self) -> usize {
+        let p1 = self.0[0].valor() == self.0[1].valor();
+        let p2 = self.0[1].valor() == self.0[2].valor();
+        let p3 = self.0[2].valor() == self.0[3].valor();
+
+        [p1, p2, p3]
+            .iter()
+            .fold(0, |acc, p| if *p { acc + 1 } else { acc })
+    }
+
+    pub fn puntos(&self) -> usize {
+        self.0.iter().fold(0, |acc, c| {
+            if c.valor() >= 10 {
+                acc + 10
+            } else {
+                acc + c.valor() as usize
+            }
+        })
+    }
 }
 
 impl TryFrom<&str> for Mano {
@@ -47,5 +67,11 @@ mod tests {
     fn test_display() {
         let m = Mano::new(vec![Carta::Caballo, Carta::Tres, Carta::Dos, Carta::Siete]);
         assert_eq!(format!("{m}"), "27C3");
+    }
+
+    #[test]
+    fn test_codigo() {
+        let m = Mano::new(vec![Carta::As, Carta::As, Carta::As, Carta::Tres]);
+        assert_eq!(m.codigo(), 16843020);
     }
 }

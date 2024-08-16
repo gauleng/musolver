@@ -10,7 +10,7 @@ pub use mano::*;
 mod lance;
 pub use lance::*;
 
-enum Accion {
+pub enum Accion {
     Paso,
     Envido(u8),
     Quiero,
