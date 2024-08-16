@@ -15,7 +15,7 @@ pub enum Carta {
 }
 
 impl Carta {
-    fn valor(&self) -> u8 {
+    pub fn valor(&self) -> u8 {
         match self {
             Carta::As | Carta::Dos => 1,
             Carta::Cuatro => 4,

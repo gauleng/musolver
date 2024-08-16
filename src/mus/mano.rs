@@ -10,6 +10,13 @@ impl Mano {
         cartas.sort();
         Mano(cartas)
     }
+
+    pub fn codigo(&self) -> usize {
+        (self.0[0].valor() as usize) << 24
+            | (self.0[1].valor() as usize) << 16
+            | (self.0[2].valor() as usize) << 8
+            | self.0[3].valor() as usize
+    }
 }
 
 impl TryFrom<&str> for Mano {
