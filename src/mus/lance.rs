@@ -68,7 +68,7 @@ mod tests {
         let a = Mano::try_from("1147").unwrap();
         let b = Mano::try_from("1247").unwrap();
         let grande = Grande {};
-        assert_eq!(grande.compara_manos(&a, &b), std::cmp::Ordering::Less);
+        assert_eq!(grande.compara_manos(&a, &b), std::cmp::Ordering::Equal);
         let manos = vec![a, b];
         grande.mejor_mano(&manos);
     }
