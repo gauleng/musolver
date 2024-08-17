@@ -10,9 +10,5 @@ pub use mano::*;
 mod lance;
 pub use lance::*;
 
-pub enum Accion {
-    Paso,
-    Envido(u8),
-    Quiero,
-    Ordago,
-}
+mod partida_mus;
+pub use partida_mus::*;

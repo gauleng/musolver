@@ -1,14 +1,15 @@
 use super::mus_error::MusError;
 use super::Carta;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mano(Vec<Carta>);
 
 impl Mano {
     // Cards in hand are always sorted by value.
-    pub fn new(mut cartas: Vec<Carta>) -> Self {
-        cartas.sort();
-        Mano(cartas)
+    pub fn new(cartas: Vec<Carta>) -> Self {
+        let mut m = Mano(cartas);
+        m.0.sort();
+        m
     }
 
     pub fn codigo(&self) -> usize {

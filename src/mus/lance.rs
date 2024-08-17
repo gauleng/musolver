@@ -1,5 +1,4 @@
-use super::Accion;
-use super::Mano;
+use crate::mus::Mano;
 
 use std::cmp;
 
@@ -42,20 +41,6 @@ impl Lance for Punto {
     fn compara_manos(&self, a: &Mano, b: &Mano) -> cmp::Ordering {
         a.puntos().cmp(&b.puntos())
     }
-}
-
-pub fn tantos(lance: &dyn Lance, manos: &Vec<Mano>, acciones: &Vec<Accion>) -> Vec<u8> {
-    let ganador = lance.mejor_mano(manos);
-    let apostado = acciones.iter().fold(0, |acc, a| match a {
-        Accion::Envido(e) => acc + e,
-        _ => acc,
-    });
-    let pareja = ganador % 2;
-
-    let mut tantos = vec![0; manos.len()];
-    tantos[pareja] = apostado;
-    tantos[2 + pareja] = apostado;
-    tantos
 }
 
 #[cfg(test)]
