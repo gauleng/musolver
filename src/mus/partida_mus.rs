@@ -47,7 +47,7 @@ impl PartidaMus {
             Accion::Quiero => {}
             Accion::Envido(n) => {
                 if ultimo_bote < PartidaMus::MAX_TANTOS {
-                    let nuevo_bote = (ultimo_bote + n).min(PartidaMus::MAX_TANTOS);
+                    let nuevo_bote = (ultimo_bote + n.max(2)).min(PartidaMus::MAX_TANTOS);
                     self.bote[0] = self.bote[1];
                     self.bote[1] = nuevo_bote;
                     self.ultimo_envite = turno;
@@ -86,35 +86,43 @@ impl PartidaMus {
         }
         let jugadores: Vec<usize> = (0..self.manos.len()).collect();
         let activos: Vec<usize> = jugadores.into_iter().filter(|&a| self.activos[a]).collect();
-        let apostado = if activos.len() == 1 {
-            self.bote[0]
-        } else if self.bote[1] == 0 {
-            1
-        } else {
+        let se_quisieron = activos.len() > 1;
+        let mut apostado = if se_quisieron {
             self.bote[1]
+        } else {
+            self.bote[0]
         };
+        if apostado == 0 {
+            apostado = 1;
+        }
 
-        let ganador = match activos.len() {
-            1 => activos[0],
-            _ => {
-                let manos_activas = activos.iter().map(|i| self.manos[*i].clone()).collect();
-                activos[lance.mejor_mano(&manos_activas)]
-            }
+        let ganador = if se_quisieron {
+            let manos_activas = activos.iter().map(|i| self.manos[*i].clone()).collect();
+            activos[lance.mejor_mano(&manos_activas)]
+        } else {
+            activos[0]
         };
 
         let mut tantos = vec![0; self.manos.len()];
         tantos[ganador] = apostado;
-        activos.iter().for_each(|i| match lance {
-            Lance::Pares => tantos[*i] += self.manos[*i].num_parejas(),
-            Lance::Juego => {
-                if self.manos[*i].juego().is_some_and(|v| v == 42) {
-                    tantos[*i] += 3
-                } else {
-                    tantos[*i] += 2
+        if se_quisieron {
+            activos.iter().for_each(|i| match lance {
+                Lance::Pares => tantos[*i] += self.manos[*i].num_parejas(),
+                Lance::Juego => {
+                    if let Some(v) = self.manos[*i].juego() {
+                        if v == 42 {
+                            tantos[*i] += 3
+                        } else {
+                            tantos[*i] += 2
+                        }
+                    }
                 }
+                _ => {}
+            });
+            if let Lance::Punto = lance {
+                tantos[ganador] += 1;
             }
-            _ => {}
-        });
+        }
         tantos[0] = tantos[0] + tantos[2];
         tantos[1] = tantos[1] + tantos[3];
         tantos[2] = tantos[0];
@@ -165,5 +173,26 @@ mod tests {
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(0));
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(3));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+    }
+
+    #[test]
+    fn test_tanteo() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+
+        assert_eq!(partida.tantos(&Lance::Grande).unwrap(), vec![0, 1, 0, 1]);
+        assert_eq!(partida.tantos(&Lance::Chica).unwrap(), vec![1, 0, 1, 0]);
+        assert_eq!(partida.tantos(&Lance::Pares).unwrap(), vec![4, 1, 4, 1]);
+        assert_eq!(partida.tantos(&Lance::Juego).unwrap(), vec![2, 3, 2, 3]);
     }
 }
