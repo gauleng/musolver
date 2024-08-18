@@ -1,6 +1,8 @@
 use crate::mus::Lance;
 use crate::mus::Mano;
 
+use super::MusError;
+
 pub enum Accion {
     Paso,
     Envido(u8),
@@ -28,11 +30,10 @@ impl PartidaMus {
         }
     }
 
-    pub fn actuar(&mut self, a: Accion) {
-        let turno = match self.turno {
-            None => return,
-            Some(t) => t,
-        };
+    /// Efectúa la acción para el jugador del turno actual.
+    /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
+    pub fn actuar(&mut self, a: Accion) -> Result<Option<usize>, MusError> {
+        let turno = self.turno.ok_or(MusError::AccionNoValida)?;
         let ultimo_bote = self.bote.last().unwrap();
         match a {
             Accion::Paso => {
@@ -54,6 +55,7 @@ impl PartidaMus {
             }
         }
         self.turno = self.pasar_turno();
+        Ok(self.turno)
     }
 
     fn pasar_turno(&self) -> Option<usize> {
@@ -102,8 +104,6 @@ impl PartidaMus {
 
 #[cfg(test)]
 mod tests {
-
-    use super::*;
 
     #[test]
     fn name() {}

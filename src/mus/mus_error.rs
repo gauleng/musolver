@@ -4,4 +4,7 @@ use thiserror::Error;
 pub enum MusError {
     #[error("Carácter no válido: {0}")]
     CaracterNoValido(char),
+
+    #[error("Acción no válida")]
+    AccionNoValida,
 }
