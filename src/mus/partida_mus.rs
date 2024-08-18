@@ -34,6 +34,7 @@ impl PartidaMus {
 
     /// Efectúa la acción para el jugador del turno actual.
     /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
+    /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
     pub fn actuar(&mut self, a: Accion) -> Result<Option<usize>, MusError> {
         let turno = self.turno.ok_or(MusError::AccionNoValida)?;
         let ultimo_bote = self.bote[1];
@@ -103,6 +104,10 @@ impl PartidaMus {
         tantos[pareja] = apostado;
         tantos[2 + pareja] = apostado;
         Some(tantos)
+    }
+
+    pub fn turno(&self) -> Option<usize> {
+        self.turno
     }
 }
 
