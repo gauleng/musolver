@@ -56,18 +56,13 @@ impl PartidaMus {
         self.turno = self.pasar_turno();
     }
 
-    fn pasar_turno(&mut self) -> Option<usize> {
-        let turno = match self.turno {
-            None => return None,
-            Some(t) => t,
-        };
+    fn pasar_turno(&self) -> Option<usize> {
+        let turno = self.turno?;
         let num_jugadores = self.activos.len();
         let mut nuevo_turno = turno;
         loop {
             nuevo_turno = (nuevo_turno + 1) % num_jugadores;
-            if nuevo_turno == turno
-                || (self.ultimo_envite.is_some() && nuevo_turno == self.ultimo_envite.unwrap())
-            {
+            if nuevo_turno == turno || self.ultimo_envite.is_some_and(|e| e == nuevo_turno) {
                 return None;
             }
             if self.activos[turno] {
