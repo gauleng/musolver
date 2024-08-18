@@ -15,7 +15,7 @@ pub struct PartidaMus {
     bote: [u8; 2],
     activos: Vec<bool>,
     turno: Option<usize>,
-    ultimo_envite: Option<usize>,
+    ultimo_envite: usize,
 }
 
 impl PartidaMus {
@@ -28,7 +28,7 @@ impl PartidaMus {
             bote: [0, 0],
             activos: vec![true; m],
             turno: Some(0),
-            ultimo_envite: None,
+            ultimo_envite: 0,
         }
     }
 
@@ -40,7 +40,9 @@ impl PartidaMus {
         let ultimo_bote = self.bote[1];
         match a {
             Accion::Paso => {
-                self.activos[turno] = false;
+                if self.bote[1] > 0 {
+                    self.activos[turno] = false;
+                }
             }
             Accion::Quiero => {}
             Accion::Envido(n) => {
@@ -48,14 +50,14 @@ impl PartidaMus {
                     let nuevo_bote = (ultimo_bote + n).min(PartidaMus::MAX_TANTOS);
                     self.bote[0] = self.bote[1];
                     self.bote[1] = nuevo_bote;
-                    self.ultimo_envite = Some(turno);
+                    self.ultimo_envite = turno;
                 }
             }
             Accion::Ordago => {
                 if ultimo_bote < PartidaMus::MAX_TANTOS {
                     self.bote[0] = self.bote[1];
                     self.bote[1] = PartidaMus::MAX_TANTOS;
-                    self.ultimo_envite = Some(turno);
+                    self.ultimo_envite = turno;
                 }
             }
         }
@@ -69,10 +71,10 @@ impl PartidaMus {
         let mut nuevo_turno = turno;
         loop {
             nuevo_turno = (nuevo_turno + 1) % num_jugadores;
-            if nuevo_turno == turno || self.ultimo_envite.is_some_and(|e| e == nuevo_turno) {
+            if nuevo_turno == turno || self.ultimo_envite == nuevo_turno {
                 return None;
             }
-            if self.activos[turno] {
+            if self.activos[nuevo_turno] {
                 return Some(nuevo_turno);
             }
         }
@@ -84,25 +86,40 @@ impl PartidaMus {
         }
         let jugadores: Vec<usize> = (0..self.manos.len()).collect();
         let activos: Vec<usize> = jugadores.into_iter().filter(|&a| self.activos[a]).collect();
-        let apostado = match activos.len() {
-            0 => 1,
-            1 => self.bote[0],
-            _ => self.bote[1],
+        let apostado = if activos.len() == 1 {
+            self.bote[0]
+        } else if self.bote[1] == 0 {
+            1
+        } else {
+            self.bote[1]
         };
 
         let ganador = match activos.len() {
-            0 => lance.mejor_mano(&self.manos),
             1 => activos[0],
             _ => {
                 let manos_activas = activos.iter().map(|i| self.manos[*i].clone()).collect();
                 activos[lance.mejor_mano(&manos_activas)]
             }
         };
-        let pareja = ganador % 2;
 
         let mut tantos = vec![0; self.manos.len()];
-        tantos[pareja] = apostado;
-        tantos[2 + pareja] = apostado;
+        tantos[ganador] = apostado;
+        activos.iter().for_each(|i| match lance {
+            Lance::Pares => tantos[*i] += self.manos[*i].num_parejas(),
+            Lance::Juego => {
+                if self.manos[*i].juego().is_some_and(|v| v == 42) {
+                    tantos[*i] += 3
+                } else {
+                    tantos[*i] += 2
+                }
+            }
+            _ => {}
+        });
+        tantos[0] = tantos[0] + tantos[2];
+        tantos[1] = tantos[1] + tantos[3];
+        tantos[2] = tantos[0];
+        tantos[3] = tantos[1];
+
         Some(tantos)
     }
 
@@ -113,7 +130,40 @@ impl PartidaMus {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
-    fn name() {}
+    fn test_turno() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos);
+        assert_eq!(partida.turno(), Some(0));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(2));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(3));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+    }
+
+    #[test]
+    fn test_turno2() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos);
+        assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(1));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(2));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(3));
+        assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(0));
+        assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(3));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+    }
 }

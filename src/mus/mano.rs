@@ -24,7 +24,7 @@ impl Mano {
 
     /// Devuelve el número de parejas de la mano. Si son pares devuelve 1, si son medias devuelve 2
     /// y si son duples 3. En caso de que no haya parejas, devuelve 0.
-    pub fn num_parejas(&self) -> usize {
+    pub fn num_parejas(&self) -> u8 {
         let p1 = self.0[0].valor() == self.0[1].valor();
         let p2 = self.0[1].valor() == self.0[2].valor();
         let p3 = self.0[2].valor() == self.0[3].valor();
