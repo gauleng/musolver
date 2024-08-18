@@ -22,9 +22,10 @@ impl Lance {
     }
 
     /// Dado un vector de manos de mus, devuelve el índice de la mejor de ellas dado el lance en
-    /// juego.
+    /// juego. Se asume que la primera mano del vector es la del jugador mano y la última la del
+    /// postre.
     pub fn mejor_mano(&self, manos: &Vec<Mano>) -> usize {
-        let mut indices: Vec<usize> = (0..manos.len()).collect();
+        let mut indices: Vec<usize> = (0..manos.len()).rev().collect();
         indices.sort_by(|i, j| self.compara_manos(&manos[*i], &manos[*j]));
         *indices.last().unwrap()
     }
@@ -34,14 +35,59 @@ impl Lance {
 mod tests {
 
     use super::*;
+    use std::cmp::Ordering::*;
 
     #[test]
-    fn name() {
+    fn test_compara_manos1() {
+        let a = Mano::try_from("355R").unwrap();
+        let b = Mano::try_from("3555").unwrap();
+        let grande = Lance::Grande;
+        let chica = Lance::Chica;
+        let pares = Lance::Pares;
+        let juego = Lance::Juego;
+        let punto = Lance::Punto;
+        assert_eq!(grande.compara_manos(&a, &b), Greater);
+        assert_eq!(chica.compara_manos(&a, &b), Less);
+        assert_eq!(pares.compara_manos(&a, &b), Greater);
+        assert_eq!(punto.compara_manos(&a, &b), Greater);
+        assert_eq!(juego.compara_manos(&a, &b), Equal);
+        let manos = vec![a, b];
+        assert_eq!(chica.mejor_mano(&manos), 1);
+    }
+
+    #[test]
+    fn test_compara_manos2() {
         let a = Mano::try_from("1147").unwrap();
         let b = Mano::try_from("1247").unwrap();
         let grande = Lance::Grande;
-        assert_eq!(grande.compara_manos(&a, &b), std::cmp::Ordering::Equal);
+        let chica = Lance::Chica;
+        let pares = Lance::Pares;
+        let juego = Lance::Juego;
+        let punto = Lance::Punto;
+        assert_eq!(grande.compara_manos(&a, &b), Equal);
+        assert_eq!(chica.compara_manos(&a, &b), Equal);
+        assert_eq!(pares.compara_manos(&a, &b), Equal);
+        assert_eq!(punto.compara_manos(&a, &b), Equal);
+        assert_eq!(juego.compara_manos(&a, &b), Equal);
         let manos = vec![a, b];
-        grande.mejor_mano(&manos);
+        assert_eq!(grande.mejor_mano(&manos), 0);
+    }
+
+    #[test]
+    fn test_compara_manos3() {
+        let a = Mano::try_from("2CRR").unwrap();
+        let b = Mano::try_from("SSCR").unwrap();
+        let grande = Lance::Grande;
+        let chica = Lance::Chica;
+        let pares = Lance::Pares;
+        let juego = Lance::Juego;
+        let punto = Lance::Punto;
+        assert_eq!(grande.compara_manos(&a, &b), Less);
+        assert_eq!(chica.compara_manos(&a, &b), Greater);
+        assert_eq!(pares.compara_manos(&a, &b), Equal);
+        assert_eq!(punto.compara_manos(&a, &b), Less);
+        assert_eq!(juego.compara_manos(&a, &b), Greater);
+        let manos = vec![a, b];
+        assert_eq!(juego.mejor_mano(&manos), 0);
     }
 }

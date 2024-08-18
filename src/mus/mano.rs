@@ -13,7 +13,8 @@ impl Mano {
     }
 
     /// Convierte la mano a un entero de 4 bytes. La primera carta se mapea al primer byte, la
-    /// segunda al segundo byte, y así sucesivamente.
+    /// segunda al segundo byte, y así sucesivamente. Este valor permite ordenar las manos en los
+    /// lances de grande y chica.
     pub fn codigo(&self) -> usize {
         (self.0[0].valor() as usize) << 24
             | (self.0[1].valor() as usize) << 16
@@ -21,16 +22,27 @@ impl Mano {
             | self.0[3].valor() as usize
     }
 
+    /// Devuelve el número de parejas de la mano. Si son pares devuelve 1, si son medias devuelve 2
+    /// y si son duples 3. En caso de que no haya parejas, devuelve 0.
     pub fn num_parejas(&self) -> usize {
         let p1 = self.0[0].valor() == self.0[1].valor();
         let p2 = self.0[1].valor() == self.0[2].valor();
         let p3 = self.0[2].valor() == self.0[3].valor();
 
-        [p1, p2, p3]
-            .iter()
-            .fold(0, |acc, p| if *p { acc + 1 } else { acc })
+        if p1 && p3 {
+            return 3;
+        }
+        if p1 && p2 || p2 && p3 {
+            return 2;
+        }
+        if p1 || p2 || p3 {
+            return 1;
+        }
+
+        return 0;
     }
 
+    /// Devuelve los puntos de la mano para los lances de punto y juego.
     pub fn puntos(&self) -> usize {
         self.0.iter().fold(0, |acc, c| {
             if c.valor() >= 10 {
@@ -41,6 +53,9 @@ impl Mano {
         })
     }
 
+    /// Devuelve el valor del juego de la mano. Se asigna de forma arbitraria el valor de 42 al
+    /// juego de 31, 41 al de 32, y los puntos de la mano en cualquier otro caso. Si la mano no
+    /// tiene juego, se devuelve None.
     pub fn juego(&self) -> Option<usize> {
         let p = self.puntos();
         match p {
