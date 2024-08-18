@@ -77,7 +77,7 @@ impl PartidaMus {
         }
     }
 
-    pub fn tantos(&self, lance: &dyn Lance) -> Option<Vec<u8>> {
+    pub fn tantos(&self, lance: &Lance) -> Option<Vec<u8>> {
         if self.turno.is_some() {
             return None;
         }
