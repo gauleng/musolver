@@ -12,18 +12,20 @@ pub enum Accion {
 
 pub struct PartidaMus {
     manos: Vec<Mano>,
-    bote: Vec<u8>,
+    bote: [u8; 2],
     activos: Vec<bool>,
     turno: Option<usize>,
     ultimo_envite: Option<usize>,
 }
 
 impl PartidaMus {
+    const MAX_TANTOS: u8 = 40;
+
     pub fn new(manos: Vec<Mano>) -> Self {
         let m = manos.len();
         PartidaMus {
             manos,
-            bote: vec![0],
+            bote: [0, 0],
             activos: vec![true; m],
             turno: Some(0),
             ultimo_envite: None,
@@ -34,22 +36,24 @@ impl PartidaMus {
     /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
     pub fn actuar(&mut self, a: Accion) -> Result<Option<usize>, MusError> {
         let turno = self.turno.ok_or(MusError::AccionNoValida)?;
-        let ultimo_bote = self.bote.last().unwrap();
+        let ultimo_bote = self.bote[1];
         match a {
             Accion::Paso => {
                 self.activos[turno] = false;
             }
             Accion::Quiero => {}
             Accion::Envido(n) => {
-                if *ultimo_bote < 40 {
-                    let nuevo_bote = ultimo_bote + n;
-                    self.bote.push(nuevo_bote.min(40));
+                if ultimo_bote < PartidaMus::MAX_TANTOS {
+                    let nuevo_bote = (ultimo_bote + n).min(PartidaMus::MAX_TANTOS);
+                    self.bote[0] = self.bote[1];
+                    self.bote[1] = nuevo_bote;
                     self.ultimo_envite = Some(turno);
                 }
             }
             Accion::Ordago => {
-                if *ultimo_bote < 40 {
-                    self.bote.push(40);
+                if ultimo_bote < PartidaMus::MAX_TANTOS {
+                    self.bote[0] = self.bote[1];
+                    self.bote[1] = PartidaMus::MAX_TANTOS;
                     self.ultimo_envite = Some(turno);
                 }
             }
@@ -81,8 +85,8 @@ impl PartidaMus {
         let activos: Vec<usize> = jugadores.into_iter().filter(|&a| self.activos[a]).collect();
         let apostado = match activos.len() {
             0 => 1,
-            1 => *self.bote.get(self.bote.len() - 2).unwrap(),
-            _ => *self.bote.last().unwrap(),
+            1 => self.bote[0],
+            _ => self.bote[1],
         };
 
         let ganador = match activos.len() {
