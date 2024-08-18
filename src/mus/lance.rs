@@ -16,7 +16,7 @@ impl Lance {
             Lance::Grande => a.codigo().cmp(&b.codigo()),
             Lance::Chica => b.codigo().cmp(&a.codigo()),
             Lance::Pares => a.num_parejas().cmp(&b.num_parejas()),
-            Lance::Juego => a.codigo().cmp(&b.codigo()),
+            Lance::Juego => a.juego().cmp(&b.juego()),
             Lance::Punto => a.puntos().cmp(&b.puntos()),
         }
     }

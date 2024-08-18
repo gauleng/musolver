@@ -12,6 +12,8 @@ impl Mano {
         m
     }
 
+    /// Convierte la mano a un entero de 4 bytes. La primera carta se mapea al primer byte, la
+    /// segunda al segundo byte, y así sucesivamente.
     pub fn codigo(&self) -> usize {
         (self.0[0].valor() as usize) << 24
             | (self.0[1].valor() as usize) << 16
@@ -37,6 +39,16 @@ impl Mano {
                 acc + c.valor() as usize
             }
         })
+    }
+
+    pub fn juego(&self) -> Option<usize> {
+        let p = self.puntos();
+        match p {
+            31 => Some(42),
+            32 => Some(41),
+            33..=40 => Some(p),
+            _ => None,
+        }
     }
 }
 
