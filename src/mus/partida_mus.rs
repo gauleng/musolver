@@ -109,7 +109,7 @@ impl PartidaMus {
             activos.iter().for_each(|i| match lance {
                 Lance::Pares => tantos[*i] += self.manos[*i].num_parejas(),
                 Lance::Juego => {
-                    if let Some(v) = self.manos[*i].juego() {
+                    if let Some(v) = self.manos[*i].valor_juego() {
                         if v == 42 {
                             tantos[*i] += 3
                         } else {
