@@ -108,7 +108,7 @@ impl PartidaMus {
         match lance {
             Lance::Pares => tantos[ganador] += self.manos[ganador].num_parejas(),
             Lance::Juego => {
-                if let Some(v) = self.manos[ganador].juego() {
+                if let Some(v) = self.manos[ganador].valor_juego() {
                     if v == 42 {
                         tantos[ganador] += 3
                     } else {

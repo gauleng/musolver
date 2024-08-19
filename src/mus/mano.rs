@@ -12,10 +12,20 @@ impl Mano {
         m
     }
 
+    /// Convierte la mano a un entero de 4 bytes. La cuarta carta se mapea al primer byte, la
+    /// tercera al segundo byte, y así sucesivamente. Este valor permite ordenar las manos en el
+    /// lance de grande.
+    pub fn valor_grande(&self) -> usize {
+        (self.0[3].valor() as usize) << 24
+            | (self.0[2].valor() as usize) << 16
+            | (self.0[1].valor() as usize) << 8
+            | self.0[0].valor() as usize
+    }
+
     /// Convierte la mano a un entero de 4 bytes. La primera carta se mapea al primer byte, la
-    /// segunda al segundo byte, y así sucesivamente. Este valor permite ordenar las manos en los
-    /// lances de grande y chica.
-    pub fn codigo(&self) -> usize {
+    /// segunda al segundo byte, y así sucesivamente. Este valor permite ordenar las manos en el
+    /// lance de chica.
+    pub fn valor_chica(&self) -> usize {
         (self.0[0].valor() as usize) << 24
             | (self.0[1].valor() as usize) << 16
             | (self.0[2].valor() as usize) << 8
@@ -43,7 +53,7 @@ impl Mano {
     }
 
     /// Devuelve los puntos de la mano para los lances de punto y juego.
-    pub fn puntos(&self) -> usize {
+    pub fn valor_puntos(&self) -> usize {
         self.0.iter().fold(0, |acc, c| {
             if c.valor() >= 10 {
                 acc + 10
@@ -56,8 +66,8 @@ impl Mano {
     /// Devuelve el valor del juego de la mano. Se asigna de forma arbitraria el valor de 42 al
     /// juego de 31, 41 al de 32, y los puntos de la mano en cualquier otro caso. Si la mano no
     /// tiene juego, se devuelve None.
-    pub fn juego(&self) -> Option<usize> {
-        let p = self.puntos();
+    pub fn valor_juego(&self) -> Option<usize> {
+        let p = self.valor_puntos();
         match p {
             31 => Some(42),
             32 => Some(41),
@@ -100,6 +110,7 @@ mod tests {
     #[test]
     fn test_codigo() {
         let m = Mano::new(vec![Carta::As, Carta::As, Carta::As, Carta::Tres]);
-        assert_eq!(m.codigo(), 16843020);
+        assert_eq!(m.valor_grande(), 201392385);
+        assert_eq!(m.valor_chica(), 16843020);
     }
 }

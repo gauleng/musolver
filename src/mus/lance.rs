@@ -13,11 +13,11 @@ pub enum Lance {
 impl Lance {
     fn compara_manos(&self, a: &Mano, b: &Mano) -> cmp::Ordering {
         match self {
-            Lance::Grande => a.codigo().cmp(&b.codigo()),
-            Lance::Chica => b.codigo().cmp(&a.codigo()),
+            Lance::Grande => a.valor_grande().cmp(&b.valor_grande()),
+            Lance::Chica => b.valor_chica().cmp(&a.valor_chica()),
             Lance::Pares => a.num_parejas().cmp(&b.num_parejas()),
-            Lance::Juego => a.juego().cmp(&b.juego()),
-            Lance::Punto => a.puntos().cmp(&b.puntos()),
+            Lance::Juego => a.valor_juego().cmp(&b.valor_juego()),
+            Lance::Punto => a.valor_puntos().cmp(&b.valor_puntos()),
         }
     }
 
@@ -82,7 +82,7 @@ mod tests {
         let pares = Lance::Pares;
         let juego = Lance::Juego;
         let punto = Lance::Punto;
-        assert_eq!(grande.compara_manos(&a, &b), Less);
+        assert_eq!(grande.compara_manos(&a, &b), Greater);
         assert_eq!(chica.compara_manos(&a, &b), Greater);
         assert_eq!(pares.compara_manos(&a, &b), Equal);
         assert_eq!(punto.compara_manos(&a, &b), Less);
