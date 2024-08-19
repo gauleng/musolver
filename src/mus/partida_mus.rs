@@ -105,23 +105,21 @@ impl PartidaMus {
 
         let mut tantos = vec![0; self.manos.len()];
         tantos[ganador] = apostado;
-        if se_quisieron {
-            activos.iter().for_each(|i| match lance {
-                Lance::Pares => tantos[*i] += self.manos[*i].num_parejas(),
-                Lance::Juego => {
-                    if let Some(v) = self.manos[*i].juego() {
-                        if v == 42 {
-                            tantos[*i] += 3
-                        } else {
-                            tantos[*i] += 2
-                        }
+        match lance {
+            Lance::Pares => tantos[ganador] += self.manos[ganador].num_parejas(),
+            Lance::Juego => {
+                if let Some(v) = self.manos[ganador].juego() {
+                    if v == 42 {
+                        tantos[ganador] += 3
+                    } else {
+                        tantos[ganador] += 2
                     }
                 }
-                _ => {}
-            });
-            if let Lance::Punto = lance {
-                tantos[ganador] += 1;
             }
+            _ => {}
+        };
+        if let Lance::Punto = lance {
+            tantos[ganador] += 1;
         }
         tantos[0] = tantos[0] + tantos[2];
         tantos[1] = tantos[1] + tantos[3];
