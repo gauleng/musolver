@@ -26,10 +26,10 @@ impl Mano {
     /// segunda al segundo byte, y así sucesivamente. Este valor permite ordenar las manos en el
     /// lance de chica.
     pub fn valor_chica(&self) -> usize {
-        (self.0[3].valor() as usize) << 24
-            | (self.0[2].valor() as usize) << 16
-            | (self.0[1].valor() as usize) << 8
-            | self.0[0].valor() as usize
+        (self.0[0].valor() as usize) << 24
+            | (self.0[1].valor() as usize) << 16
+            | (self.0[2].valor() as usize) << 8
+            | self.0[3].valor() as usize
     }
 
     /// Devuelve el número de parejas de la mano. Si son pares devuelve 1, si son medias devuelve 2
@@ -111,5 +111,6 @@ mod tests {
     fn test_codigo() {
         let m = Mano::new(vec![Carta::As, Carta::As, Carta::As, Carta::Tres]);
         assert_eq!(m.valor_grande(), 201392385);
+        assert_eq!(m.valor_chica(), 16843020);
     }
 }
