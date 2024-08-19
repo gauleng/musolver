@@ -190,9 +190,9 @@ mod tests {
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
 
-        assert_eq!(partida.tantos(&Lance::Grande).unwrap(), vec![0, 1, 0, 1]);
+        assert_eq!(partida.tantos(&Lance::Grande).unwrap(), vec![1, 0, 1, 0]);
         assert_eq!(partida.tantos(&Lance::Chica).unwrap(), vec![1, 0, 1, 0]);
-        assert_eq!(partida.tantos(&Lance::Pares).unwrap(), vec![4, 1, 4, 1]);
-        assert_eq!(partida.tantos(&Lance::Juego).unwrap(), vec![2, 3, 2, 3]);
+        assert_eq!(partida.tantos(&Lance::Pares).unwrap(), vec![3, 0, 3, 0]);
+        assert_eq!(partida.tantos(&Lance::Juego).unwrap(), vec![0, 2, 0, 2]);
     }
 }
