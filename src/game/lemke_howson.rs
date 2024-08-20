@@ -53,10 +53,10 @@ impl Tableaux {
         .and(game.payoff_matrix(1).t())
         .for_each(|a, b| *a = -b);
 
-        return tableaux;
+        tableaux
     }
 
-    fn get_tableau<'a>(&'a mut self, var: isize) -> &'a mut Tableau {
+    fn get_tableau(&mut self, var: isize) -> &mut Tableau {
         let rows0 = self.0.basis.len() as isize;
         let rows1 = self.1.basis.len() as isize;
         let total = rows0 + rows1;
@@ -64,12 +64,12 @@ impl Tableaux {
         if (0 < var && var <= rows0) || (-total <= var && var < -rows0) {
             return &mut self.1;
         }
-        return &mut self.0;
+        &mut self.0
     }
 
     fn pivot(&mut self, e_var: isize) -> isize {
         let t = self.get_tableau(e_var);
-        let e_var_col = e_var.abs() as usize;
+        let e_var_col = e_var.unsigned_abs();
 
         let (min_row, _) = Zip::indexed(&t.coefficients.column(0))
             .and(&t.coefficients.column(e_var_col))
@@ -88,12 +88,12 @@ impl Tableaux {
 
         let l_var = t.basis[min_row];
         t.basis[min_row] = e_var;
-        let l_var_col = l_var.abs() as usize;
+        let l_var_col = l_var.unsigned_abs();
         let e_var_coeff = -t.coefficients[[min_row, e_var_col]];
         t.coefficients[[min_row, l_var_col]] = -1.;
         t.coefficients[[min_row, e_var_col]] = 0.;
 
-        Zip::from(t.coefficients.row_mut(min_row)).for_each(|b| *b = *b / e_var_coeff);
+        Zip::from(t.coefficients.row_mut(min_row)).for_each(|b| *b /= e_var_coeff);
 
         let r = t.coefficients.row(min_row).into_owned();
         let c = t.coefficients.column(e_var_col).into_owned();
@@ -102,7 +102,7 @@ impl Tableaux {
             .for_each(|e, mut row| row.scaled_add(*e, &r));
         t.coefficients.column_mut(e_var_col).fill(0.);
 
-        return l_var;
+        l_var
     }
 }
 
@@ -124,7 +124,7 @@ pub fn lemke_howson(game: &BimatrixGame) -> Strategy {
         } else {
             prob = t.0.coefficients[[i, 0]];
         }
-        if prob < 0. || prob > 1. {
+        if !(0. ..=1.).contains(&prob) {
             prob = 0.;
         }
         let variable = ((*v).abs() - 1) as usize;
@@ -137,7 +137,7 @@ pub fn lemke_howson(game: &BimatrixGame) -> Strategy {
         } else {
             prob = t.1.coefficients[[i, 0]];
         }
-        if prob < 0. || prob > 1. {
+        if !(0. ..=1.).contains(&prob) {
             prob = 0.;
         }
         let variable = ((*v).abs() - 1) as usize;
@@ -157,9 +157,7 @@ mod tests {
         let a = array![[1., 2., 3.], [4., 5., 6.],];
         let b = array![[7., 8., 9.], [10., 11., 12.],];
         let game = BimatrixGame::new(a, b);
-        let tableaux = Tableaux::new(&game);
-
-        tableaux
+        Tableaux::new(&game)
     }
 
     #[test]

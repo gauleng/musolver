@@ -1,7 +1,7 @@
 use super::mus_error::MusError;
 use super::Carta;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Mano(Vec<Carta>);
 
 #[derive(PartialOrd, Ord, PartialEq, Eq)]
@@ -113,7 +113,7 @@ impl TryFrom<&str> for Mano {
 
 impl std::fmt::Display for Mano {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let a: String = self.0.iter().map(|c| char::from(c)).collect();
+        let a: String = self.0.iter().map(char::from).collect();
         write!(f, "{a}")
     }
 }

@@ -37,7 +37,7 @@ impl BimatrixGame {
         let payoff0 = self.payoff.0.dot(&strategy.1).dot(&strategy.0);
         let payoff1 = self.payoff.1.dot(&strategy.1).dot(&strategy.0);
 
-        return (payoff0, payoff1);
+        (payoff0, payoff1)
     }
 
     pub fn payoff_matrix(&self, player: usize) -> &Array2<f32> {

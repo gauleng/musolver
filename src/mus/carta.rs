@@ -1,4 +1,5 @@
 use super::mus_error::*;
+use std::hash::Hash;
 
 #[derive(Eq, Debug, Copy, Clone)]
 pub enum Carta {
@@ -83,6 +84,12 @@ impl TryFrom<u8> for Carta {
             12 => Ok(Carta::Rey),
             _ => Err(MusError::ValorNoValido(other)),
         }
+    }
+}
+
+impl Hash for Carta {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.valor().hash(state);
     }
 }
 
