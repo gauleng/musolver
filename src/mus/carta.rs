@@ -66,6 +66,26 @@ impl TryFrom<char> for Carta {
     }
 }
 
+impl TryFrom<u8> for Carta {
+    type Error = MusError;
+
+    fn try_from(other: u8) -> Result<Self, Self::Error> {
+        match other {
+            1 => Ok(Carta::As),
+            2 => Ok(Carta::Dos),
+            3 => Ok(Carta::Tres),
+            4 => Ok(Carta::Cuatro),
+            5 => Ok(Carta::Cinco),
+            6 => Ok(Carta::Seis),
+            7 => Ok(Carta::Siete),
+            10 => Ok(Carta::Sota),
+            11 => Ok(Carta::Caballo),
+            12 => Ok(Carta::Rey),
+            _ => Err(MusError::ValorNoValido(other)),
+        }
+    }
+}
+
 impl PartialEq for Carta {
     fn eq(&self, other: &Self) -> bool {
         self.valor() == other.valor()

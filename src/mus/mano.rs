@@ -4,6 +4,20 @@ use super::Carta;
 #[derive(Debug, Clone)]
 pub struct Mano(Vec<Carta>);
 
+#[derive(PartialOrd, Ord, PartialEq, Eq)]
+pub enum Juego {
+    Resto(u8),
+    Treintaydos,
+    Treintayuna,
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq)]
+pub enum Pares {
+    Pareja(u16),
+    Medias(u16),
+    Duples(u16),
+}
+
 impl Mano {
     // Cards in hand are always sorted by value.
     pub fn new(cartas: Vec<Carta>) -> Self {
@@ -34,44 +48,51 @@ impl Mano {
 
     /// Devuelve el número de parejas de la mano. Si son pares devuelve 1, si son medias devuelve 2
     /// y si son duples 3. En caso de que no haya parejas, devuelve 0.
-    pub fn num_parejas(&self) -> u8 {
-        let p1 = self.0[0].valor() == self.0[1].valor();
-        let p2 = self.0[1].valor() == self.0[2].valor();
-        let p3 = self.0[2].valor() == self.0[3].valor();
+    pub fn pares(&self) -> Option<Pares> {
+        let mut contadores = [0; 13];
+        self.0
+            .iter()
+            .for_each(|c| contadores[c.valor() as usize] += 1);
 
-        if p1 && p3 {
-            return 3;
-        }
-        if p1 && p2 || p2 && p3 {
-            return 2;
-        }
-        if p1 || p2 || p3 {
-            return 1;
-        }
+        let mut grupos = [0; 5];
 
-        return 0;
+        contadores
+            .iter()
+            .enumerate()
+            .for_each(|(valor, num)| grupos[*num] |= 1 << valor);
+
+        if grupos[4] > 0 {
+            return Some(Pares::Duples(grupos[4] << 1));
+        }
+        if grupos[3] > 0 {
+            return Some(Pares::Medias(grupos[3]));
+        }
+        if grupos[2] == 2 {
+            return Some(Pares::Duples(grupos[2]));
+        }
+        if grupos[2] == 1 {
+            return Some(Pares::Pareja(grupos[2]));
+        }
+        return None;
     }
 
     /// Devuelve los puntos de la mano para los lances de punto y juego.
-    pub fn valor_puntos(&self) -> usize {
+    pub fn valor_puntos(&self) -> u8 {
         self.0.iter().fold(0, |acc, c| {
             if c.valor() >= 10 {
                 acc + 10
             } else {
-                acc + c.valor() as usize
+                acc + c.valor()
             }
         })
     }
 
-    /// Devuelve el valor del juego de la mano. Se asigna de forma arbitraria el valor de 42 al
-    /// juego de 31, 41 al de 32, y los puntos de la mano en cualquier otro caso. Si la mano no
-    /// tiene juego, se devuelve None.
-    pub fn valor_juego(&self) -> Option<usize> {
+    pub fn juego(&self) -> Option<Juego> {
         let p = self.valor_puntos();
         match p {
-            31 => Some(42),
-            32 => Some(41),
-            33..=40 => Some(p),
+            31 => Some(Juego::Treintayuna),
+            32 => Some(Juego::Treintaydos),
+            33..=40 => Some(Juego::Resto(p)),
             _ => None,
         }
     }

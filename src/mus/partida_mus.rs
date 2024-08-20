@@ -1,5 +1,7 @@
+use crate::mus::Juego;
 use crate::mus::Lance;
 use crate::mus::Mano;
+use crate::mus::Pares;
 
 use super::MusError;
 
@@ -96,8 +98,10 @@ impl EstadoLance {
         } else {
             self.bote[0]
         };
-        if apostado == 0 {
-            apostado = 1;
+        if let Lance::Grande | Lance::Chica = lance {
+            if apostado == 0 {
+                apostado = 1;
+            }
         }
 
         let ganador = if se_quisieron {
@@ -111,19 +115,31 @@ impl EstadoLance {
         tantos[ganador] = apostado;
         match lance {
             Lance::Pares => {
-                tantos[ganador] += manos[manos_ganadoras[0]].num_parejas()
-                    + manos[manos_ganadoras[1]].num_parejas();
+                if let Some(v) = manos[manos_ganadoras[0]].pares() {
+                    match v {
+                        Pares::Pareja(_) => tantos[ganador] += 1,
+                        Pares::Medias(_) => tantos[ganador] += 2,
+                        Pares::Duples(_) => tantos[ganador] += 3,
+                    }
+                }
+                if let Some(v) = manos[manos_ganadoras[1]].pares() {
+                    match v {
+                        Pares::Pareja(_) => tantos[ganador] += 1,
+                        Pares::Medias(_) => tantos[ganador] += 2,
+                        Pares::Duples(_) => tantos[ganador] += 3,
+                    }
+                }
             }
             Lance::Juego => {
-                if let Some(v) = manos[manos_ganadoras[0]].valor_juego() {
-                    if v == 42 {
+                if let Some(v) = manos[manos_ganadoras[0]].juego() {
+                    if let Juego::Treintayuna = v {
                         tantos[ganador] += 3
                     } else {
                         tantos[ganador] += 2
                     }
                 }
-                if let Some(v) = manos[manos_ganadoras[1]].valor_juego() {
-                    if v == 42 {
+                if let Some(v) = manos[manos_ganadoras[1]].juego() {
+                    if let Juego::Treintayuna = v {
                         tantos[ganador] += 3
                     } else {
                         tantos[ganador] += 2

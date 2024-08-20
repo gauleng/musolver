@@ -15,8 +15,8 @@ impl Lance {
         match self {
             Lance::Grande => a.valor_grande().cmp(&b.valor_grande()),
             Lance::Chica => b.valor_chica().cmp(&a.valor_chica()),
-            Lance::Pares => a.num_parejas().cmp(&b.num_parejas()),
-            Lance::Juego => a.valor_juego().cmp(&b.valor_juego()),
+            Lance::Pares => a.pares().cmp(&b.pares()),
+            Lance::Juego => a.juego().cmp(&b.juego()),
             Lance::Punto => a.valor_puntos().cmp(&b.valor_puntos()),
         }
     }
@@ -84,7 +84,7 @@ mod tests {
         let punto = Lance::Punto;
         assert_eq!(grande.compara_manos(&a, &b), Greater);
         assert_eq!(chica.compara_manos(&a, &b), Greater);
-        assert_eq!(pares.compara_manos(&a, &b), Equal);
+        assert_eq!(pares.compara_manos(&a, &b), Greater);
         assert_eq!(punto.compara_manos(&a, &b), Less);
         assert_eq!(juego.compara_manos(&a, &b), Greater);
         let manos = vec![a, b];
