@@ -12,3 +12,6 @@ pub use lance::*;
 
 mod partida_mus;
 pub use partida_mus::*;
+
+mod baraja;
+pub use baraja::*;
