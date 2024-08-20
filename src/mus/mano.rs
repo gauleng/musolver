@@ -67,13 +67,13 @@ impl Mano {
         if grupos[3] > 0 {
             return Some(Pares::Medias(grupos[3]));
         }
-        if grupos[2] == 2 {
-            return Some(Pares::Duples(grupos[2]));
-        }
-        if grupos[2] == 1 {
+        if grupos[2] > 0 {
+            if grupos[2].count_ones() == 2 {
+                return Some(Pares::Duples(grupos[2]));
+            }
             return Some(Pares::Pareja(grupos[2]));
         }
-        return None;
+        None
     }
 
     /// Devuelve los puntos de la mano para los lances de punto y juego.
