@@ -152,16 +152,18 @@ pub struct EstadoLance {
     turno: Option<usize>,
     ultimo_envite: usize,
     apuesta_maxima: u8,
+    apuesta_minima: u8,
     ganador: Option<usize>,
 }
 
 impl EstadoLance {
-    pub fn new(apuesta_maxima: u8) -> Self {
+    pub fn new(apuesta_minima: u8, apuesta_maxima: u8) -> Self {
         EstadoLance {
             bote: [0, 0],
             activos: [true, true],
             turno: Some(0),
             ultimo_envite: 0,
+            apuesta_minima,
             apuesta_maxima,
             ganador: None,
         }
@@ -230,19 +232,24 @@ impl EstadoLance {
     }
 
     fn tantos_apostados(&self) -> u8 {
-        if self.se_quieren() {
+        let mut apostado = if self.se_quieren() {
             self.bote[1]
         } else {
             self.bote[0]
+        };
+        if apostado == 0 {
+            apostado += self.apuesta_minima;
         }
+        apostado
     }
 
-    pub fn resolver_lance<L>(&mut self, manos: &[Mano], lance: &L) -> Option<usize>
+    /// Determina el ganador del lance. Si no se quisieron, devuelve la pareja que se lleva los
+    /// tantos. En caso contrario, resuelve el lance con las manos recibidas.
+    pub fn resolver_lance<R>(&mut self, manos: &[Mano], r: &R) -> usize
     where
-        L: RankingManos,
+        R: RankingManos,
     {
-        self.ganador = Some(lance.mejor_mano(manos) % 2);
-        self.ganador
+        *self.ganador.get_or_insert_with(|| r.mejor_mano(manos) % 2)
     }
 
     pub fn ganador(&self) -> Option<usize> {
@@ -253,17 +260,8 @@ impl EstadoLance {
         if self.turno.is_some() {
             return None;
         }
-        let mut apostado = self.tantos_apostados();
-        if let Lance::Grande | Lance::Chica = lance {
-            if apostado == 0 {
-                apostado = 1;
-            }
-        }
-
-        let ganador = self
-            .ganador()
-            .or_else(|| self.resolver_lance(manos, lance))
-            .unwrap();
+        let apostado = self.tantos_apostados();
+        let ganador = self.resolver_lance(manos, lance);
         let manos_ganadoras = [ganador, ganador + 2];
 
         let mut tantos = vec![0, 0];
@@ -288,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_turno() {
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         assert_eq!(partida.turno(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
@@ -296,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_turno2() {
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
@@ -310,19 +308,19 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(1, 40);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(&manos, &Lance::Grande).unwrap(), vec![1, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(1, 40);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(&manos, &Lance::Chica).unwrap(), vec![1, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(&manos, &Lance::Pares).unwrap(), vec![3, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(&manos, &Lance::Juego).unwrap(), vec![0, 2]);
@@ -337,22 +335,22 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(1, 40);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
         assert_eq!(partida.tantos(&manos, &Lance::Grande).unwrap(), vec![4, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(1, 40);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
         assert_eq!(partida.tantos(&manos, &Lance::Chica).unwrap(), vec![4, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
         assert_eq!(partida.tantos(&manos, &Lance::Pares).unwrap(), vec![7, 0]);
-        let mut partida = EstadoLance::new(40);
+        let mut partida = EstadoLance::new(0, 40);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);

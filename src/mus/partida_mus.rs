@@ -26,7 +26,7 @@ impl PartidaMus {
     pub fn new(manos: Vec<Mano>) -> Self {
         PartidaMus {
             manos,
-            lances: HashMap::from([(Lance::Grande, EstadoLance::new(40))]),
+            lances: HashMap::from([(Lance::Grande, EstadoLance::new(1, 40))]),
             lance_actual: Lance::Grande,
             tantos: [0, 0],
         }
@@ -54,7 +54,7 @@ impl PartidaMus {
             Ok(None) => {
                 let siguiente_lance = self.siguiente_lance();
                 if siguiente_lance.is_some() {
-                    let nuevo_lance = EstadoLance::new(40);
+                    let nuevo_lance = EstadoLance::new(0, 40);
                     let turno = nuevo_lance.turno();
                     self.lances.insert(siguiente_lance.unwrap(), nuevo_lance);
                     self.lance_actual = siguiente_lance.unwrap();
