@@ -50,8 +50,8 @@ impl Mano {
             | c[3].valor() as usize
     }
 
-    /// Devuelve el número de parejas de la mano. Si son pares devuelve 1, si son medias devuelve 2
-    /// y si son duples 3. En caso de que no haya parejas, devuelve 0.
+    /// Indica si la mano tiene una jugada para el lance de Pares, y en caso contrario devuelve
+    /// None.
     pub fn pares(&self) -> Option<Pares> {
         let mut contadores = [0; 13];
         let c = self.cartas();
@@ -91,6 +91,7 @@ impl Mano {
         })
     }
 
+    /// Indica si la mano tiene jugada para el lance de juego. En caso contrario devuelve None.
     pub fn juego(&self) -> Option<Juego> {
         let p = self.valor_puntos();
         match p {
@@ -231,7 +232,7 @@ impl EstadoLance {
         self.turno.is_none() && self.activos.iter().all(|b| *b)
     }
 
-    fn tantos_apostados(&self) -> u8 {
+    pub fn tantos_apostados(&self) -> u8 {
         let mut apostado = if self.se_quieren() {
             self.bote[1]
         } else {
@@ -245,6 +246,8 @@ impl EstadoLance {
 
     /// Determina el ganador del lance. Si no se quisieron, devuelve la pareja que se lleva los
     /// tantos. En caso contrario, resuelve el lance con las manos recibidas.
+    /// Si el lance está resuelto y se vuelve a llamar a esta función, devolverá el mismo ganador
+    /// ya calculado anteriormente. Devuelve el número de pareja que ha ganado el lance.
     pub fn resolver_lance<R>(&mut self, manos: &[Mano], r: &R) -> usize
     where
         R: RankingManos,
@@ -252,6 +255,9 @@ impl EstadoLance {
         *self.ganador.get_or_insert_with(|| r.mejor_mano(manos) % 2)
     }
 
+    /// India si ya hay un ganador en el lance, bien sea porque una pareja ha rechazado un envite o
+    /// porque el lance ya está resuelto. En caso de que todavía un no haya ganador, esta función
+    /// devuelve None.
     pub fn ganador(&self) -> Option<usize> {
         self.ganador
     }

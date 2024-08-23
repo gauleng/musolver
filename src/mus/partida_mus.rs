@@ -6,6 +6,7 @@ use crate::mus::Mano;
 use super::EstadoLance;
 use super::MusError;
 
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Accion {
     Paso,
     Envido(u8),
