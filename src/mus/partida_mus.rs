@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use crate::mus::Lance;
 use crate::mus::Mano;
@@ -12,6 +13,17 @@ pub enum Accion {
     Envido(u8),
     Quiero,
     Ordago,
+}
+
+impl Display for Accion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Accion::Paso => f.write_str("p"),
+            Accion::Envido(n) => f.write_fmt(format_args!("e{}", n)),
+            Accion::Quiero => f.write_str("q"),
+            Accion::Ordago => f.write_str("o"),
+        }
+    }
 }
 
 pub struct PartidaMus {

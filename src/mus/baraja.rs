@@ -2,11 +2,12 @@ use crate::mus::Carta;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+#[derive(Clone, Debug)]
 pub struct Baraja(Vec<Carta>);
 
 impl Baraja {
     pub fn new() -> Self {
-        Baraja(vec![])
+        Baraja(Vec::with_capacity(40))
     }
 
     pub fn insertar(&mut self, c: Carta) {

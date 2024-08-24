@@ -33,10 +33,10 @@ impl Mano {
     /// lance de grande.
     pub fn valor_grande(&self) -> usize {
         let c = self.cartas();
-        (c[3].valor() as usize) << 24
-            | (c[2].valor() as usize) << 16
-            | (c[1].valor() as usize) << 8
-            | c[0].valor() as usize
+        (c[0].valor() as usize) << 24
+            | (c[1].valor() as usize) << 16
+            | (c[2].valor() as usize) << 8
+            | c[3].valor() as usize
     }
 
     /// Convierte la mano a un entero de 4 bytes. La primera carta se mapea al primer byte, la
@@ -44,10 +44,10 @@ impl Mano {
     /// lance de chica.
     pub fn valor_chica(&self) -> usize {
         let c = self.cartas();
-        (c[0].valor() as usize) << 24
-            | (c[1].valor() as usize) << 16
-            | (c[2].valor() as usize) << 8
-            | c[3].valor() as usize
+        (c[3].valor() as usize) << 24
+            | (c[2].valor() as usize) << 16
+            | (c[1].valor() as usize) << 8
+            | c[0].valor() as usize
     }
 
     /// Indica si la mano tiene una jugada para el lance de Pares, y en caso contrario devuelve

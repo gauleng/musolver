@@ -8,7 +8,7 @@ impl Mano {
     // Cards in hand are always sorted by value.
     pub fn new(cartas: Vec<Carta>) -> Self {
         let mut m = Mano(cartas);
-        m.0.sort();
+        m.0.sort_by(|a, b| b.cmp(a));
         m
     }
 
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn test_display() {
         let m = Mano::new(vec![Carta::Caballo, Carta::Tres, Carta::Dos, Carta::Siete]);
-        assert_eq!(format!("{m}"), "27C3");
+        assert_eq!(format!("{m}"), "3C72");
     }
 
     #[test]
