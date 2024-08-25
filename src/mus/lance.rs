@@ -306,6 +306,105 @@ mod tests {
     }
 
     #[test]
+    fn test_ganador() {
+        let manos = vec![
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(0));
+
+        let manos = vec![
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(0));
+
+        let manos = vec![
+            Mano::try_from("RRRC").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(1));
+
+        let manos = vec![
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("1111").unwrap(),
+            Mano::try_from("1111").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(0));
+
+        let manos = vec![
+            Mano::try_from("1111").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("1111").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(1));
+
+        let manos = vec![
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("R111").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(1));
+
+        let manos = vec![
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(1));
+
+        let manos = vec![
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+            Mano::try_from("R111").unwrap(),
+        ];
+        let mut partida = EstadoLance::new(1, 40);
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        partida.resolver_lance(&manos, &Lance::Grande);
+        assert_eq!(partida.ganador(), Some(0));
+    }
+
+    #[test]
     fn test_tanteo() {
         let manos = vec![
             Mano::try_from("1234").unwrap(),
