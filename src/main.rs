@@ -1,4 +1,4 @@
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use mus::{Accion, Baraja, Carta, Mano};
 use musolver::*;
 
@@ -22,7 +22,7 @@ fn crear_baraja() -> Baraja {
 
 fn repartir_manos(mut b: Baraja) -> Vec<Mano> {
     let mut manos = Vec::with_capacity(4);
-    for _ in 0..4 {
+    for _ in 0..2 {
         let mut m = Vec::<Carta>::with_capacity(4);
         for _ in 0..4 {
             m.push(b.repartir().unwrap());
@@ -36,8 +36,8 @@ fn help() {
     println!("Use: musolver <num iterations>");
 }
 
-fn init_action_tree() -> ActionNode2<usize, Accion> {
-    let mut n = ActionNode2::<usize, Accion>::new(0);
+fn init_action_tree() -> ActionNode<usize, Accion> {
+    let mut n = ActionNode::<usize, Accion>::new(0);
     let p1paso = n.add_non_terminal_action(Accion::Paso, 1).unwrap();
     p1paso.add_terminal_action(Accion::Paso);
     let p2paso_envido = p1paso
@@ -75,15 +75,21 @@ fn external_cfr(iter: usize) {
     let now = Instant::now();
     let mut baraja = crear_baraja();
     let pb = ProgressBar::new(iter as u64);
+    pb.set_style(
+        ProgressStyle::with_template("{wide_bar:40.cyan/blue} {human_pos}/{human_len} {msg} ")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    let mut util = [0., 0.];
     for _ in 0..iter {
         baraja.barajar();
         let b = baraja.clone();
         let m = repartir_manos(b);
         c.set_hands(m);
-        c.cfr(&action_tree, 0);
-        c.cfr(&action_tree, 1);
+        util[0] += c.cfr(&action_tree, 0);
+        util[1] += c.cfr(&action_tree, 1);
         pb.inc(1);
-        //println!("{:?}", c.nodos);
+        pb.set_message(format!("Utility: {:.5} {:.5}", util[0], util[1],));
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);

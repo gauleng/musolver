@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::mus::{Accion, EstadoLance, Lance, Mano};
 
-use super::ActionNode2;
+use super::ActionNode;
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -56,13 +56,10 @@ impl Node {
     pub fn get_random_action(&mut self) -> usize {
         let s = self.get_strategy();
         let dist = WeightedIndex::new(s).unwrap();
-        dist.sample(&mut rand::thread_rng())
-    }
-
-    pub fn update_strategy(&mut self) {
         for i in 0..self.strategy.len() {
             self.strategy_sum[i] += self.strategy[i];
         }
+        dist.sample(&mut rand::thread_rng())
     }
 }
 
@@ -93,6 +90,19 @@ impl Cfr {
         }
         output
     }
+
+    fn info_set_str_one_hand(&self, player: usize, mano1: &Mano, history: &[Accion]) -> String {
+        let mut output = String::with_capacity(11 + history.len() + 1);
+        output.push(if player == 0 { '0' } else { '1' });
+        output.push(',');
+        output.push_str(&mano1.to_string());
+        output.push(',');
+        for i in history.iter() {
+            output.push_str(&i.to_string());
+        }
+        output
+    }
+
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
@@ -109,11 +119,12 @@ impl Cfr {
         &self.nodos
     }
 
-    pub fn cfr(&mut self, n: &ActionNode2<usize, Accion>, player: usize) -> f32 {
+    pub fn cfr(&mut self, n: &ActionNode<usize, Accion>, player: usize) -> f32 {
         match n {
-            ActionNode2::NonTerminal(p, children) => {
-                let info_set_str =
-                    self.info_set_str(*p, &self.manos[*p], &self.manos[*p + 2], &self.history);
+            ActionNode::NonTerminal(p, children) => {
+                // let info_set_str =
+                //     self.info_set_str(*p, &self.manos[*p], &self.manos[*p + 2], &self.history);
+                let info_set_str = self.info_set_str_one_hand(*p, &self.manos[*p], &self.history);
                 self.nodos
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
@@ -127,6 +138,7 @@ impl Cfr {
                     let nodo = self.nodos.get_mut(&info_set_str).unwrap();
                     let strategy = nodo.get_strategy();
                     let mut node_util = 0.;
+
                     util.iter().enumerate().for_each(|(i, u)| {
                         node_util += strategy[i] * u;
                     });
@@ -136,8 +148,6 @@ impl Cfr {
                     });
                     node_util
                 } else {
-                    // Elegir una acción aleatoria
-
                     let s = self
                         .nodos
                         .get_mut(&info_set_str)
@@ -148,11 +158,10 @@ impl Cfr {
                     self.history.push(accion.0);
                     let util = self.cfr(&accion.1, player);
                     self.history.pop();
-                    self.nodos.get_mut(&info_set_str).unwrap().update_strategy();
                     util
                 }
             }
-            ActionNode2::Terminal => {
+            ActionNode::Terminal => {
                 let mut l = EstadoLance::new(1, 40);
                 self.history.iter().for_each(|&a| {
                     let _ = l.actuar(a);
