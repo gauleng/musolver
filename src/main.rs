@@ -1,3 +1,4 @@
+use indicatif::ProgressBar;
 use mus::{Accion, Baraja, Carta, EstadoLance, Lance, Mano};
 use musolver::*;
 use rand::distributions::WeightedIndex;
@@ -81,10 +82,11 @@ impl Cfr {
     ) -> String {
         let mut output = String::with_capacity(11 + history.len() + 1);
         output.push(if player == 0 { '0' } else { '1' });
-        output.push('-');
+        output.push(',');
         output.push_str(&mano1.to_string());
         output.push(',');
         output.push_str(&mano2.to_string());
+        output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());
         }
@@ -165,12 +167,12 @@ fn crear_baraja() -> Baraja {
         b.insertar(mus::Carta::Rey);
     }
     for _ in 0..4 {
-        // b.insertar(mus::Carta::Caballo);
+        b.insertar(mus::Carta::Caballo);
         // b.insertar(mus::Carta::Sota);
         // b.insertar(mus::Carta::Siete);
         // b.insertar(mus::Carta::Seis);
         // b.insertar(mus::Carta::Cinco);
-        // b.insertar(mus::Carta::Cuatro);
+        b.insertar(mus::Carta::Cuatro);
     }
     b.barajar();
     b
@@ -234,6 +236,7 @@ fn external_cfr(iter: usize) {
 
     let now = Instant::now();
     let mut baraja = crear_baraja();
+    let pb = ProgressBar::new(iter as u64);
     for _ in 0..iter {
         baraja.barajar();
         let b = baraja.clone();
@@ -241,6 +244,7 @@ fn external_cfr(iter: usize) {
         c.manos = m;
         c.cfr(&action_tree, 0);
         c.cfr(&action_tree, 1);
+        pb.inc(1);
         //println!("{:?}", c.nodos);
     }
     let elapsed = now.elapsed();
@@ -248,7 +252,15 @@ fn external_cfr(iter: usize) {
     let mut v: Vec<(String, Node)> = c.nodos.into_iter().collect();
     v.sort_by(|x, y| x.0.cmp(&y.0));
     for (k, n) in v {
-        println!("{:?} => {:?}", k, n.get_average_strategy());
+        println!(
+            "{},{}",
+            k,
+            n.get_average_strategy()
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        );
     }
 }
 
