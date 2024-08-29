@@ -145,6 +145,59 @@ impl Lance {
             _ => 0,
         }
     }
+
+    pub fn apuesta_minima(&self) -> u8 {
+        if let Lance::Grande | Lance::Chica = self {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn bonus(&self) -> u8 {
+        if let Lance::Punto = self {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn se_juega_pares(&self, manos: &[Mano]) -> bool {
+        (manos[0].pares().or_else(|| manos[2].pares()))
+            .and_then(|_| manos[1].pares().or_else(|| manos[3].pares()))
+            .is_some()
+    }
+    fn hay_pares(&self, manos: &[Mano]) -> bool {
+        manos.iter().map(|m| m.pares()).any(|j| j.is_some())
+    }
+
+    fn se_juega_juego(&self, manos: &[Mano]) -> bool {
+        (manos[0].juego().or_else(|| manos[2].juego()))
+            .and_then(|_| manos[1].juego().or_else(|| manos[3].juego()))
+            .is_some()
+    }
+
+    fn hay_juego(&self, manos: &[Mano]) -> bool {
+        manos.iter().map(|m| m.juego()).any(|j| j.is_some())
+    }
+
+    pub fn hay_lance(&self, manos: &[Mano]) -> bool {
+        match self {
+            Lance::Grande | Lance::Chica => true,
+            Lance::Pares => self.hay_pares(manos),
+            Lance::Juego => self.hay_juego(manos),
+            Lance::Punto => !self.hay_juego(manos),
+        }
+    }
+
+    pub fn se_juega(&self, manos: &[Mano]) -> bool {
+        match self {
+            Lance::Grande | Lance::Chica => true,
+            Lance::Pares => self.se_juega_pares(manos),
+            Lance::Juego => self.se_juega_juego(manos),
+            Lance::Punto => !self.hay_juego(manos),
+        }
+    }
 }
 
 pub struct EstadoLance {
@@ -252,6 +305,7 @@ impl EstadoLance {
     where
         R: RankingManos,
     {
+        self.turno = None;
         *self.ganador.get_or_insert_with(|| r.mejor_mano(manos) % 2)
     }
 
@@ -404,63 +458,6 @@ mod tests {
         assert_eq!(partida.ganador(), Some(0));
     }
 
-    #[test]
-    fn test_tanteo() {
-        let manos = vec![
-            Mano::try_from("1234").unwrap(),
-            Mano::try_from("57SS").unwrap(),
-            Mano::try_from("3334").unwrap(),
-            Mano::try_from("257C").unwrap(),
-        ];
-
-        let mut partida = EstadoLance::new(1, 40);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(&manos, &Lance::Grande).unwrap(), vec![1, 0]);
-        let mut partida = EstadoLance::new(1, 40);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(&manos, &Lance::Chica).unwrap(), vec![1, 0]);
-        let mut partida = EstadoLance::new(0, 40);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(&manos, &Lance::Pares).unwrap(), vec![3, 0]);
-        let mut partida = EstadoLance::new(0, 40);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(&manos, &Lance::Juego).unwrap(), vec![0, 2]);
-    }
-
-    #[test]
-    fn test_tanteo2() {
-        let manos = vec![
-            Mano::try_from("1234").unwrap(),
-            Mano::try_from("57SS").unwrap(),
-            Mano::try_from("3334").unwrap(),
-            Mano::try_from("257C").unwrap(),
-        ];
-
-        let mut partida = EstadoLance::new(1, 40);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(&manos, &Lance::Grande).unwrap(), vec![4, 0]);
-        let mut partida = EstadoLance::new(1, 40);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(&manos, &Lance::Chica).unwrap(), vec![4, 0]);
-        let mut partida = EstadoLance::new(0, 40);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(&manos, &Lance::Pares).unwrap(), vec![7, 0]);
-        let mut partida = EstadoLance::new(0, 40);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(&manos, &Lance::Juego).unwrap(), vec![0, 6]);
-    }
     use std::cmp::Ordering::*;
 
     #[test]

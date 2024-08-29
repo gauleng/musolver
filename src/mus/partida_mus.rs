@@ -28,56 +28,155 @@ impl Display for Accion {
 
 pub struct PartidaMus {
     manos: Vec<Mano>,
-    lances: HashMap<Lance, EstadoLance>,
+    estado_lances: HashMap<Lance, EstadoLance>,
+    lances: Vec<Lance>,
     tantos: [u8; 2],
-    lance_actual: Lance,
+    lance_actual: usize,
 }
 
 impl PartidaMus {
     const MAX_TANTOS: u8 = 40;
 
     pub fn new(manos: Vec<Mano>) -> Self {
+        let mut lances = Vec::with_capacity(4);
+        lances.push(Lance::Grande);
+        lances.push(Lance::Chica);
+        if Lance::Pares.hay_lance(&manos) {
+            lances.push(Lance::Pares);
+        }
+        if Lance::Juego.hay_lance(&manos) {
+            lances.push(Lance::Juego);
+        } else {
+            lances.push(Lance::Punto);
+        }
         PartidaMus {
             manos,
-            lances: HashMap::from([(Lance::Grande, EstadoLance::new(1, 40))]),
-            lance_actual: Lance::Grande,
+            lances,
+            lance_actual: 0,
+            estado_lances: HashMap::new(),
             tantos: [0, 0],
         }
     }
 
-    fn siguiente_lance(&self) -> Option<Lance> {
-        match self.lance_actual {
-            Lance::Grande => Some(Lance::Chica),
-            Lance::Chica => Some(Lance::Pares),
-            Lance::Pares => {
-                let hay_juego = self.manos.iter().map(|m| m.juego()).any(|j| j.is_some());
-                if hay_juego {
-                    Some(Lance::Juego)
-                } else {
-                    Some(Lance::Punto)
-                }
+    pub fn siguiente_lance(&mut self) -> Option<Lance> {
+        if self.lance_actual < self.lances.len() {
+            let l = self.lances[self.lance_actual];
+            let tantos_restantes = [
+                Self::MAX_TANTOS - self.tantos[0],
+                Self::MAX_TANTOS - self.tantos[1],
+            ];
+            let mut e = EstadoLance::new(
+                l.apuesta_minima(),
+                tantos_restantes[0].max(tantos_restantes[1]),
+            );
+            if !l.se_juega(&self.manos) {
+                e.resolver_lance(&self.manos, &l);
             }
-            Lance::Juego | Lance::Punto => None,
+            self.estado_lances.insert(l, e);
+            self.lance_actual += 1;
+            Some(l)
+        } else {
+            self.lances.iter().for_each(|l| {
+                let e = self.estado_lances.get_mut(l).unwrap();
+                let g = e.ganador().map_or_else(
+                    || {
+                        let g = e.resolver_lance(&self.manos, l);
+                        self.tantos[g] += e.tantos_apostados();
+                        g
+                    },
+                    |v| v,
+                );
+                self.tantos[g] += l.tantos_mano(&self.manos[g]) + l.tantos_mano(&self.manos[g + 2]);
+                self.tantos[g] += l.bonus();
+            });
+            None
         }
     }
 
     pub fn actuar(&mut self, accion: Accion) -> Result<Option<usize>, MusError> {
-        let estado_lance = self.lances.get_mut(&self.lance_actual);
-        match estado_lance.unwrap().actuar(accion) {
-            Ok(None) => {
-                let siguiente_lance = self.siguiente_lance();
-                if siguiente_lance.is_some() {
-                    let nuevo_lance = EstadoLance::new(0, 40);
-                    let turno = nuevo_lance.turno();
-                    self.lances.insert(siguiente_lance.unwrap(), nuevo_lance);
-                    self.lance_actual = siguiente_lance.unwrap();
-                    Ok(turno)
-                } else {
-                    Ok(None)
-                }
-            }
-            Err(e) => Err(e),
-            t => t,
+        if self.lance_actual >= self.lances.len() {
+            return Err(MusError::AccionNoValida);
         }
+        let estado_lance = self
+            .estado_lances
+            .get_mut(&self.lances[self.lance_actual])
+            .unwrap();
+        let a = estado_lance.actuar(accion);
+        if let Ok(None) = a {
+            let g = estado_lance.ganador();
+            if g.is_some() {
+                self.tantos[g.unwrap()] += estado_lance.tantos_apostados();
+            }
+        }
+        a
+    }
+
+    pub fn tantos(&self) -> &[u8] {
+        &self.tantos
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tanteo() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos);
+        assert_eq!(partida.siguiente_lance(), Some(Lance::Grande));
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![1, 0]);
+        assert_eq!(partida.siguiente_lance(), Some(Lance::Chica));
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![2, 0]);
+        assert_eq!(partida.siguiente_lance(), Some(Lance::Pares));
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![5, 0]);
+        assert_eq!(partida.siguiente_lance(), Some(Lance::Juego));
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![5, 2]);
+    }
+
+    #[test]
+    fn test_tanteo2() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos);
+        partida.siguiente_lance();
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![4, 0]);
+        partida.siguiente_lance();
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![8, 0]);
+        partida.siguiente_lance();
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![15, 0]);
+        partida.siguiente_lance();
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![15, 6]);
     }
 }
