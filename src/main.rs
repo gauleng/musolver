@@ -95,7 +95,7 @@ fn external_cfr(iter: usize) {
     println!("Elapsed: {:.2?}", elapsed);
     let mut v: Vec<(String, Node)> = c
         .nodes()
-        .into_iter()
+        .iter()
         .map(|(s, n)| (s.clone(), n.clone()))
         .collect();
     v.sort_by(|x, y| x.0.cmp(&y.0));

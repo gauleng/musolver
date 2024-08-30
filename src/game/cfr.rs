@@ -71,25 +71,25 @@ pub struct Cfr {
 }
 
 impl Cfr {
-    fn info_set_str(
-        &self,
-        player: usize,
-        mano1: &Mano,
-        mano2: &Mano,
-        history: &[Accion],
-    ) -> String {
-        let mut output = String::with_capacity(11 + history.len() + 1);
-        output.push(if player == 0 { '0' } else { '1' });
-        output.push(',');
-        output.push_str(&mano1.to_string());
-        output.push(',');
-        output.push_str(&mano2.to_string());
-        output.push(',');
-        for i in history.iter() {
-            output.push_str(&i.to_string());
-        }
-        output
-    }
+    // fn info_set_str(
+    //     &self,
+    //     player: usize,
+    //     mano1: &Mano,
+    //     mano2: &Mano,
+    //     history: &[Accion],
+    // ) -> String {
+    //     let mut output = String::with_capacity(11 + history.len() + 1);
+    //     output.push(if player == 0 { '0' } else { '1' });
+    //     output.push(',');
+    //     output.push_str(&mano1.to_string());
+    //     output.push(',');
+    //     output.push_str(&mano2.to_string());
+    //     output.push(',');
+    //     for i in history.iter() {
+    //         output.push_str(&i.to_string());
+    //     }
+    //     output
+    // }
 
     fn info_set_str_one_hand(&self, player: usize, mano1: &Mano, history: &[Accion]) -> String {
         let mut output = String::with_capacity(11 + history.len() + 1);
@@ -162,7 +162,7 @@ impl Cfr {
                 }
             }
             ActionNode::Terminal => {
-                let mut l = EstadoLance::new(1, 40);
+                let mut l = EstadoLance::new(1, 40, 0);
                 self.history.iter().for_each(|&a| {
                     let _ = l.actuar(a);
                 });

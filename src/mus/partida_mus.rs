@@ -49,17 +49,19 @@ impl PartidaMus {
         } else {
             lances.push(Lance::Punto);
         }
+        let estado_lances = HashMap::from([(Lance::Grande, EstadoLance::new(1, 40, 0))]);
         PartidaMus {
             manos,
             lances,
             lance_actual: 0,
-            estado_lances: HashMap::new(),
+            estado_lances,
             tantos: [0, 0],
         }
     }
 
     pub fn siguiente_lance(&mut self) -> Option<Lance> {
-        if self.lance_actual < self.lances.len() {
+        if self.lance_actual < self.lances.len() - 1 {
+            self.lance_actual += 1;
             let l = self.lances[self.lance_actual];
             let tantos_restantes = [
                 Self::MAX_TANTOS - self.tantos[0],
@@ -68,12 +70,12 @@ impl PartidaMus {
             let mut e = EstadoLance::new(
                 l.apuesta_minima(),
                 tantos_restantes[0].max(tantos_restantes[1]),
+                l.turno_inicial(&self.manos),
             );
             if !l.se_juega(&self.manos) {
                 e.resolver_lance(&self.manos, &l);
             }
             self.estado_lances.insert(l, e);
-            self.lance_actual += 1;
             Some(l)
         } else {
             self.lances.iter().for_each(|l| {
@@ -111,6 +113,18 @@ impl PartidaMus {
         a
     }
 
+    pub fn turno(&self) -> Option<usize> {
+        if self.lance_actual >= self.lances.len() {
+            None
+        } else {
+            let estado_lance = self
+                .estado_lances
+                .get(&self.lances[self.lance_actual])
+                .unwrap();
+            estado_lance.turno()
+        }
+    }
+
     pub fn tantos(&self) -> &[u8] {
         &self.tantos
     }
@@ -130,21 +144,18 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos);
-        assert_eq!(partida.siguiente_lance(), Some(Lance::Grande));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![1, 0]);
         assert_eq!(partida.siguiente_lance(), Some(Lance::Chica));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![2, 0]);
         assert_eq!(partida.siguiente_lance(), Some(Lance::Pares));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![5, 0]);
         assert_eq!(partida.siguiente_lance(), Some(Lance::Juego));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.siguiente_lance(), None);
         assert_eq!(partida.tantos(), vec![5, 2]);
     }
 
@@ -158,25 +169,23 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos);
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![0, 2]);
         partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![4, 0]);
         partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![8, 0]);
         partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![15, 0]);
-        partida.siguiente_lance();
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![15, 6]);
+        assert_eq!(partida.siguiente_lance(), None);
+        assert_eq!(partida.tantos(), vec![11, 8]);
     }
 }

@@ -181,6 +181,38 @@ impl Lance {
         manos.iter().map(|m| m.juego()).any(|j| j.is_some())
     }
 
+    pub fn turno_inicial(&self, manos: &[Mano]) -> usize {
+        match self {
+            Lance::Grande | Lance::Chica | Lance::Punto => 0,
+            Lance::Pares => {
+                let pares: Vec<Option<Pares>> = manos.iter().map(|m| m.pares()).collect();
+                let pares_filt = pares.iter().filter(|p| p.is_some()).count();
+                if pares_filt == 2 || pares_filt == 3 {
+                    if pares[0].is_some() && pares[2].is_some() && pares[3].is_none() {
+                        1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            }
+            Lance::Juego => {
+                let pares: Vec<Option<Juego>> = manos.iter().map(|m| m.juego()).collect();
+                let pares_filt = pares.iter().filter(|p| p.is_some()).count();
+                if pares_filt == 2 || pares_filt == 3 {
+                    if pares[0].is_some() && pares[2].is_some() && pares[3].is_none() {
+                        1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            }
+        }
+    }
+
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
@@ -211,11 +243,11 @@ pub struct EstadoLance {
 }
 
 impl EstadoLance {
-    pub fn new(apuesta_minima: u8, apuesta_maxima: u8) -> Self {
+    pub fn new(apuesta_minima: u8, apuesta_maxima: u8, turno_inicial: usize) -> Self {
         EstadoLance {
             bote: [0, 0],
             activos: [true, true],
-            turno: Some(0),
+            turno: Some(turno_inicial),
             ultimo_envite: 0,
             apuesta_minima,
             apuesta_maxima,
@@ -346,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_turno() {
-        let mut partida = EstadoLance::new(0, 40);
+        let mut partida = EstadoLance::new(0, 40, 0);
         assert_eq!(partida.turno(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
@@ -354,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_turno2() {
-        let mut partida = EstadoLance::new(0, 40);
+        let mut partida = EstadoLance::new(0, 40, 0);
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
@@ -367,7 +399,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -379,7 +411,7 @@ mod tests {
             Mano::try_from("RRR1").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -391,7 +423,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -403,7 +435,7 @@ mod tests {
             Mano::try_from("1111").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -415,7 +447,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -427,7 +459,7 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -439,7 +471,7 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("RR11").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
@@ -451,11 +483,77 @@ mod tests {
             Mano::try_from("RR11").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40);
+        let mut partida = EstadoLance::new(1, 40, 0);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance(&manos, &Lance::Grande);
         assert_eq!(partida.ganador(), Some(0));
+    }
+
+    #[test]
+    fn hay_lance() {
+        let manos = vec![
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+            Mano::try_from("R111").unwrap(),
+        ];
+        assert!(Lance::Grande.hay_lance(&manos));
+        assert!(Lance::Chica.hay_lance(&manos));
+        assert!(Lance::Pares.hay_lance(&manos));
+        assert!(Lance::Pares.se_juega(&manos));
+        assert!(!Lance::Juego.hay_lance(&manos));
+        assert!(Lance::Punto.hay_lance(&manos));
+
+        let manos = vec![
+            Mano::try_from("R571").unwrap(),
+            Mano::try_from("R571").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+            Mano::try_from("R751").unwrap(),
+        ];
+        assert!(Lance::Pares.hay_lance(&manos));
+        assert!(!Lance::Pares.se_juega(&manos));
+
+        let manos = vec![
+            Mano::try_from("R571").unwrap(),
+            Mano::try_from("R571").unwrap(),
+            Mano::try_from("R571").unwrap(),
+            Mano::try_from("R751").unwrap(),
+        ];
+        assert!(!Lance::Pares.hay_lance(&manos));
+        assert!(!Lance::Pares.se_juega(&manos));
+
+        let manos = vec![
+            Mano::try_from("RCS1").unwrap(),
+            Mano::try_from("RCS1").unwrap(),
+            Mano::try_from("RR11").unwrap(),
+            Mano::try_from("RCS1").unwrap(),
+        ];
+        assert!(Lance::Juego.hay_lance(&manos));
+        assert!(Lance::Juego.se_juega(&manos));
+
+        let manos = vec![
+            Mano::try_from("RCS1").unwrap(),
+            Mano::try_from("R1S1").unwrap(),
+            Mano::try_from("RRC1").unwrap(),
+            Mano::try_from("R1S1").unwrap(),
+        ];
+        assert!(Lance::Juego.hay_lance(&manos));
+        assert!(!Lance::Juego.se_juega(&manos));
+    }
+
+    #[test]
+    fn test_turno_inicial() {
+        let manos = vec![
+            Mano::try_from("R1S1").unwrap(),
+            Mano::try_from("R1S1").unwrap(),
+            Mano::try_from("RRC1").unwrap(),
+            Mano::try_from("RCS1").unwrap(),
+        ];
+        assert_eq!(Lance::Grande.turno_inicial(&manos), 0);
+        assert_eq!(Lance::Chica.turno_inicial(&manos), 0);
+        assert_eq!(Lance::Pares.turno_inicial(&manos), 1);
+        assert_eq!(Lance::Juego.turno_inicial(&manos), 0);
     }
 
     use std::cmp::Ordering::*;

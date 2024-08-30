@@ -22,3 +22,9 @@ impl Baraja {
         self.0.pop()
     }
 }
+
+impl Default for Baraja {
+    fn default() -> Self {
+        Self::new()
+    }
+}
