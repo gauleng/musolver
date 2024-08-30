@@ -2,7 +2,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use std::collections::HashMap;
 
-use crate::mus::{Accion, EstadoLance, Lance, Mano};
+use crate::mus::{Accion, Apuesta, EstadoLance, Lance, Mano};
 
 use super::ActionNode;
 
@@ -170,7 +170,11 @@ impl Cfr {
                 let mut tantos: [i8; 2] = [0, 0];
 
                 let ganador = l.ganador().unwrap();
-                tantos[ganador] = l.tantos_apostados() as i8;
+                let apuesta = l.tantos_apostados();
+                match apuesta {
+                    Apuesta::Tantos(t) => tantos[ganador] = t as i8,
+                    Apuesta::Ordago => tantos[ganador] = 40,
+                }
                 // if tantos[ganador] < 40 {
                 //     tantos[ganador] += Lance::Pares.tantos_mano(&self.manos[ganador]) as i8;
                 // }

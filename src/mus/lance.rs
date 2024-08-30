@@ -232,8 +232,14 @@ impl Lance {
     }
 }
 
+#[derive(PartialOrd, Ord, PartialEq, Eq, Copy, Clone)]
+pub enum Apuesta {
+    Tantos(u8),
+    Ordago,
+}
+
 pub struct EstadoLance {
-    bote: [u8; 2],
+    bote: [Apuesta; 2],
     activos: [bool; 2],
     turno: Option<usize>,
     ultimo_envite: usize,
@@ -245,7 +251,7 @@ pub struct EstadoLance {
 impl EstadoLance {
     pub fn new(apuesta_minima: u8, apuesta_maxima: u8, turno_inicial: usize) -> Self {
         EstadoLance {
-            bote: [0, 0],
+            bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
             activos: [true, true],
             turno: Some(turno_inicial),
             ultimo_envite: 0,
@@ -263,23 +269,25 @@ impl EstadoLance {
         let ultimo_bote = self.bote[1];
         match a {
             Accion::Paso => {
-                if self.bote[1] > 0 {
+                if self.bote[1] > Apuesta::Tantos(0) {
                     self.activos[turno] = false;
                 }
             }
             Accion::Quiero => {}
             Accion::Envido(n) => {
-                if ultimo_bote < self.apuesta_maxima {
-                    let nuevo_bote = (ultimo_bote + n.max(2)).min(self.apuesta_maxima);
-                    self.bote[0] = self.bote[1];
-                    self.bote[1] = nuevo_bote;
-                    self.ultimo_envite = turno;
+                if ultimo_bote < Apuesta::Tantos(self.apuesta_maxima) {
+                    if let Apuesta::Tantos(t) = ultimo_bote {
+                        let nuevo_bote = Apuesta::Tantos((t + n.max(2)).min(self.apuesta_maxima));
+                        self.bote[0] = self.bote[1];
+                        self.bote[1] = nuevo_bote;
+                        self.ultimo_envite = turno;
+                    }
                 }
             }
             Accion::Ordago => {
-                if ultimo_bote < self.apuesta_maxima {
+                if ultimo_bote < Apuesta::Tantos(self.apuesta_maxima) {
                     self.bote[0] = self.bote[1];
-                    self.bote[1] = self.apuesta_maxima;
+                    self.bote[1] = Apuesta::Ordago;
                     self.ultimo_envite = turno;
                 }
             }
@@ -317,14 +325,14 @@ impl EstadoLance {
         self.turno.is_none() && self.activos.iter().all(|b| *b)
     }
 
-    pub fn tantos_apostados(&self) -> u8 {
+    pub fn tantos_apostados(&self) -> Apuesta {
         let mut apostado = if self.se_quieren() {
             self.bote[1]
         } else {
             self.bote[0]
         };
-        if apostado == 0 {
-            apostado += self.apuesta_minima;
+        if apostado == Apuesta::Tantos(0) {
+            apostado = Apuesta::Tantos(self.apuesta_minima);
         }
         apostado
     }
@@ -357,11 +365,16 @@ impl EstadoLance {
         let manos_ganadoras = [ganador, ganador + 2];
 
         let mut tantos = vec![0, 0];
-        tantos[ganador] = apostado;
-        tantos[ganador] += lance.tantos_mano(&manos[manos_ganadoras[0]])
-            + lance.tantos_mano(&manos[manos_ganadoras[1]]);
-        if let Lance::Punto = lance {
-            tantos[ganador] += 1;
+        match apostado {
+            Apuesta::Tantos(t) => {
+                tantos[ganador] = t;
+                tantos[ganador] += lance.tantos_mano(&manos[manos_ganadoras[0]])
+                    + lance.tantos_mano(&manos[manos_ganadoras[1]]);
+                if let Lance::Punto = lance {
+                    tantos[ganador] += 1;
+                }
+            }
+            Apuesta::Ordago => tantos[ganador] = 40,
         }
 
         Some(tantos)

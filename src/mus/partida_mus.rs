@@ -4,6 +4,7 @@ use std::fmt::Display;
 use crate::mus::Lance;
 use crate::mus::Mano;
 
+use super::Apuesta;
 use super::EstadoLance;
 use super::MusError;
 
@@ -83,7 +84,9 @@ impl PartidaMus {
                 let g = e.ganador().map_or_else(
                     || {
                         let g = e.resolver_lance(&self.manos, l);
-                        self.tantos[g] += e.tantos_apostados();
+                        if let Apuesta::Tantos(t) = e.tantos_apostados() {
+                            self.tantos[g] += t;
+                        }
                         g
                     },
                     |v| v,
@@ -91,6 +94,7 @@ impl PartidaMus {
                 self.tantos[g] += l.tantos_mano(&self.manos[g]) + l.tantos_mano(&self.manos[g + 2]);
                 self.tantos[g] += l.bonus();
             });
+            self.lance_actual = self.lances.len();
             None
         }
     }
@@ -99,15 +103,19 @@ impl PartidaMus {
         if self.lance_actual >= self.lances.len() {
             return Err(MusError::AccionNoValida);
         }
-        let estado_lance = self
-            .estado_lances
-            .get_mut(&self.lances[self.lance_actual])
-            .unwrap();
+        let lance = self.lances[self.lance_actual];
+        let estado_lance = self.estado_lances.get_mut(&lance).unwrap();
         let a = estado_lance.actuar(accion);
         if let Ok(None) = a {
+            let apuesta = estado_lance.tantos_apostados();
+            if let Apuesta::Ordago = apuesta {
+                estado_lance.resolver_lance(&self.manos, &lance);
+            }
             let g = estado_lance.ganador();
             if g.is_some() {
-                self.tantos[g.unwrap()] += estado_lance.tantos_apostados();
+                if let Apuesta::Tantos(t) = apuesta {
+                    self.tantos[g.unwrap()] += t;
+                }
             }
         }
         a
