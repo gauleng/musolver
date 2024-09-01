@@ -4,14 +4,14 @@ use crate::mus::Mano;
 
 use std::cmp;
 
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Juego {
     Resto(u8),
     Treintaydos,
     Treintayuna,
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Pares {
     Pareja(u16),
     Medias(u16),
@@ -162,72 +162,62 @@ impl Lance {
         }
     }
 
-    fn se_juega_pares(&self, manos: &[Mano]) -> bool {
-        (manos[0].pares().or_else(|| manos[2].pares()))
-            .and_then(|_| manos[1].pares().or_else(|| manos[3].pares()))
-            .is_some()
-    }
-    fn hay_pares(&self, manos: &[Mano]) -> bool {
-        manos.iter().map(|m| m.pares()).any(|j| j.is_some())
-    }
-
-    fn se_juega_juego(&self, manos: &[Mano]) -> bool {
-        (manos[0].juego().or_else(|| manos[2].juego()))
-            .and_then(|_| manos[1].juego().or_else(|| manos[3].juego()))
+    fn se_juega_jugadas<T>(&self, manos: &[Option<T>]) -> bool
+    where
+        T: Copy + Clone,
+    {
+        (manos[0].or_else(|| manos[2]))
+            .and_then(|_| manos[1].or_else(|| manos[3]))
             .is_some()
     }
 
-    fn hay_juego(&self, manos: &[Mano]) -> bool {
-        manos.iter().map(|m| m.juego()).any(|j| j.is_some())
+    fn hay_lance_jugadas<T>(&self, manos: &[Option<T>]) -> bool {
+        manos.iter().any(|j| j.is_some())
+    }
+
+    fn turno_inicial_jugadas<T>(&self, manos: &[Option<T>]) -> usize {
+        let pares_filt = manos.iter().filter(|p| p.is_some()).count();
+        if pares_filt == 2 || pares_filt == 3 {
+            if manos[0].is_some() && manos[2].is_some() && manos[3].is_none() {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
+    fn jugadas<T, F>(&self, manos: &[Mano], f: F) -> Vec<Option<T>>
+    where
+        F: Fn(&Mano) -> Option<T>,
+    {
+        manos.iter().map(f).collect()
     }
 
     pub fn turno_inicial(&self, manos: &[Mano]) -> usize {
         match self {
             Lance::Grande | Lance::Chica | Lance::Punto => 0,
-            Lance::Pares => {
-                let pares: Vec<Option<Pares>> = manos.iter().map(|m| m.pares()).collect();
-                let pares_filt = pares.iter().filter(|p| p.is_some()).count();
-                if pares_filt == 2 || pares_filt == 3 {
-                    if pares[0].is_some() && pares[2].is_some() && pares[3].is_none() {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                }
-            }
-            Lance::Juego => {
-                let pares: Vec<Option<Juego>> = manos.iter().map(|m| m.juego()).collect();
-                let pares_filt = pares.iter().filter(|p| p.is_some()).count();
-                if pares_filt == 2 || pares_filt == 3 {
-                    if pares[0].is_some() && pares[2].is_some() && pares[3].is_none() {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                }
-            }
+            Lance::Pares => self.turno_inicial_jugadas(&self.jugadas(manos, |m| m.pares())),
+            Lance::Juego => self.turno_inicial_jugadas(&self.jugadas(manos, |m| m.juego())),
         }
     }
 
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => self.hay_pares(manos),
-            Lance::Juego => self.hay_juego(manos),
-            Lance::Punto => !self.hay_juego(manos),
+            Lance::Pares => self.hay_lance_jugadas(&self.jugadas(manos, |m| m.pares())),
+            Lance::Juego => self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
+            Lance::Punto => !self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
         }
     }
 
     pub fn se_juega(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => self.se_juega_pares(manos),
-            Lance::Juego => self.se_juega_juego(manos),
-            Lance::Punto => !self.hay_juego(manos),
+            Lance::Pares => self.se_juega_jugadas(&self.jugadas(manos, |m| m.pares())),
+            Lance::Juego => self.se_juega_jugadas(&self.jugadas(manos, |m| m.juego())),
+            Lance::Punto => !self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
         }
     }
 }
