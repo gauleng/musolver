@@ -222,7 +222,7 @@ impl Lance {
     }
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Copy, Clone)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Apuesta {
     Tantos(u8),
     Ordago,
@@ -318,6 +318,8 @@ impl EstadoLance {
     pub fn tantos_apostados(&self) -> Apuesta {
         let mut apostado = if self.se_quieren() {
             self.bote[1]
+        } else if self.bote[0] == Apuesta::Tantos(0) && self.bote[1] > Apuesta::Tantos(0) {
+            Apuesta::Tantos(1)
         } else {
             self.bote[0]
         };
@@ -543,6 +545,8 @@ mod tests {
         ];
         assert!(Lance::Juego.hay_lance(&manos));
         assert!(!Lance::Juego.se_juega(&manos));
+        assert!(!Lance::Punto.hay_lance(&manos));
+        assert!(!Lance::Punto.se_juega(&manos));
     }
 
     #[test]
@@ -559,6 +563,46 @@ mod tests {
         assert_eq!(Lance::Juego.turno_inicial(&manos), 0);
     }
 
+    #[test]
+    fn test_tanteo() {
+        let mut e = EstadoLance::new(0, 40, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), None);
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(0));
+
+        let mut e = EstadoLance::new(1, 40, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), None);
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLance::new(0, 40, 0);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(0));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLance::new(1, 40, 0);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(0));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLance::new(0, 40, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(1));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLance::new(1, 40, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(1));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+    }
     use std::cmp::Ordering::*;
 
     #[test]
