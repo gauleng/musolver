@@ -1,36 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use mus::{Accion, Baraja, Carta, Mano};
+use mus::{Accion, Lance};
 use musolver::*;
-
-fn crear_baraja() -> Baraja {
-    let mut b = Baraja::new();
-    for _ in 0..8 {
-        b.insertar(mus::Carta::As);
-        b.insertar(mus::Carta::Rey);
-    }
-    for _ in 0..4 {
-        b.insertar(mus::Carta::Caballo);
-        // b.insertar(mus::Carta::Sota);
-        // b.insertar(mus::Carta::Siete);
-        // b.insertar(mus::Carta::Seis);
-        // b.insertar(mus::Carta::Cinco);
-        b.insertar(mus::Carta::Cuatro);
-    }
-    b.barajar();
-    b
-}
-
-fn repartir_manos(mut b: Baraja) -> Vec<Mano> {
-    let mut manos = Vec::with_capacity(4);
-    for _ in 0..2 {
-        let mut m = Vec::<Carta>::with_capacity(4);
-        for _ in 0..4 {
-            m.push(b.repartir().unwrap());
-        }
-        manos.push(Mano::new(m));
-    }
-    manos
-}
 
 fn help() {
     println!("Use: musolver <num iterations>");
@@ -73,7 +43,6 @@ fn external_cfr(iter: usize) {
     let action_tree = init_action_tree();
 
     let now = Instant::now();
-    let mut baraja = crear_baraja();
     let pb = ProgressBar::new(iter as u64);
     pb.set_style(
         ProgressStyle::with_template("{wide_bar:40.cyan/blue} {human_pos}/{human_len} {msg} ")
@@ -82,10 +51,8 @@ fn external_cfr(iter: usize) {
     );
     let mut util = [0., 0.];
     for _ in 0..iter {
-        baraja.barajar();
-        let b = baraja.clone();
-        let m = repartir_manos(b);
-        c.set_hands(m);
+        let p = PartidaLance::new_random(Lance::Punto, [35, 0]);
+        c.set_partida_lance(p);
         util[0] += c.cfr(&action_tree, 0);
         util[1] += c.cfr(&action_tree, 1);
         pb.inc(1);

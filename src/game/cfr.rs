@@ -2,7 +2,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use std::collections::HashMap;
 
-use crate::mus::{Accion, Apuesta, EstadoLance, Lance, Mano};
+use crate::mus::{self, Accion, Apuesta, Baraja, Carta, EstadoLance, Lance, Mano};
 
 use super::ActionNode;
 
@@ -64,38 +64,80 @@ impl Node {
 }
 
 #[derive(Debug)]
+pub struct PartidaLance {
+    manos: Vec<Mano>,
+    lance: Lance,
+    tantos: [u8; 2],
+}
+
+impl PartidaLance {
+    pub fn new_random(lance: Lance, tantos: [u8; 2]) -> Self {
+        let mut manos;
+        loop {
+            let b = Self::crear_baraja();
+            manos = Self::repartir_manos(b);
+            if lance.se_juega(&manos) {
+                break;
+            }
+        }
+        Self {
+            manos,
+            lance,
+            tantos,
+        }
+    }
+    fn crear_baraja() -> Baraja {
+        let mut b = Baraja::new();
+        for _ in 0..8 {
+            b.insertar(mus::Carta::As);
+            b.insertar(mus::Carta::Rey);
+        }
+        for _ in 0..4 {
+            b.insertar(mus::Carta::Caballo);
+            b.insertar(mus::Carta::Sota);
+            b.insertar(mus::Carta::Siete);
+            b.insertar(mus::Carta::Seis);
+            b.insertar(mus::Carta::Cinco);
+            b.insertar(mus::Carta::Cuatro);
+        }
+        b.barajar();
+        b
+    }
+
+    fn repartir_manos(mut b: Baraja) -> Vec<Mano> {
+        let mut manos = Vec::with_capacity(4);
+        for _ in 0..4 {
+            let mut m = Vec::<Carta>::with_capacity(4);
+            for _ in 0..4 {
+                m.push(b.repartir().unwrap());
+            }
+            manos.push(Mano::new(m));
+        }
+        manos
+    }
+}
+
+#[derive(Debug)]
 pub struct Cfr {
     history: Vec<Accion>,
-    manos: Vec<Mano>,
+    partida_lance: PartidaLance,
     nodos: HashMap<String, Node>,
 }
 
 impl Cfr {
-    // fn info_set_str(
-    //     &self,
-    //     player: usize,
-    //     mano1: &Mano,
-    //     mano2: &Mano,
-    //     history: &[Accion],
-    // ) -> String {
-    //     let mut output = String::with_capacity(11 + history.len() + 1);
-    //     output.push(if player == 0 { '0' } else { '1' });
-    //     output.push(',');
-    //     output.push_str(&mano1.to_string());
-    //     output.push(',');
-    //     output.push_str(&mano2.to_string());
-    //     output.push(',');
-    //     for i in history.iter() {
-    //         output.push_str(&i.to_string());
-    //     }
-    //     output
-    // }
-
-    fn info_set_str_one_hand(&self, player: usize, mano1: &Mano, history: &[Accion]) -> String {
+    fn info_set_str(
+        &self,
+        player: usize,
+        mano1: &Mano,
+        mano2: &Mano,
+        history: &[Accion],
+    ) -> String {
         let mut output = String::with_capacity(11 + history.len() + 1);
         output.push(if player == 0 { '0' } else { '1' });
         output.push(',');
         output.push_str(&mano1.to_string());
+        output.push(',');
+        output.push_str(&mano2.to_string());
         output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());
@@ -103,16 +145,28 @@ impl Cfr {
         output
     }
 
+    // fn info_set_str_one_hand(&self, player: usize, mano1: &Mano, history: &[Accion]) -> String {
+    //     let mut output = String::with_capacity(11 + history.len() + 1);
+    //     output.push(if player == 0 { '0' } else { '1' });
+    //     output.push(',');
+    //     output.push_str(&mano1.to_string());
+    //     output.push(',');
+    //     for i in history.iter() {
+    //         output.push_str(&i.to_string());
+    //     }
+    //     output
+    // }
+
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
-            manos: vec![],
+            partida_lance: PartidaLance::new_random(Lance::Grande, [0, 0]),
             nodos: HashMap::new(),
         }
     }
 
-    pub fn set_hands(&mut self, h: Vec<Mano>) {
-        self.manos = h;
+    pub fn set_partida_lance(&mut self, h: PartidaLance) {
+        self.partida_lance = h;
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node> {
@@ -122,9 +176,14 @@ impl Cfr {
     pub fn cfr(&mut self, n: &ActionNode<usize, Accion>, player: usize) -> f32 {
         match n {
             ActionNode::NonTerminal(p, children) => {
+                let info_set_str = self.info_set_str(
+                    *p,
+                    &self.partida_lance.manos[*p],
+                    &self.partida_lance.manos[*p + 2],
+                    &self.history,
+                );
                 // let info_set_str =
-                //     self.info_set_str(*p, &self.manos[*p], &self.manos[*p + 2], &self.history);
-                let info_set_str = self.info_set_str_one_hand(*p, &self.manos[*p], &self.history);
+                // self.info_set_str_one_hand(*p, &self.partida_lance.manos[*p], &self.history);
                 self.nodos
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
@@ -162,28 +221,33 @@ impl Cfr {
                 }
             }
             ActionNode::Terminal => {
-                let mut l = EstadoLance::new(1, 40, 0);
+                let mut estado_lance =
+                    EstadoLance::new(self.partida_lance.lance.apuesta_minima(), 40, 0);
                 self.history.iter().for_each(|&a| {
-                    let _ = l.actuar(a);
+                    let _ = estado_lance.actuar(a);
                 });
-                l.resolver_lance(&self.manos, &Lance::Grande);
-                let mut tantos: [i8; 2] = [0, 0];
+                estado_lance.resolver_lance(&self.partida_lance.manos, &self.partida_lance.lance);
+                let mut tantos: [u8; 2] = self.partida_lance.tantos;
 
-                let ganador = l.ganador().unwrap();
-                let apuesta = l.tantos_apostados();
+                let ganador = estado_lance.ganador().unwrap();
+                let apuesta = estado_lance.tantos_apostados();
                 match apuesta {
-                    Apuesta::Tantos(t) => tantos[ganador] = t as i8,
+                    Apuesta::Tantos(t) => tantos[ganador] += t,
                     Apuesta::Ordago => tantos[ganador] = 40,
                 }
+                if tantos[ganador] < 40 {
+                    tantos[ganador] += self.partida_lance.lance.bonus();
+                }
+
                 // if tantos[ganador] < 40 {
                 //     tantos[ganador] += Lance::Pares.tantos_mano(&self.manos[ganador]) as i8;
                 // }
-                tantos[1 - ganador] = -tantos[ganador];
+                let payoff = [tantos[0] - tantos[1], tantos[1] - tantos[0]];
                 // println!(
                 //     "Tantos para el jugador {}  con acciones {:?}: {}",
                 //     player, self.history, tantos[player]
                 // );
-                tantos[player] as f32
+                payoff[player] as f32
             }
         }
     }
