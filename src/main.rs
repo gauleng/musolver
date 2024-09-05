@@ -50,13 +50,17 @@ fn external_cfr(iter: usize) {
             .progress_chars("##-"),
     );
     let mut util = [0., 0.];
-    for _ in 0..iter {
-        let p = PartidaLance::new_random(Lance::Punto, [35, 0]);
+    for i in 0..iter {
+        let p = PartidaLance::new_random(Lance::Grande, [35, 0]);
         c.set_partida_lance(p);
-        util[0] += c.cfr(&action_tree, 0);
-        util[1] += c.cfr(&action_tree, 1);
+        util[0] += c.external_cfr(&action_tree, 0);
+        util[1] += c.external_cfr(&action_tree, 1);
         pb.inc(1);
-        pb.set_message(format!("Utility: {:.5} {:.5}", util[0], util[1],));
+        pb.set_message(format!(
+            "Utility: {:.5} {:.5}",
+            util[0] / (i as f32),
+            util[1] / (i as f32),
+        ));
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
@@ -79,30 +83,17 @@ fn external_cfr(iter: usize) {
     }
 }
 
-fn main() {
-    // let mut n = ActionNode::<usize, Accion>::new(0);
-    // let p1 = n.add_non_terminal_action(Accion::Paso, 1).unwrap();
-    // p1.add_terminal_action(Accion::Paso);
-    // let p2 = p1.add_non_terminal_action(Accion::Envido(2), 0).unwrap();
-    // p2.add_terminal_action(Accion::Quiero);
-    // let p3 = n.add_non_terminal_action(Accion::Envido(2), 1).unwrap();
-    // p3.add_terminal_action(Accion::Paso);
-    // p3.add_terminal_action(Accion::Quiero);
+use clap::Parser;
 
-    let args: Vec<String> = std::env::args().collect();
-    match args.len() {
-        0 | 1 => help(),
-        2 => {
-            let num_iter: usize = match args[1].parse() {
-                Ok(n) => n,
-                Err(_) => {
-                    eprintln!("Second argument is not an integer.");
-                    help();
-                    return;
-                }
-            };
-            external_cfr(num_iter);
-        }
-        _ => {}
-    }
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    iter: usize,
+}
+
+fn main() {
+    let args = Args::parse();
+
+    external_cfr(args.iter);
 }
