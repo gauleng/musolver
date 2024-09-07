@@ -2,10 +2,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use mus::{Accion, Lance};
 use musolver::*;
 
-fn help() {
-    println!("Use: musolver <num iterations>");
-}
-
 fn init_action_tree() -> ActionNode<usize, Accion> {
     let mut n = ActionNode::<usize, Accion>::new(0);
     let p1paso = n.add_non_terminal_action(Accion::Paso, 1).unwrap();
@@ -36,10 +32,9 @@ fn init_action_tree() -> ActionNode<usize, Accion> {
     n
 }
 
-fn external_cfr(iter: usize) {
+fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     use std::time::Instant;
 
-    let mut c = Cfr::new();
     let action_tree = init_action_tree();
 
     let now = Instant::now();
@@ -49,12 +44,14 @@ fn external_cfr(iter: usize) {
             .unwrap()
             .progress_chars("##-"),
     );
+    let mut banco = BancoEstrategias::new();
     let mut util = [0., 0.];
     for i in 0..iter {
-        let p = PartidaLance::new_random(Lance::Grande, [35, 0]);
-        c.set_partida_lance(p);
-        util[0] += c.external_cfr(&action_tree, 0);
-        util[1] += c.external_cfr(&action_tree, 1);
+        let p = PartidaLance::new_random(lance, tantos);
+        let c = banco.estrategia_lance(lance, p.tipo_estrategia());
+
+        util[0] += c.external_cfr(&p, &action_tree, 0);
+        util[1] += c.external_cfr(&p, &action_tree, 1);
         pb.inc(1);
         pb.set_message(format!(
             "Utility: {:.5} {:.5}",
@@ -64,7 +61,8 @@ fn external_cfr(iter: usize) {
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
-    let mut v: Vec<(String, Node)> = c
+    let mut v: Vec<(String, Node)> = banco
+        .estrategia_lance(lance, TipoEstrategia::DosManos)
         .nodes()
         .iter()
         .map(|(s, n)| (s.clone(), n.clone()))
@@ -90,10 +88,30 @@ use clap::Parser;
 struct Args {
     #[arg(short, long)]
     iter: usize,
+
+    #[arg(short, long, value_parser = parse_tantos)]
+    tantos: Option<[u8; 2]>,
+}
+
+fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
+    let t: Vec<&str> = s.split(":").collect();
+    if t.len() != 2 {
+        Err(format!("Formato de los tantos incorecto ({s}). Deben indicarse separados por dos puntos, por ejemplo 5:23."))
+    } else {
+        let tantos1: u8 = t[0]
+            .parse()
+            .map_err(|_| format!("{} no es un número.", t[0]))?;
+        let tantos2: u8 = t[1]
+            .parse()
+            .map_err(|_| format!("{} no es un número.", t[1]))?;
+        Ok([tantos1, tantos2])
+    }
 }
 
 fn main() {
     let args = Args::parse();
 
-    external_cfr(args.iter);
+    let tantos = args.tantos.unwrap_or_default();
+
+    external_cfr(Lance::Juego, tantos, args.iter);
 }
