@@ -32,7 +32,7 @@ pub struct PartidaMus {
     estado_lances: HashMap<Lance, EstadoLance>,
     lances: Vec<Lance>,
     tantos: [u8; 2],
-    lance_actual: usize,
+    lance_actual: Option<usize>,
 }
 
 impl PartidaMus {
@@ -54,16 +54,18 @@ impl PartidaMus {
         PartidaMus {
             manos,
             lances,
-            lance_actual: 0,
+            lance_actual: Some(0),
             estado_lances,
             tantos: [0, 0],
         }
     }
 
     pub fn siguiente_lance(&mut self) -> Option<Lance> {
-        if self.lance_actual < self.lances.len() - 1 {
-            self.lance_actual += 1;
-            let l = self.lances[self.lance_actual];
+        let mut lance_actual = self.lance_actual?;
+        if lance_actual < self.lances.len() - 1 {
+            lance_actual += 1;
+            self.lance_actual = Some(lance_actual);
+            let l = self.lances[lance_actual];
             let tantos_restantes = [
                 Self::MAX_TANTOS - self.tantos[0],
                 Self::MAX_TANTOS - self.tantos[1],
@@ -81,29 +83,24 @@ impl PartidaMus {
         } else {
             self.lances.iter().for_each(|l| {
                 let e = self.estado_lances.get_mut(l).unwrap();
-                let g = e.ganador().map_or_else(
-                    || {
-                        let g = e.resolver_lance(&self.manos, l);
-                        if let Apuesta::Tantos(t) = e.tantos_apostados() {
-                            self.tantos[g] += t;
-                        }
-                        g
-                    },
-                    |v| v,
-                );
+                let g = e.ganador().unwrap_or_else(|| {
+                    let g = e.resolver_lance(&self.manos, l);
+                    if let Apuesta::Tantos(t) = e.tantos_apostados() {
+                        self.tantos[g] += t;
+                    }
+                    g
+                });
                 self.tantos[g] += l.tantos_mano(&self.manos[g]) + l.tantos_mano(&self.manos[g + 2]);
                 self.tantos[g] += l.bonus();
             });
-            self.lance_actual = self.lances.len();
+            self.lance_actual = None;
             None
         }
     }
 
     pub fn actuar(&mut self, accion: Accion) -> Result<Option<usize>, MusError> {
-        if self.lance_actual >= self.lances.len() {
-            return Err(MusError::AccionNoValida);
-        }
-        let lance = self.lances[self.lance_actual];
+        let lance_actual = self.lance_actual.ok_or(MusError::AccionNoValida)?;
+        let lance = self.lances[lance_actual];
         let estado_lance = self.estado_lances.get_mut(&lance).unwrap();
         let a = estado_lance.actuar(accion);
         if let Ok(None) = a {
@@ -111,30 +108,46 @@ impl PartidaMus {
             if let Apuesta::Ordago = apuesta {
                 estado_lance.resolver_lance(&self.manos, &lance);
             }
-            let g = estado_lance.ganador();
-            if g.is_some() {
-                if let Apuesta::Tantos(t) = apuesta {
-                    self.tantos[g.unwrap()] += t;
+            let ganador = estado_lance.ganador();
+            if let Some(g) = ganador {
+                match apuesta {
+                    Apuesta::Tantos(t) => self.anotar_tantos(g, t),
+                    Apuesta::Ordago => self.anotar_tantos(g, 40),
                 }
             }
+            loop {
+                let lance = self.siguiente_lance();
+                if let Some(l) = lance {
+                    if l.se_juega(&self.manos) {
+                        let e = self.estado_lances.get(&l).unwrap();
+                        return Ok(e.turno());
+                    }
+                } else {
+                    return Ok(None);
+                }
+            }
+        } else {
+            a
         }
-        a
     }
 
     pub fn turno(&self) -> Option<usize> {
-        if self.lance_actual >= self.lances.len() {
-            None
-        } else {
-            let estado_lance = self
-                .estado_lances
-                .get(&self.lances[self.lance_actual])
-                .unwrap();
-            estado_lance.turno()
-        }
+        let lance_actual = self.lance_actual?;
+        let estado_lance = self.estado_lances.get(&self.lances[lance_actual]).unwrap();
+        estado_lance.turno()
     }
 
     pub fn tantos(&self) -> &[u8] {
         &self.tantos
+    }
+
+    fn anotar_tantos(&mut self, pareja: usize, tantos: u8) {
+        self.tantos[pareja] += tantos;
+        if self.tantos[pareja] >= 40 {
+            self.tantos[pareja] = 40;
+            self.tantos[1 - pareja] = 0;
+            self.lance_actual = None;
+        }
     }
 }
 
@@ -154,16 +167,12 @@ mod tests {
         let mut partida = PartidaMus::new(manos);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.siguiente_lance(), Some(Lance::Chica));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.siguiente_lance(), Some(Lance::Pares));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.siguiente_lance(), Some(Lance::Juego));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.siguiente_lance(), None);
         assert_eq!(partida.tantos(), vec![5, 2]);
     }
 
@@ -181,19 +190,33 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), vec![0, 2]);
-        partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        partida.siguiente_lance();
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.siguiente_lance(), None);
         assert_eq!(partida.tantos(), vec![11, 8]);
+    }
+
+    #[test]
+    fn test_ordago() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+        let mut partida = PartidaMus::new(manos);
+        let _ = partida.actuar(Accion::Ordago);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![1, 0]);
+        let _ = partida.actuar(Accion::Ordago);
+        let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![40, 0]);
+        assert_eq!(partida.turno(), None);
     }
 }
