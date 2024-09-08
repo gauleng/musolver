@@ -1,5 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use mus::{Accion, Lance};
+use mus::{Accion, Baraja, Lance};
 use musolver::*;
 
 fn init_action_tree() -> ActionNode<usize, Accion> {
@@ -32,6 +32,24 @@ fn init_action_tree() -> ActionNode<usize, Accion> {
     n
 }
 
+fn crear_baraja() -> Baraja {
+    let mut b = Baraja::new();
+    for _ in 0..8 {
+        b.insertar(mus::Carta::As);
+        b.insertar(mus::Carta::Rey);
+    }
+    for _ in 0..4 {
+        b.insertar(mus::Carta::Caballo);
+        b.insertar(mus::Carta::Sota);
+        b.insertar(mus::Carta::Siete);
+        b.insertar(mus::Carta::Seis);
+        b.insertar(mus::Carta::Cinco);
+        b.insertar(mus::Carta::Cuatro);
+    }
+    b.barajar();
+    b
+}
+
 fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     use std::time::Instant;
 
@@ -46,18 +64,21 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     );
     let mut banco = BancoEstrategias::new();
     let mut util = [0., 0.];
+    let b = crear_baraja();
     for i in 0..iter {
-        let p = PartidaLance::new_random(lance, tantos);
+        let p = PartidaLance::new_random(&b, lance, tantos);
         let c = banco.estrategia_lance_mut(lance, p.tipo_estrategia());
 
         util[0] += c.external_cfr(&p, &action_tree, 0);
         util[1] += c.external_cfr(&p, &action_tree, 1);
         pb.inc(1);
-        pb.set_message(format!(
-            "Utility: {:.5} {:.5}",
-            util[0] / (i as f32),
-            util[1] / (i as f32),
-        ));
+        if i % 1000 == 0 {
+            pb.set_message(format!(
+                "Utility: {:.5} {:.5}",
+                util[0] / (i as f32),
+                util[1] / (i as f32),
+            ));
+        }
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
@@ -96,5 +117,5 @@ fn main() {
 
     let tantos = args.tantos.unwrap_or_default();
 
-    external_cfr(Lance::Grande, tantos, args.iter);
+    external_cfr(Lance::Juego, tantos, args.iter);
 }

@@ -2,7 +2,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use std::{collections::HashMap, fs::File, io::Write};
 
-use crate::mus::{self, Accion, Apuesta, Baraja, Carta, EstadoLance, Juego, Lance, Mano, Pares};
+use crate::mus::{Accion, Apuesta, Baraja, Carta, EstadoLance, Juego, Lance, Mano, Pares};
 
 use super::ActionNode;
 
@@ -134,10 +134,11 @@ pub struct PartidaLance {
 }
 
 impl PartidaLance {
-    pub fn new_random(lance: Lance, tantos: [u8; 2]) -> Self {
+    pub fn new_random(baraja: &Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
         let mut manos;
         loop {
-            let b = Self::crear_baraja();
+            let mut b = baraja.clone();
+            b.barajar();
             manos = Self::repartir_manos(b);
             if lance.se_juega(&manos) {
                 break;
@@ -151,24 +152,6 @@ impl PartidaLance {
             manos_normalizadas,
             tipo_estrategia,
         }
-    }
-
-    fn crear_baraja() -> Baraja {
-        let mut b = Baraja::new();
-        for _ in 0..8 {
-            b.insertar(mus::Carta::As);
-            b.insertar(mus::Carta::Rey);
-        }
-        for _ in 0..4 {
-            b.insertar(mus::Carta::Caballo);
-            b.insertar(mus::Carta::Sota);
-            b.insertar(mus::Carta::Siete);
-            b.insertar(mus::Carta::Seis);
-            b.insertar(mus::Carta::Cinco);
-            b.insertar(mus::Carta::Cuatro);
-        }
-        b.barajar();
-        b
     }
 
     fn repartir_manos(mut b: Baraja) -> Vec<Mano> {
