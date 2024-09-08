@@ -108,7 +108,7 @@ impl TipoEstrategia {
             (
                 TipoEstrategia::TresManos1vs2,
                 [
-                    parejas[0][0].to_string(),
+                    parejas[0][0].to_string() + ",",
                     parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
                 ],
             )
@@ -117,7 +117,7 @@ impl TipoEstrategia {
                 TipoEstrategia::TresManos2vs1,
                 [
                     parejas[0][0].to_string() + "," + &parejas[0][1].to_string(),
-                    parejas[1][0].to_string(),
+                    parejas[1][0].to_string() + ",",
                 ],
             )
         }
@@ -161,10 +161,10 @@ impl PartidaLance {
         }
         for _ in 0..4 {
             b.insertar(mus::Carta::Caballo);
-            // b.insertar(mus::Carta::Sota);
-            // b.insertar(mus::Carta::Siete);
-            // b.insertar(mus::Carta::Seis);
-            // b.insertar(mus::Carta::Cinco);
+            b.insertar(mus::Carta::Sota);
+            b.insertar(mus::Carta::Siete);
+            b.insertar(mus::Carta::Seis);
+            b.insertar(mus::Carta::Cinco);
             b.insertar(mus::Carta::Cuatro);
         }
         b.barajar();
@@ -195,11 +195,9 @@ pub struct Cfr {
 }
 
 impl Cfr {
-    fn info_set_str(&self, player: usize, mano1: &str, history: &[Accion]) -> String {
-        let mut output = String::with_capacity(11 + history.len() + 1);
-        output.push(if player == 0 { '0' } else { '1' });
-        output.push(',');
-        output.push_str(mano1);
+    fn info_set_str(&self, manos: &str, history: &[Accion]) -> String {
+        let mut output = String::with_capacity(9 + history.len() + 1);
+        output.push_str(manos);
         output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());
@@ -227,7 +225,7 @@ impl Cfr {
         match n {
             ActionNode::NonTerminal(p, children) => {
                 let info_set_str =
-                    self.info_set_str(*p, &partida_lance.manos_normalizadas[*p], &self.history);
+                    self.info_set_str(&partida_lance.manos_normalizadas[*p], &self.history);
                 self.nodos
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
@@ -265,8 +263,13 @@ impl Cfr {
                 }
             }
             ActionNode::Terminal => {
-                let mut estado_lance =
-                    EstadoLance::new(partida_lance.lance.apuesta_minima(), 40, 0);
+                let turno_inicial = partida_lance.lance.turno_inicial(&partida_lance.manos);
+                let apuesta_maxima = 40 - partida_lance.tantos.iter().min().unwrap();
+                let mut estado_lance = EstadoLance::new(
+                    partida_lance.lance.apuesta_minima(),
+                    apuesta_maxima,
+                    turno_inicial,
+                );
                 self.history.iter().for_each(|&a| {
                     let _ = estado_lance.actuar(a);
                 });
@@ -283,6 +286,9 @@ impl Cfr {
                     tantos[ganador] += partida_lance.lance.bonus();
                 }
 
+                if turno_inicial == 1 {
+                    tantos.swap(0, 1);
+                }
                 // if tantos[ganador] < 40 {
                 //     tantos[ganador] += Lance::Pares.tantos_mano(&self.manos[ganador]) as i8;
                 // }
