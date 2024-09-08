@@ -48,7 +48,7 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     let mut util = [0., 0.];
     for i in 0..iter {
         let p = PartidaLance::new_random(lance, tantos);
-        let c = banco.estrategia_lance(lance, p.tipo_estrategia());
+        let c = banco.estrategia_lance_mut(lance, p.tipo_estrategia());
 
         util[0] += c.external_cfr(&p, &action_tree, 0);
         util[1] += c.external_cfr(&p, &action_tree, 1);
@@ -61,24 +61,7 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
-    let mut v: Vec<(String, Node)> = banco
-        .estrategia_lance(lance, TipoEstrategia::DosManos)
-        .nodes()
-        .iter()
-        .map(|(s, n)| (s.clone(), n.clone()))
-        .collect();
-    v.sort_by(|x, y| x.0.cmp(&y.0));
-    for (k, n) in v {
-        println!(
-            "{},{}",
-            k,
-            n.get_average_strategy()
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<String>>()
-                .join(",")
-        );
-    }
+    banco.export().expect("Error exportando estrategias.");
 }
 
 use clap::Parser;
@@ -113,5 +96,5 @@ fn main() {
 
     let tantos = args.tantos.unwrap_or_default();
 
-    external_cfr(Lance::Juego, tantos, args.iter);
+    external_cfr(Lance::Grande, tantos, args.iter);
 }
