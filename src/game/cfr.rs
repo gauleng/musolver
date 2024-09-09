@@ -265,16 +265,21 @@ impl Cfr {
                     Apuesta::Tantos(t) => tantos[ganador] += t,
                     Apuesta::Ordago => tantos[ganador] = 40,
                 }
-                if tantos[ganador] < 40 {
-                    tantos[ganador] += partida_lance.lance.bonus();
+                tantos[ganador] += partida_lance
+                    .lance
+                    .tantos_mano(&partida_lance.manos[ganador])
+                    + partida_lance
+                        .lance
+                        .tantos_mano(&partida_lance.manos[ganador + 2]);
+                tantos[ganador] += partida_lance.lance.bonus();
+                if tantos[ganador] >= 40 {
+                    tantos[ganador] = 40;
+                    tantos[1 - ganador] = 0;
                 }
 
                 if turno_inicial == 1 {
                     tantos.swap(0, 1);
                 }
-                // if tantos[ganador] < 40 {
-                //     tantos[ganador] += Lance::Pares.tantos_mano(&self.manos[ganador]) as i8;
-                // }
                 let payoff = [
                     tantos[0] as i8 - tantos[1] as i8,
                     tantos[1] as i8 - tantos[0] as i8,
