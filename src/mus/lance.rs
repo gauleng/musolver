@@ -606,6 +606,17 @@ mod tests {
     use std::cmp::Ordering::*;
 
     #[test]
+    fn orden_jugadas() {
+        assert!(Juego::Treintayuna > Juego::Resto(33));
+        assert!(Juego::Treintayuna > Juego::Treintaydos);
+        let p1 = Mano::try_from("1111").unwrap().pares();
+        let p2 = Mano::try_from("1144").unwrap().pares();
+        let p3 = Mano::try_from("4444").unwrap().pares();
+        assert!(p2 > p1);
+        assert!(p3 > p2);
+    }
+
+    #[test]
     fn test_compara_manos1() {
         let a = Mano::try_from("355R").unwrap();
         let b = Mano::try_from("3555").unwrap();
