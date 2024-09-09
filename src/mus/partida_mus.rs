@@ -38,7 +38,7 @@ pub struct PartidaMus {
 impl PartidaMus {
     const MAX_TANTOS: u8 = 40;
 
-    pub fn new(manos: Vec<Mano>) -> Self {
+    pub fn new(manos: Vec<Mano>, tantos: [u8; 2]) -> Self {
         let mut lances = Vec::with_capacity(4);
         lances.push(Lance::Grande);
         lances.push(Lance::Chica);
@@ -50,35 +50,57 @@ impl PartidaMus {
         } else {
             lances.push(Lance::Punto);
         }
-        let estado_lances = HashMap::from([(Lance::Grande, EstadoLance::new(1, 40, 0))]);
-        PartidaMus {
+        let mut p = PartidaMus {
             manos,
             lances,
             lance_actual: Some(0),
-            estado_lances,
-            tantos: [0, 0],
+            estado_lances: HashMap::new(),
+            tantos,
+        };
+        p.nuevo_lance(Lance::Grande);
+        p
+    }
+
+    pub fn new_partida_lance(lance: Lance, manos: Vec<Mano>, tantos: [u8; 2]) -> Option<Self> {
+        let lances = vec![lance];
+        if lance.hay_lance(&manos) {
+            let mut p = Self {
+                manos,
+                lances,
+                lance_actual: Some(0),
+                estado_lances: HashMap::new(),
+                tantos,
+            };
+            p.nuevo_lance(lance);
+            Some(p)
+        } else {
+            None
         }
     }
 
-    pub fn siguiente_lance(&mut self) -> Option<Lance> {
+    fn nuevo_lance(&mut self, l: Lance) {
+        let tantos_restantes = [
+            Self::MAX_TANTOS - self.tantos[0],
+            Self::MAX_TANTOS - self.tantos[1],
+        ];
+        let mut e = EstadoLance::new(
+            l.apuesta_minima(),
+            tantos_restantes[0].max(tantos_restantes[1]),
+            l.turno_inicial(&self.manos),
+        );
+        if !l.se_juega(&self.manos) {
+            e.resolver_lance(&self.manos, &l);
+        }
+        self.estado_lances.insert(l, e);
+    }
+
+    fn siguiente_lance(&mut self) -> Option<Lance> {
         let mut lance_actual = self.lance_actual?;
         if lance_actual < self.lances.len() - 1 {
             lance_actual += 1;
             self.lance_actual = Some(lance_actual);
             let l = self.lances[lance_actual];
-            let tantos_restantes = [
-                Self::MAX_TANTOS - self.tantos[0],
-                Self::MAX_TANTOS - self.tantos[1],
-            ];
-            let mut e = EstadoLance::new(
-                l.apuesta_minima(),
-                tantos_restantes[0].max(tantos_restantes[1]),
-                l.turno_inicial(&self.manos),
-            );
-            if !l.se_juega(&self.manos) {
-                e.resolver_lance(&self.manos, &l);
-            }
-            self.estado_lances.insert(l, e);
+            self.nuevo_lance(l);
             Some(l)
         } else {
             self.lances.iter().for_each(|l| {
@@ -149,6 +171,10 @@ impl PartidaMus {
             self.lance_actual = None;
         }
     }
+
+    pub fn lance_actual(&self) -> Option<Lance> {
+        self.lance_actual.map(|v| self.lances[v])
+    }
 }
 
 #[cfg(test)]
@@ -164,7 +190,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = PartidaMus::new(manos);
+        let mut partida = PartidaMus::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
@@ -185,7 +211,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = PartidaMus::new(manos);
+        let mut partida = PartidaMus::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
@@ -210,7 +236,7 @@ mod tests {
             Mano::try_from("3334").unwrap(),
             Mano::try_from("257C").unwrap(),
         ];
-        let mut partida = PartidaMus::new(manos);
+        let mut partida = PartidaMus::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Ordago);
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), vec![1, 0]);
@@ -218,5 +244,32 @@ mod tests {
         let _ = partida.actuar(Accion::Quiero);
         assert_eq!(partida.tantos(), vec![40, 0]);
         assert_eq!(partida.turno(), None);
+    }
+
+    #[test]
+    fn test_partida_lance() {
+        let manos = vec![
+            Mano::try_from("CC76").unwrap(),
+            Mano::try_from("CCC1").unwrap(),
+            Mano::try_from("1111").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+        let mut partida_lance = PartidaMus::new_partida_lance(Lance::Juego, manos, [0, 0]);
+        assert!(partida_lance.is_some());
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        assert_eq!(partida_lance.as_ref().unwrap().lance_actual(), None);
+        assert_eq!(partida_lance.as_ref().unwrap().tantos(), [0, 3]);
+        let manos = vec![
+            Mano::try_from("257C").unwrap(),
+            Mano::try_from("CC76").unwrap(),
+            Mano::try_from("CCC1").unwrap(),
+            Mano::try_from("1111").unwrap(),
+        ];
+        let mut partida_lance = PartidaMus::new_partida_lance(Lance::Juego, manos, [0, 0]);
+        assert_eq!(partida_lance.as_ref().unwrap().turno(), Some(1));
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        assert_eq!(partida_lance.as_ref().unwrap().tantos(), [3, 0]);
     }
 }
