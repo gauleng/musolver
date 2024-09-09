@@ -178,7 +178,7 @@ impl Lance {
     fn turno_inicial_jugadas<T>(&self, manos: &[Option<T>]) -> usize {
         let pares_filt = manos.iter().filter(|p| p.is_some()).count();
         if pares_filt == 2 || pares_filt == 3 {
-            if manos[0].is_some() && manos[2].is_some() && manos[3].is_none() {
+            if manos[1].is_some() && manos[2].is_some() && manos[3].is_none() {
                 1
             } else {
                 0
