@@ -614,6 +614,11 @@ mod tests {
         let p3 = Mano::try_from("4444").unwrap().pares();
         assert!(p2 > p1);
         assert!(p3 > p2);
+        let p4 = Mano::try_from("CC55").unwrap().pares();
+        let p5 = Mano::try_from("RRR1").unwrap().pares();
+        assert!(p4 > p5);
+        assert!(p4 > p2);
+        assert!(p1 > p5);
     }
 
     #[test]
