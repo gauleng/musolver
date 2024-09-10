@@ -1,6 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
-use std::{collections::HashMap, fs::File, io::Write};
+use std::{collections::HashMap, fs::File};
 
 use crate::mus::{Accion, Apuesta, Baraja, Carta, EstadoLance, Juego, Lance, Mano, Pares};
 
@@ -340,7 +340,11 @@ impl BancoEstrategias {
 
     fn export_estrategia(&self, l: Lance, t: TipoEstrategia) -> std::io::Result<()> {
         let file_name = format!("{:?}_{:?}.csv", l, t);
-        let mut file = File::create(file_name)?;
+        let file = File::create(file_name)?;
+        let mut wtr = csv::WriterBuilder::new()
+            .flexible(true)
+            .quote_style(csv::QuoteStyle::Never)
+            .from_writer(&file);
         let c = self.estrategia_lance(l, t);
 
         let mut v: Vec<(String, Node)> = c
@@ -350,17 +354,15 @@ impl BancoEstrategias {
             .collect();
         v.sort_by(|x, y| x.0.cmp(&y.0));
         for (k, n) in v {
-            writeln!(
-                file,
-                "{},{}",
-                k,
-                n.get_average_strategy()
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",")
-            )?;
+            let mut probabilities = n
+                .get_average_strategy()
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>();
+            probabilities.insert(0, k);
+            wtr.write_record(&probabilities)?;
         }
+        wtr.flush()?;
         Ok(())
     }
 
