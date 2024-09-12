@@ -228,6 +228,7 @@ pub enum Apuesta {
     Ordago,
 }
 
+#[derive(Debug, Clone)]
 pub struct EstadoLance {
     bote: [Apuesta; 2],
     activos: [bool; 2],
