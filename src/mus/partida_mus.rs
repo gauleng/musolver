@@ -141,9 +141,8 @@ impl PartidaMus {
                     Apuesta::Tantos(t) => self.anotar_tantos(g, t),
                     Apuesta::Ordago => self.anotar_tantos(g, Self::MAX_TANTOS),
                 }
-            } else {
-                self.tanteo_final_lance(lance);
             }
+            self.tanteo_final_lance(lance);
         }
     }
 
@@ -289,12 +288,12 @@ mod tests {
 
         /*
         Pareja 0
-	        4 chica
-	        1 par
-	        2 medias
+            4 chica
+            1 par
+            2 medias
         Pareja 1
-	        4 envite juego
-	        2 juego
+            4 envite juego
+            2 juego
          */
     }
 
