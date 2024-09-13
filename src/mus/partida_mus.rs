@@ -273,17 +273,29 @@ mod tests {
         let _ = partida.actuar(Accion::Quiero); // 4, 2
         assert_eq!(partida.tantos(), vec![0, 2]);
 
+        // 3 no tiene pares, entonces "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Pares));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Paso); // 6, 2
         assert_eq!(partida.tantos(), vec![2, 2]);
 
+        // Tienen juego 2 y 3. Entonces, "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Juego));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![6, 8]);
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Quiero); // Pareja 1
+        assert_eq!(partida.tantos(), vec![9, 8]);
+
+        /*
+        Pareja 0
+	        4 chica
+	        1 par
+	        2 medias
+        Pareja 1
+	        4 envite juego
+	        2 juego
+         */
     }
 
     #[test]
