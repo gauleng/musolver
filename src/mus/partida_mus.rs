@@ -27,12 +27,18 @@ impl Display for Accion {
 }
 
 #[derive(Debug, Clone)]
+struct ResultadoLance {
+    ganador: usize,
+    tantos: u8,
+}
+
+#[derive(Debug, Clone)]
 pub struct PartidaMus {
     manos: Vec<Mano>,
-    //estado_lances: HashMap<Lance, EstadoLance>,
-    lances: Vec<(Lance, Option<EstadoLance>)>,
+    lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
-    lance_actual: Option<usize>,
+    idx_lance: usize,
+    estado_lance: Option<EstadoLance>,
 }
 
 impl PartidaMus {
@@ -55,11 +61,12 @@ impl PartidaMus {
         let mut p = PartidaMus {
             manos,
             lances,
-            lance_actual: Some(0),
+            idx_lance: 0,
             tantos,
+            estado_lance: None,
         };
         let e = p.crear_estado_lance(Lance::Grande);
-        let _ = p.lances[0].1.insert(e);
+        p.estado_lance = Some(e);
         p
     }
 
@@ -76,11 +83,12 @@ impl PartidaMus {
             let mut p = Self {
                 manos,
                 lances,
-                lance_actual: Some(0),
+                idx_lance: 0,
                 tantos,
+                estado_lance: None,
             };
             let e = p.crear_estado_lance(lance);
-            let _ = p.lances[0].1.insert(e);
+            p.estado_lance = Some(e);
             Some(p)
         } else {
             None
@@ -103,49 +111,63 @@ impl PartidaMus {
         e
     }
 
-    fn tanteo_final_lance(&mut self, l: &Lance, e: &mut EstadoLance) {
-        let g = e.ganador().unwrap_or_else(|| {
-            let g = e.resolver_lance(&self.manos, l);
-            if let Apuesta::Tantos(t) = e.tantos_apostados() {
-                self.tantos[g] += t;
-            }
-            g
-        });
-        self.anotar_tantos(
-            g,
-            l.tantos_mano(&self.manos[g]) + l.tantos_mano(&self.manos[g + 2]) + l.bonus(),
-        );
+    fn tanteo_final_lance(&mut self, l: &Lance) {
+        if let Some(estado_lance) = &mut self.estado_lance {
+            let mut tantos = 0;
+            let ganador = estado_lance.ganador().unwrap_or_else(|| {
+                let g = estado_lance.resolver_lance(&self.manos, l);
+                if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
+                    tantos += t;
+                }
+                g
+            });
+
+            tantos += l.tantos_mano(&self.manos[ganador])
+                + l.tantos_mano(&self.manos[ganador + 2])
+                + l.bonus();
+            self.lances[self.idx_lance].1 = Some(ResultadoLance { ganador, tantos });
+        }
     }
 
-    fn tanteo_lance(&mut self, lance: &Lance, estado_lance: &mut EstadoLance) {
-        let apuesta = estado_lance.tantos_apostados();
-        if let Apuesta::Ordago = apuesta {
-            estado_lance.resolver_lance(&self.manos, lance);
-        }
-        let ganador = estado_lance.ganador();
-        if let Some(g) = ganador {
-            match apuesta {
-                Apuesta::Tantos(t) => self.anotar_tantos(g, t),
-                Apuesta::Ordago => self.anotar_tantos(g, Self::MAX_TANTOS),
+    fn tanteo_lance(&mut self, lance: &Lance) {
+        if let Some(estado_lance) = &mut self.estado_lance {
+            let apuesta = estado_lance.tantos_apostados();
+            if let Apuesta::Ordago = apuesta {
+                estado_lance.resolver_lance(&self.manos, lance);
+            }
+            let ganador = estado_lance.ganador();
+            if let Some(g) = ganador {
+                match apuesta {
+                    Apuesta::Tantos(t) => self.anotar_tantos(g, t),
+                    Apuesta::Ordago => self.anotar_tantos(g, Self::MAX_TANTOS),
+                }
+            } else {
+                self.tanteo_final_lance(lance);
             }
         }
     }
 
     fn siguiente_lance(&mut self) -> Option<&EstadoLance> {
-        let mut lance_actual = self.lance_actual?;
-        if lance_actual < self.lances.len() - 1 {
-            lance_actual += 1;
-            self.lance_actual = Some(lance_actual);
-            let lance = self.lances[lance_actual].0;
+        if self.estado_lance.is_none() {
+            return None;
+        }
+        if self.idx_lance < self.lances.len() - 1 {
+            self.idx_lance += 1;
+            let lance = self.lances[self.idx_lance].0;
             let estado_lance = self.crear_estado_lance(lance);
-            let _ = self.lances[lance_actual].1.insert(estado_lance);
-            self.lances[lance_actual].1.as_ref()
+            self.estado_lance = Some(estado_lance);
+            self.estado_lance.as_ref()
         } else {
             let lances = std::mem::take(&mut self.lances);
-            lances
-                .into_iter()
-                .for_each(|l| self.tanteo_final_lance(&l.0, &mut l.1.unwrap()));
-            self.lance_actual = None;
+            for l in lances {
+                if let Some(r) = l.1 {
+                    self.anotar_tantos(r.ganador, r.tantos);
+                    if self.tantos[0] == 40 || self.tantos[1] == 40 {
+                        break;
+                    }
+                }
+            }
+            self.estado_lance = None;
             None
         }
     }
@@ -154,13 +176,15 @@ impl PartidaMus {
     /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
     /// partida.
     pub fn actuar(&mut self, accion: Accion) -> Result<Option<usize>, MusError> {
-        let lance_actual = self.lance_actual.ok_or(MusError::AccionNoValida)?;
-        let lance = self.lances[lance_actual].0;
-        let mut estado_lance = self.lances[lance_actual].1.take().unwrap();
-        let a = estado_lance.actuar(accion);
-        if let Ok(None) = a {
-            self.tanteo_lance(&lance, &mut estado_lance);
-            let _ = self.lances[lance_actual].1.insert(estado_lance);
+        let a = if let Some(e) = &mut self.estado_lance {
+            e.actuar(accion)
+        } else {
+            Err(MusError::AccionNoValida)
+        };
+        let turno = a?;
+        if turno.is_none() {
+            let lance = self.lances[self.idx_lance].0;
+            self.tanteo_lance(&lance);
             loop {
                 let estado_lance = self.siguiente_lance();
                 if let Some(e) = estado_lance {
@@ -172,15 +196,13 @@ impl PartidaMus {
                 }
             }
         } else {
-            let _ = self.lances[lance_actual].1.insert(estado_lance);
-            a
+            Ok(turno)
         }
     }
 
     /// Devuelve el turno de la pareja a la que le toca jugar.
     pub fn turno(&self) -> Option<usize> {
-        let lance_actual = self.lance_actual?;
-        let estado_lance = self.lances[lance_actual].1.as_ref().unwrap();
+        let estado_lance = self.estado_lance.as_ref()?;
         estado_lance.turno()
     }
 
@@ -194,12 +216,14 @@ impl PartidaMus {
         if self.tantos[pareja] >= Self::MAX_TANTOS {
             self.tantos[pareja] = Self::MAX_TANTOS;
             self.tantos[1 - pareja] = 0;
-            self.lance_actual = None;
+            self.estado_lance = None;
         }
     }
 
     pub fn lance_actual(&self) -> Option<Lance> {
-        self.lance_actual.map(|v| self.lances[v].0)
+        self.estado_lance
+            .as_ref()
+            .map(|_| self.lances[self.idx_lance].0)
     }
 }
 
@@ -242,16 +266,66 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), vec![0, 2]);
+
+        assert_eq!(partida.lance_actual(), Some(Lance::Chica));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // 4, 2
+        assert_eq!(partida.tantos(), vec![0, 2]);
+
+        assert_eq!(partida.lance_actual(), Some(Lance::Pares));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso); // 6, 2
+        assert_eq!(partida.tantos(), vec![2, 2]);
+
+        assert_eq!(partida.lance_actual(), Some(Lance::Juego));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero);
+        assert_eq!(partida.tantos(), vec![6, 8]);
+    }
+
+    #[test]
+    fn test_tanteo_limite() {
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos, [29, 32]);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), vec![29, 34]);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![11, 8]);
+        let _ = partida.actuar(Accion::Quiero); // 33, 34
+
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // 40, 34
+
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // 40, 40
+        assert_eq!(partida.tantos(), vec![40, 0]);
+
+        let manos = vec![
+            Mano::try_from("1234").unwrap(),
+            Mano::try_from("57SS").unwrap(),
+            Mano::try_from("3334").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+
+        let mut partida = PartidaMus::new(manos, [29, 38]);
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.turno(), None);
+        assert_eq!(partida.tantos(), vec![0, 40]);
     }
 
     #[test]
