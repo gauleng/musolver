@@ -308,22 +308,26 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
+        // Grande
         let mut partida = PartidaMus::new(manos, [29, 32]);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), &[29, 34]);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero); // 33, 34
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Paso); // Pareja 0
+        assert_eq!(partida.tantos(), &[29, 34]); // Pareja 1 + 2
+                                                 // Chica
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Quiero); // 33, 34. Ganará la pareja 0 4 tantos al final.
 
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero); // 40, 34
+        // Pares
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Quiero); // 40, 34. Ganará la pareja 0 4 tantos al final más 1 de par y 2 de medias. Total 7.
 
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Quiero); // 40, 40
+        // Juego
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Quiero); // 40, 40. Ganará la pareja 1 4 tantos al final, más 2 de juego. Total 6.
         assert_eq!(partida.tantos(), &[40, 0]);
 
         let manos = vec![
@@ -334,11 +338,11 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos, [29, 38]);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Paso); // Pareja 0
         assert_eq!(partida.turno(), None);
-        assert_eq!(partida.tantos(), &[0, 40]);
+        assert_eq!(partida.tantos(), &[0, 40]); // La pareja 1 gana 2 tantos y se va.
     }
 
     #[test]
