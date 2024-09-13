@@ -147,9 +147,7 @@ impl PartidaMus {
     }
 
     fn siguiente_lance(&mut self) -> Option<&EstadoLance> {
-        if self.estado_lance.is_none() {
-            return None;
-        }
+        self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
             self.idx_lance += 1;
             let lance = self.lances[self.idx_lance].0;
@@ -206,7 +204,7 @@ impl PartidaMus {
     }
 
     /// Devuelve los tantos que lleva cada pareja.
-    pub fn tantos(&self) -> &[u8] {
+    pub fn tantos(&self) -> &[u8; 2] {
         &self.tantos
     }
 
@@ -223,6 +221,10 @@ impl PartidaMus {
         self.estado_lance
             .as_ref()
             .map(|_| self.lances[self.idx_lance].0)
+    }
+
+    pub fn manos(&self) -> &[Mano] {
+        &self.manos
     }
 }
 
@@ -248,7 +250,7 @@ mod tests {
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![5, 2]);
+        assert_eq!(partida.tantos(), &[5, 2]);
     }
 
     #[test]
@@ -264,27 +266,27 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![0, 2]);
+        assert_eq!(partida.tantos(), &[0, 2]);
 
         assert_eq!(partida.lance_actual(), Some(Lance::Chica));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero); // 4, 2
-        assert_eq!(partida.tantos(), vec![0, 2]);
+        assert_eq!(partida.tantos(), &[0, 2]);
 
         // 3 no tiene pares, entonces "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Pares));
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Paso); // 6, 2
-        assert_eq!(partida.tantos(), vec![2, 2]);
+        assert_eq!(partida.tantos(), &[2, 2]);
 
         // Tienen juego 2 y 3. Entonces, "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Juego));
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Quiero); // Pareja 1
-        assert_eq!(partida.tantos(), vec![9, 8]);
+        assert_eq!(partida.tantos(), &[9, 8]);
 
         /*
         Pareja 0
@@ -310,7 +312,7 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![29, 34]);
+        assert_eq!(partida.tantos(), &[29, 34]);
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero); // 33, 34
@@ -322,7 +324,7 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero); // 40, 40
-        assert_eq!(partida.tantos(), vec![40, 0]);
+        assert_eq!(partida.tantos(), &[40, 0]);
 
         let manos = vec![
             Mano::try_from("1234").unwrap(),
@@ -336,7 +338,7 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.turno(), None);
-        assert_eq!(partida.tantos(), vec![0, 40]);
+        assert_eq!(partida.tantos(), &[0, 40]);
     }
 
     #[test]
@@ -350,10 +352,10 @@ mod tests {
         let mut partida = PartidaMus::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Ordago);
         let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.tantos(), vec![1, 0]);
+        assert_eq!(partida.tantos(), &[1, 0]);
         let _ = partida.actuar(Accion::Ordago);
         let _ = partida.actuar(Accion::Quiero);
-        assert_eq!(partida.tantos(), vec![40, 0]);
+        assert_eq!(partida.tantos(), &[40, 0]);
         assert_eq!(partida.turno(), None);
     }
 
@@ -370,7 +372,7 @@ mod tests {
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         assert_eq!(partida_lance.as_ref().unwrap().lance_actual(), None);
-        assert_eq!(partida_lance.as_ref().unwrap().tantos(), [0, 3]);
+        assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[0, 3]);
         let manos = vec![
             Mano::try_from("257C").unwrap(),
             Mano::try_from("CC76").unwrap(),
@@ -381,6 +383,6 @@ mod tests {
         assert_eq!(partida_lance.as_ref().unwrap().turno(), Some(1));
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
-        assert_eq!(partida_lance.as_ref().unwrap().tantos(), [3, 0]);
+        assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[3, 0]);
     }
 }
