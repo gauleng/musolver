@@ -129,7 +129,7 @@ impl PartidaMus {
         }
     }
 
-    fn tanteo_lance(&mut self, lance: &Lance) {
+    fn tanteo_envites_lance(&mut self, lance: &Lance) {
         if let Some(estado_lance) = &mut self.estado_lance {
             let apuesta = estado_lance.tantos_apostados();
             if let Apuesta::Ordago = apuesta {
@@ -142,7 +142,6 @@ impl PartidaMus {
                     Apuesta::Ordago => self.anotar_tantos(g, Self::MAX_TANTOS),
                 }
             }
-            self.tanteo_final_lance(lance);
         }
     }
 
@@ -179,21 +178,21 @@ impl PartidaMus {
             Err(MusError::AccionNoValida)
         };
         let turno = a?;
-        if turno.is_none() {
-            let lance = self.lances[self.idx_lance].0;
-            self.tanteo_lance(&lance);
-            loop {
-                let estado_lance = self.siguiente_lance();
-                if let Some(e) = estado_lance {
-                    if e.turno().is_some() {
-                        return Ok(e.turno());
-                    }
-                } else {
-                    return Ok(None);
+        if turno.is_some() {
+            return Ok(turno);
+        }
+        let lance = self.lances[self.idx_lance].0;
+        self.tanteo_envites_lance(&lance);
+        self.tanteo_final_lance(&lance);
+        loop {
+            let estado_lance = self.siguiente_lance();
+            if let Some(e) = estado_lance {
+                if e.turno().is_some() {
+                    return Ok(e.turno());
                 }
+            } else {
+                return Ok(None);
             }
-        } else {
-            Ok(turno)
         }
     }
 
