@@ -349,30 +349,6 @@ impl EstadoLance {
         self.ganador
     }
 
-    pub fn tantos(&mut self, manos: &[Mano], lance: &Lance) -> Option<Vec<u8>> {
-        if self.turno.is_some() {
-            return None;
-        }
-        let apostado = self.tantos_apostados();
-        let ganador = self.resolver_lance(manos, lance);
-        let manos_ganadoras = [ganador, ganador + 2];
-
-        let mut tantos = vec![0, 0];
-        match apostado {
-            Apuesta::Tantos(t) => {
-                tantos[ganador] = t;
-                tantos[ganador] += lance.tantos_mano(&manos[manos_ganadoras[0]])
-                    + lance.tantos_mano(&manos[manos_ganadoras[1]]);
-                if let Lance::Punto = lance {
-                    tantos[ganador] += 1;
-                }
-            }
-            Apuesta::Ordago => tantos[ganador] = 40,
-        }
-
-        Some(tantos)
-    }
-
     pub fn turno(&self) -> Option<usize> {
         self.turno
     }

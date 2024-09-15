@@ -2,7 +2,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use std::{collections::HashMap, fs::File};
 
-use crate::mus::{Accion, Apuesta, Baraja, Carta, EstadoLance, Juego, Lance, Mano, Pares};
+use crate::mus::{Accion, Baraja, Carta, Juego, Lance, Mano, Pares, PartidaMus};
 
 use super::ActionNode;
 
@@ -17,12 +17,12 @@ impl Node {
     fn new(num_actions: usize) -> Self {
         Self {
             regret_sum: vec![0.; num_actions],
-            strategy: vec![0.; num_actions],
+            strategy: vec![1. / num_actions as f32; num_actions],
             strategy_sum: vec![0.; num_actions],
         }
     }
 
-    pub fn get_strategy(&mut self) -> &Vec<f32> {
+    pub fn update_strategy(&mut self) -> &Vec<f32> {
         for i in 0..self.strategy.len() {
             self.strategy[i] = self.regret_sum[i].max(0.);
         }
@@ -36,6 +36,11 @@ impl Node {
         }
         &self.strategy
     }
+
+    pub fn strategy(&self) -> &Vec<f32> {
+        &self.strategy
+    }
+
     pub fn get_average_strategy(&self) -> Vec<f32> {
         let normalizing_sum: f32 = self.strategy_sum.iter().sum();
         if normalizing_sum > 0. {
@@ -48,12 +53,16 @@ impl Node {
         }
     }
 
-    pub fn get_random_action(&mut self) -> usize {
-        let s = self.get_strategy();
-        let dist = WeightedIndex::new(s).unwrap();
+    pub fn update_strategy_sum(&mut self, weight: f32) {
         for i in 0..self.strategy.len() {
-            self.strategy_sum[i] += self.strategy[i];
+            self.strategy_sum[i] += weight * self.strategy[i];
         }
+    }
+
+    pub fn get_random_action(&mut self) -> usize {
+        let s = self.update_strategy();
+        let dist = WeightedIndex::new(s).unwrap();
+        self.update_strategy_sum(1.);
         dist.sample(&mut rand::thread_rng())
     }
 }
@@ -126,29 +135,30 @@ impl TipoEstrategia {
 
 #[derive(Debug)]
 pub struct PartidaLance {
-    manos: Vec<Mano>,
     manos_normalizadas: [String; 2],
     tipo_estrategia: TipoEstrategia,
+    partida: PartidaMus,
     lance: Lance,
-    tantos: [u8; 2],
 }
 
 impl PartidaLance {
     pub fn new_random(baraja: &Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
-        let mut manos;
+        let partida;
         loop {
             let mut b = baraja.clone();
             b.barajar();
-            manos = Self::repartir_manos(b);
-            if lance.se_juega(&manos) {
+            let manos = Self::repartir_manos(b);
+            let intento_partida = PartidaMus::new_partida_lance(lance, manos, tantos);
+            if let Some(p) = intento_partida {
+                partida = p;
                 break;
             }
         }
-        let (tipo_estrategia, manos_normalizadas) = TipoEstrategia::normalizar_mano(&manos, &lance);
+        let (tipo_estrategia, manos_normalizadas) =
+            TipoEstrategia::normalizar_mano(partida.manos(), &lance);
         Self {
-            manos,
+            partida,
             lance,
-            tantos,
             manos_normalizadas,
             tipo_estrategia,
         }
@@ -171,6 +181,45 @@ impl PartidaLance {
     }
 }
 
+impl Game for PartidaLance {
+    fn utility(&self, player: usize, history: &[Accion]) -> f32 {
+        let mut partida = self.partida.clone();
+        history.iter().for_each(|&a| {
+            let _ = partida.actuar(a);
+        });
+        let turno_inicial = self.lance.turno_inicial(partida.manos());
+        let mut tantos = *partida.tantos();
+
+        if turno_inicial == 1 {
+            tantos.swap(0, 1);
+        }
+        let payoff = [
+            tantos[0] as i8 - tantos[1] as i8,
+            tantos[1] as i8 - tantos[0] as i8,
+        ];
+        // println!(
+        //     "Tantos para el jugador {}  con acciones {:?}: {}",
+        //     player, self.history, tantos[player]
+        // );
+        payoff[player] as f32
+    }
+
+    fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
+        let mut output = String::with_capacity(9 + history.len() + 1);
+        output.push_str(&self.manos_normalizadas[player]);
+        output.push(',');
+        for i in history.iter() {
+            output.push_str(&i.to_string());
+        }
+        output
+    }
+}
+
+pub trait Game {
+    fn utility(&self, player: usize, history: &[Accion]) -> f32;
+    fn info_set_str(&self, player: usize, history: &[Accion]) -> String;
+}
+
 #[derive(Debug)]
 pub struct Cfr {
     history: Vec<Accion>,
@@ -178,16 +227,6 @@ pub struct Cfr {
 }
 
 impl Cfr {
-    fn info_set_str(&self, manos: &str, history: &[Accion]) -> String {
-        let mut output = String::with_capacity(9 + history.len() + 1);
-        output.push_str(manos);
-        output.push(',');
-        for i in history.iter() {
-            output.push_str(&i.to_string());
-        }
-        output
-    }
-
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
@@ -199,16 +238,67 @@ impl Cfr {
         &self.nodos
     }
 
-    pub fn external_cfr(
+    pub fn update_strategy(&mut self) {
+        self.nodos.values_mut().for_each(|n| {
+            n.update_strategy();
+        });
+    }
+
+    pub fn chance_cfr<G>(
         &mut self,
-        partida_lance: &PartidaLance,
+        game: &G,
         n: &ActionNode<usize, Accion>,
         player: usize,
-    ) -> f32 {
+        pi: f32,
+        po: f32,
+    ) -> f32
+    where
+        G: Game,
+    {
         match n {
             ActionNode::NonTerminal(p, children) => {
-                let info_set_str =
-                    self.info_set_str(&partida_lance.manos_normalizadas[*p], &self.history);
+                let info_set_str = game.info_set_str(*p, &self.history);
+                self.nodos
+                    .entry(info_set_str.clone())
+                    .or_insert(Node::new(children.len()));
+                let nodo = self.nodos.get(&info_set_str).unwrap();
+                let strategy = nodo.strategy().clone();
+
+                let mut util = vec![0.; children.len()];
+                for (i, (a, child)) in children.iter().enumerate() {
+                    self.history.push(*a);
+                    if *p == player {
+                        util[i] = self.chance_cfr(game, child, player, pi * strategy[i], po);
+                    } else {
+                        util[i] = self.chance_cfr(game, child, player, pi, po * strategy[i]);
+                    }
+                    self.history.pop();
+                }
+                let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
+
+                let nodo = self.nodos.get_mut(&info_set_str).unwrap();
+                if *p == player {
+                    nodo.regret_sum
+                        .iter_mut()
+                        .zip(util.iter())
+                        .for_each(|(r, u)| *r += po * (u - node_util));
+                    nodo.update_strategy_sum(pi);
+                    nodo.update_strategy();
+                }
+
+                node_util
+            }
+            ActionNode::Terminal => game.utility(player, &self.history),
+        }
+    }
+
+    pub fn external_cfr<G>(&mut self, game: &G, n: &ActionNode<usize, Accion>, player: usize) -> f32
+    where
+        G: Game,
+    {
+        match n {
+            ActionNode::NonTerminal(p, children) => {
+                let info_set_str = game.info_set_str(*p, &self.history);
                 self.nodos
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
@@ -216,20 +306,17 @@ impl Cfr {
                     let mut util = vec![0.; children.len()];
                     for (i, (a, child)) in children.iter().enumerate() {
                         self.history.push(*a);
-                        util[i] = self.external_cfr(partida_lance, child, player);
+                        util[i] = self.external_cfr(game, child, player);
                         self.history.pop();
                     }
                     let nodo = self.nodos.get_mut(&info_set_str).unwrap();
-                    let strategy = nodo.get_strategy();
-                    let mut node_util = 0.;
+                    let strategy = nodo.update_strategy();
 
-                    util.iter().enumerate().for_each(|(i, u)| {
-                        node_util += strategy[i] * u;
-                    });
-                    util.iter().enumerate().for_each(|(i, u)| {
-                        let regret = u - node_util;
-                        nodo.regret_sum[i] += regret;
-                    });
+                    let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
+                    nodo.regret_sum
+                        .iter_mut()
+                        .zip(util.iter())
+                        .for_each(|(r, u)| *r += u - node_util);
                     node_util
                 } else {
                     let s = self
@@ -240,56 +327,12 @@ impl Cfr {
                     let accion = children.get(s).unwrap();
 
                     self.history.push(accion.0);
-                    let util = self.external_cfr(partida_lance, &accion.1, player);
+                    let util = self.external_cfr(game, &accion.1, player);
                     self.history.pop();
                     util
                 }
             }
-            ActionNode::Terminal => {
-                let turno_inicial = partida_lance.lance.turno_inicial(&partida_lance.manos);
-                let apuesta_maxima = 40 - partida_lance.tantos.iter().min().unwrap();
-                let mut estado_lance = EstadoLance::new(
-                    partida_lance.lance.apuesta_minima(),
-                    apuesta_maxima,
-                    turno_inicial,
-                );
-                self.history.iter().for_each(|&a| {
-                    let _ = estado_lance.actuar(a);
-                });
-                estado_lance.resolver_lance(&partida_lance.manos, &partida_lance.lance);
-                let mut tantos: [u8; 2] = partida_lance.tantos;
-
-                let ganador = estado_lance.ganador().unwrap();
-                let apuesta = estado_lance.tantos_apostados();
-                match apuesta {
-                    Apuesta::Tantos(t) => tantos[ganador] += t,
-                    Apuesta::Ordago => tantos[ganador] = 40,
-                }
-                tantos[ganador] += partida_lance
-                    .lance
-                    .tantos_mano(&partida_lance.manos[ganador])
-                    + partida_lance
-                        .lance
-                        .tantos_mano(&partida_lance.manos[ganador + 2]);
-                tantos[ganador] += partida_lance.lance.bonus();
-                if tantos[ganador] >= 40 {
-                    tantos[ganador] = 40;
-                    tantos[1 - ganador] = 0;
-                }
-
-                if turno_inicial == 1 {
-                    tantos.swap(0, 1);
-                }
-                let payoff = [
-                    tantos[0] as i8 - tantos[1] as i8,
-                    tantos[1] as i8 - tantos[0] as i8,
-                ];
-                // println!(
-                //     "Tantos para el jugador {}  con acciones {:?}: {}",
-                //     player, self.history, tantos[player]
-                // );
-                payoff[player] as f32
-            }
+            ActionNode::Terminal => game.utility(player, &self.history),
         }
     }
 }
