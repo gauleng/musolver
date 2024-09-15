@@ -1,3 +1,5 @@
+use clap::ValueEnum;
+
 use super::MusError;
 use crate::mus::Accion;
 use crate::mus::Mano;
@@ -18,7 +20,7 @@ pub enum Pares {
     Duples(u16),
 }
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum)]
 pub enum Lance {
     Grande,
     Chica,

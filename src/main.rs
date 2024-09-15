@@ -69,8 +69,10 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
         let p = PartidaLance::new_random(&b, lance, tantos);
         let c = banco.estrategia_lance_mut(lance, p.tipo_estrategia());
 
-        util[0] += c.external_cfr(&p, &action_tree, 0);
-        util[1] += c.external_cfr(&p, &action_tree, 1);
+        // util[0] += c.external_cfr(&p, &action_tree, 0);
+        // util[1] += c.external_cfr(&p, &action_tree, 1);
+        util[0] += c.chance_cfr(&p, &action_tree, 0, 1., 1.);
+        util[1] += c.chance_cfr(&p, &action_tree, 1, 1., 1.);
         pb.inc(1);
         if i % 1000 == 0 {
             pb.set_message(format!(
@@ -82,6 +84,7 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
+    println!("Exportando estrategias...");
     banco.export().expect("Error exportando estrategias.");
 }
 
@@ -92,6 +95,9 @@ use clap::Parser;
 struct Args {
     #[arg(short, long)]
     iter: usize,
+
+    #[arg(short, long, value_enum)]
+    lance: Option<Lance>,
 
     #[arg(short, long, value_parser = parse_tantos)]
     tantos: Option<[u8; 2]>,
@@ -116,6 +122,11 @@ fn main() {
     let args = Args::parse();
 
     let tantos = args.tantos.unwrap_or_default();
+    let lance = args.lance.unwrap_or(Lance::Grande);
 
-    external_cfr(Lance::Juego, tantos, args.iter);
+    println!("Musolver 0.1");
+    println!("Simulando lance: {:?}", lance);
+    println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
+
+    external_cfr(lance, tantos, args.iter);
 }
