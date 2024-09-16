@@ -1,8 +1,7 @@
+use musolver::{lemke_howson, BimatrixGame};
 use ndarray::Array;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
-
-use musolver::*;
 
 fn help() {
     println!("Use: random_game <num strategies player 1> <num strategies player 2>");

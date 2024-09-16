@@ -1,6 +1,9 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use mus::{Accion, Baraja, Lance};
-use musolver::*;
+use musolver::{
+    mus::{Accion, Baraja, Carta, Lance},
+    solver::{BancoEstrategias, PartidaLance},
+    ActionNode,
+};
 
 fn init_action_tree() -> ActionNode<usize, Accion> {
     let mut n = ActionNode::<usize, Accion>::new(0);
@@ -35,16 +38,16 @@ fn init_action_tree() -> ActionNode<usize, Accion> {
 fn crear_baraja() -> Baraja {
     let mut b = Baraja::new();
     for _ in 0..8 {
-        b.insertar(mus::Carta::As);
-        b.insertar(mus::Carta::Rey);
+        b.insertar(Carta::As);
+        b.insertar(Carta::Rey);
     }
     for _ in 0..4 {
-        b.insertar(mus::Carta::Caballo);
-        b.insertar(mus::Carta::Sota);
-        b.insertar(mus::Carta::Siete);
-        b.insertar(mus::Carta::Seis);
-        b.insertar(mus::Carta::Cinco);
-        b.insertar(mus::Carta::Cuatro);
+        b.insertar(Carta::Caballo);
+        b.insertar(Carta::Sota);
+        b.insertar(Carta::Siete);
+        b.insertar(Carta::Seis);
+        b.insertar(Carta::Cinco);
+        b.insertar(Carta::Cuatro);
     }
     b.barajar();
     b
