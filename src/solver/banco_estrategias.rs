@@ -70,18 +70,39 @@ impl BancoEstrategias {
         Ok(())
     }
 
+    pub fn export_estrategia_lance(&self, l: Lance) -> std::io::Result<()> {
+        match l {
+            Lance::Grande => {
+                self.export_estrategia(Lance::Grande, TipoEstrategia::CuatroManos)?;
+            }
+            Lance::Chica => {
+                self.export_estrategia(Lance::Chica, TipoEstrategia::CuatroManos)?;
+            }
+            Lance::Pares => {
+                self.export_estrategia(Lance::Pares, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos2vs1)?;
+                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(Lance::Pares, TipoEstrategia::DosManos)?;
+            }
+            Lance::Punto => {
+                self.export_estrategia(Lance::Punto, TipoEstrategia::CuatroManos)?;
+            }
+            Lance::Juego => {
+                self.export_estrategia(Lance::Juego, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos2vs1)?;
+                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(Lance::Juego, TipoEstrategia::DosManos)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn export(&self) -> std::io::Result<()> {
-        self.export_estrategia(Lance::Grande, TipoEstrategia::CuatroManos)?;
-        self.export_estrategia(Lance::Chica, TipoEstrategia::CuatroManos)?;
-        self.export_estrategia(Lance::Punto, TipoEstrategia::CuatroManos)?;
-        self.export_estrategia(Lance::Pares, TipoEstrategia::CuatroManos)?;
-        self.export_estrategia(Lance::Pares, TipoEstrategia::DosManos)?;
-        self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2)?;
-        self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos2vs1)?;
-        self.export_estrategia(Lance::Juego, TipoEstrategia::CuatroManos)?;
-        self.export_estrategia(Lance::Juego, TipoEstrategia::DosManos)?;
-        self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2)?;
-        self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos2vs1)?;
+        self.export_estrategia_lance(Lance::Grande)?;
+        self.export_estrategia_lance(Lance::Chica)?;
+        self.export_estrategia_lance(Lance::Punto)?;
+        self.export_estrategia_lance(Lance::Pares)?;
+        self.export_estrategia_lance(Lance::Juego)?;
         Ok(())
     }
 }

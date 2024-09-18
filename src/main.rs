@@ -84,11 +84,18 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
                 util[1] / (i as f32),
             ));
         }
+        if i % 100000000 == 0 {
+            banco
+                .export_estrategia_lance(lance)
+                .expect("Error exportando estrategias.");
+        }
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     println!("Exportando estrategias...");
-    banco.export().expect("Error exportando estrategias.");
+    banco
+        .export_estrategia_lance(lance)
+        .expect("Error exportando estrategias.");
 }
 
 use clap::Parser;
