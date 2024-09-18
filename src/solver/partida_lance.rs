@@ -7,8 +7,9 @@ use crate::{
 pub enum TipoEstrategia {
     CuatroManos = 0,
     TresManos1vs2 = 1,
-    TresManos2vs1 = 2,
-    DosManos = 3,
+    TresManos1vs2Intermedio = 2,
+    TresManos2vs1 = 3,
+    DosManos = 4,
 }
 
 impl TipoEstrategia {
@@ -47,16 +48,29 @@ impl TipoEstrategia {
         } else if parejas[0].len() == 1 && parejas[1].len() == 1 {
             (
                 TipoEstrategia::DosManos,
-                [parejas[0][0].to_string(), parejas[1][0].to_string()],
-            )
-        } else if parejas[0].len() == 1 && parejas[1].len() == 2 {
-            (
-                TipoEstrategia::TresManos1vs2,
                 [
                     parejas[0][0].to_string() + ",",
-                    parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
+                    parejas[1][0].to_string() + ",",
                 ],
             )
+        } else if parejas[0].len() == 1 && parejas[1].len() == 2 {
+            if jugadas[2].is_none() {
+                (
+                    TipoEstrategia::TresManos1vs2,
+                    [
+                        parejas[0][0].to_string() + ",",
+                        parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
+                    ],
+                )
+            } else {
+                (
+                    TipoEstrategia::TresManos1vs2Intermedio,
+                    [
+                        parejas[0][0].to_string() + ",",
+                        parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
+                    ],
+                )
+            }
         } else {
             (
                 TipoEstrategia::TresManos2vs1,

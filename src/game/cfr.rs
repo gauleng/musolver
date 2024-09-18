@@ -72,7 +72,7 @@ pub trait Game<P, A> {
     fn info_set_str(&self, player: P, history: &[A]) -> String;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cfr {
     history: Vec<Accion>,
     nodos: HashMap<String, Node>,

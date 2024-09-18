@@ -17,8 +17,8 @@ impl BancoEstrategias {
         Self {
             grande: vec![Cfr::new()],
             chica: vec![Cfr::new()],
-            pares: vec![Cfr::new(), Cfr::new(), Cfr::new(), Cfr::new()],
-            juego: vec![Cfr::new(), Cfr::new(), Cfr::new(), Cfr::new()],
+            pares: vec![Cfr::new(); 5],
+            juego: vec![Cfr::new(); 5],
             punto: vec![Cfr::new()],
         }
     }
@@ -82,6 +82,7 @@ impl BancoEstrategias {
                 self.export_estrategia(Lance::Pares, TipoEstrategia::CuatroManos)?;
                 self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos2vs1)?;
                 self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2Intermedio)?;
                 self.export_estrategia(Lance::Pares, TipoEstrategia::DosManos)?;
             }
             Lance::Punto => {
@@ -91,6 +92,7 @@ impl BancoEstrategias {
                 self.export_estrategia(Lance::Juego, TipoEstrategia::CuatroManos)?;
                 self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos2vs1)?;
                 self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2Intermedio)?;
                 self.export_estrategia(Lance::Juego, TipoEstrategia::DosManos)?;
             }
         }
