@@ -145,6 +145,18 @@ impl PartidaMus {
         }
     }
 
+    fn tanteo_final(&mut self) {
+        let lances = std::mem::take(&mut self.lances);
+        for l in lances {
+            if let Some(r) = l.1 {
+                self.anotar_tantos(r.ganador, r.tantos);
+                if self.tantos[0] == 40 || self.tantos[1] == 40 {
+                    break;
+                }
+            }
+        }
+    }
+
     fn siguiente_lance(&mut self) -> Option<&EstadoLance> {
         self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
@@ -152,20 +164,10 @@ impl PartidaMus {
             let lance = self.lances[self.idx_lance].0;
             let estado_lance = self.crear_estado_lance(lance);
             self.estado_lance = Some(estado_lance);
-            self.estado_lance.as_ref()
         } else {
-            let lances = std::mem::take(&mut self.lances);
-            for l in lances {
-                if let Some(r) = l.1 {
-                    self.anotar_tantos(r.ganador, r.tantos);
-                    if self.tantos[0] == 40 || self.tantos[1] == 40 {
-                        break;
-                    }
-                }
-            }
             self.estado_lance = None;
-            None
         }
+        self.estado_lance.as_ref()
     }
 
     /// Realiza la acción recibida como parámetro. Devuelve el turno de la siguiente pareja o Ok(None)
@@ -191,6 +193,7 @@ impl PartidaMus {
                     return Ok(e.turno());
                 }
             } else {
+                self.tanteo_final();
                 return Ok(None);
             }
         }
