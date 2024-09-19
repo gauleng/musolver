@@ -54,23 +54,18 @@ impl TipoEstrategia {
                 ],
             )
         } else if parejas[0].len() == 1 && parejas[1].len() == 2 {
-            if jugadas[2].is_none() {
-                (
-                    TipoEstrategia::TresManos1vs2,
-                    [
-                        parejas[0][0].to_string() + ",",
-                        parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
-                    ],
-                )
+            let tipo_estrategia = if jugadas[2].is_none() {
+                TipoEstrategia::TresManos1vs2
             } else {
-                (
-                    TipoEstrategia::TresManos1vs2Intermedio,
-                    [
-                        parejas[0][0].to_string() + ",",
-                        parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
-                    ],
-                )
-            }
+                TipoEstrategia::TresManos1vs2Intermedio
+            };
+            (
+                tipo_estrategia,
+                [
+                    parejas[0][0].to_string() + ",",
+                    parejas[1][0].to_string() + "," + &parejas[1][1].to_string(),
+                ],
+            )
         } else {
             (
                 TipoEstrategia::TresManos2vs1,
