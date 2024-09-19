@@ -4,6 +4,7 @@ use crate::{mus::Lance, Cfr, Node};
 
 use super::TipoEstrategia;
 
+#[derive(Debug)]
 pub struct BancoEstrategias {
     grande: Vec<Cfr>,
     chica: Vec<Cfr>,

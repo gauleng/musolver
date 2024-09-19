@@ -1,7 +1,9 @@
 use crate::{
     mus::{Accion, Baraja, Carta, Juego, Lance, Mano, Pares, PartidaMus},
-    Game,
+    ActionNode, Game,
 };
+
+use super::BancoEstrategias;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TipoEstrategia {
@@ -79,14 +81,15 @@ impl TipoEstrategia {
 }
 
 #[derive(Debug)]
-pub struct PartidaLance {
+pub struct LanceGame {
     manos_normalizadas: [String; 2],
     tipo_estrategia: TipoEstrategia,
     partida: PartidaMus,
     lance: Lance,
+    banco_estrategias: Option<BancoEstrategias>,
 }
 
-impl PartidaLance {
+impl LanceGame {
     pub fn new_random(baraja: &Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
         let partida;
         loop {
@@ -106,6 +109,7 @@ impl PartidaLance {
             lance,
             manos_normalizadas,
             tipo_estrategia,
+            banco_estrategias: None,
         }
     }
 
@@ -124,9 +128,38 @@ impl PartidaLance {
     pub fn tipo_estrategia(&self) -> TipoEstrategia {
         self.tipo_estrategia
     }
+
+    pub fn train(
+        &mut self,
+        b: BancoEstrategias,
+        action_tree: &ActionNode<usize, Accion>,
+    ) -> (BancoEstrategias, [f32; 2]) {
+        let banco = b;
+        self.banco_estrategias = Some(banco);
+        let cfr = self
+            .banco_estrategias
+            .as_mut()
+            .unwrap()
+            .estrategia_lance_mut(self.lance, self.tipo_estrategia);
+        let mut c = std::mem::take(cfr);
+
+        let u = [
+            c.chance_cfr(self, action_tree, 0, 1., 1.),
+            c.chance_cfr(self, action_tree, 1, 1., 1.),
+        ];
+
+        let cfr = self
+            .banco_estrategias
+            .as_mut()
+            .unwrap()
+            .estrategia_lance_mut(self.lance, self.tipo_estrategia);
+        *cfr = c;
+        let banco = self.banco_estrategias.take().unwrap();
+        (banco, u)
+    }
 }
 
-impl Game<usize, Accion> for PartidaLance {
+impl Game<usize, Accion> for LanceGame {
     fn utility(&self, player: usize, history: &[Accion]) -> f32 {
         let mut partida = self.partida.clone();
         history.iter().for_each(|&a| {

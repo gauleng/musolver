@@ -1,7 +1,7 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Baraja, Carta, Lance},
-    solver::{BancoEstrategias, PartidaLance},
+    solver::{BancoEstrategias, LanceGame},
     ActionNode,
 };
 
@@ -69,13 +69,12 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     let mut util = [0., 0.];
     let b = crear_baraja();
     for i in 0..iter {
-        let p = PartidaLance::new_random(&b, lance, tantos);
-        let c = banco.estrategia_lance_mut(lance, p.tipo_estrategia());
+        let mut p = LanceGame::new_random(&b, lance, tantos);
+        let (b, u) = p.train(banco, &action_tree);
+        banco = b;
 
-        // util[0] += c.external_cfr(&p, &action_tree, 0);
-        // util[1] += c.external_cfr(&p, &action_tree, 1);
-        util[0] += c.chance_cfr(&p, &action_tree, 0, 1., 1.);
-        util[1] += c.chance_cfr(&p, &action_tree, 1, 1., 1.);
+        util[0] += u[0];
+        util[1] += u[1];
         pb.inc(1);
         if i % 1000 == 0 {
             pb.set_message(format!(
