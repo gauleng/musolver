@@ -160,12 +160,15 @@ impl Cfr {
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
                 if *p == player {
-                    let mut util = vec![0.; children.len()];
-                    for (i, (a, child)) in children.iter().enumerate() {
-                        self.history.push(*a);
-                        util[i] = self.external_cfr(game, child, player);
-                        self.history.pop();
-                    }
+                    let util: Vec<f32> = children
+                        .iter()
+                        .map(|(a, child)| {
+                            self.history.push(*a);
+                            let u = self.external_cfr(game, child, player);
+                            self.history.pop();
+                            u
+                        })
+                        .collect();
                     let nodo = self.nodos.get_mut(&info_set_str).unwrap();
                     let strategy = nodo.update_strategy();
 
