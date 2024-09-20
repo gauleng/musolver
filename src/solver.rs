@@ -1,5 +1,8 @@
 mod banco_estrategias;
 pub use banco_estrategias::*;
 
-mod partida_lance;
-pub use partida_lance::*;
+mod lance_game;
+pub use lance_game::*;
+
+mod mus_game;
+pub use mus_game::*;
