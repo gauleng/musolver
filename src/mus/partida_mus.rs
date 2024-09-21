@@ -34,7 +34,7 @@ struct ResultadoLance {
 
 #[derive(Debug, Clone)]
 pub struct PartidaMus {
-    manos: Vec<Mano>,
+    manos: [Mano; 4],
     lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
     idx_lance: usize,
@@ -46,7 +46,7 @@ impl PartidaMus {
 
     /// Crea una partida de mus con las manos recibidas como parámetro. Recibe también los tantos
     /// con los que comienzan la partida cada una de las parejas.
-    pub fn new(manos: Vec<Mano>, tantos: [u8; 2]) -> Self {
+    pub fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
         let mut lances = Vec::with_capacity(4);
         lances.push((Lance::Grande, None));
         lances.push((Lance::Chica, None));
@@ -77,7 +77,7 @@ impl PartidaMus {
     /// La partida solo se crea si se juega el lance. En caso contrario devuelve None.
     /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
     /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
-    pub fn new_partida_lance(lance: Lance, manos: Vec<Mano>, tantos: [u8; 2]) -> Option<Self> {
+    pub fn new_partida_lance(lance: Lance, manos: [Mano; 4], tantos: [u8; 2]) -> Option<Self> {
         let lances = vec![(lance, None)];
         if lance.se_juega(&manos) {
             let mut p = Self {
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_tanteo() {
-        let manos = vec![
+        let manos = [
             Mano::try_from("1234").unwrap(),
             Mano::try_from("57SS").unwrap(),
             Mano::try_from("3334").unwrap(),
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_tanteo2() {
-        let manos = vec![
+        let manos = [
             Mano::try_from("1234").unwrap(),
             Mano::try_from("57SS").unwrap(),
             Mano::try_from("3334").unwrap(),
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_tanteo_limite() {
-        let manos = vec![
+        let manos = [
             Mano::try_from("1234").unwrap(),
             Mano::try_from("57SS").unwrap(),
             Mano::try_from("3334").unwrap(),
@@ -332,7 +332,7 @@ mod tests {
         let _ = partida.actuar(Accion::Quiero); // 40, 40. Ganará la pareja 1 4 tantos al final, más 2 de juego. Total 6.
         assert_eq!(partida.tantos(), &[40, 0]);
 
-        let manos = vec![
+        let manos = [
             Mano::try_from("1234").unwrap(),
             Mano::try_from("57SS").unwrap(),
             Mano::try_from("3334").unwrap(),
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_ordago() {
-        let manos = vec![
+        let manos = [
             Mano::try_from("1234").unwrap(),
             Mano::try_from("57SS").unwrap(),
             Mano::try_from("3334").unwrap(),
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_partida_lance() {
-        let manos = vec![
+        let manos = [
             Mano::try_from("CC76").unwrap(),
             Mano::try_from("CCC1").unwrap(),
             Mano::try_from("1111").unwrap(),
@@ -379,7 +379,7 @@ mod tests {
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         assert_eq!(partida_lance.as_ref().unwrap().lance_actual(), None);
         assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[0, 3]);
-        let manos = vec![
+        let manos = [
             Mano::try_from("257C").unwrap(),
             Mano::try_from("CC76").unwrap(),
             Mano::try_from("CCC1").unwrap(),

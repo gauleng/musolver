@@ -38,16 +38,14 @@ impl LanceGame {
         }
     }
 
-    fn repartir_manos(mut b: Baraja) -> Vec<Mano> {
-        let mut manos = Vec::with_capacity(4);
-        for _ in 0..4 {
+    fn repartir_manos(mut b: Baraja) -> [Mano; 4] {
+        core::array::from_fn(|_| {
             let mut m = Vec::<Carta>::with_capacity(4);
             for _ in 0..4 {
                 m.push(b.repartir().unwrap());
             }
-            manos.push(Mano::new(m));
-        }
-        manos
+            Mano::new(m)
+        })
     }
 
     pub fn tipo_estrategia(&self) -> TipoEstrategia {

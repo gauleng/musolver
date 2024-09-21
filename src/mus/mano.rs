@@ -15,6 +15,10 @@ impl Mano {
     pub fn cartas(&self) -> &Vec<Carta> {
         &self.0
     }
+
+    pub fn insertar(&mut self, carta: Carta) {
+        self.0.push(carta);
+    }
 }
 
 impl TryFrom<&str> for Mano {
