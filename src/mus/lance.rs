@@ -112,9 +112,12 @@ pub trait RankingManos {
     /// juego. Se asume que la primera mano del vector es la del jugador mano y la última la del
     /// postre.
     fn mejor_mano(&self, manos: &[Mano]) -> usize {
-        let mut indices: Vec<usize> = (0..manos.len()).rev().collect();
-        indices.sort_by(|i, j| self.compara_manos(&manos[*i], &manos[*j]));
-        *indices.last().unwrap()
+        let m = manos
+            .iter()
+            .enumerate()
+            .rev()
+            .max_by(|i, j| self.compara_manos(i.1, j.1));
+        m.unwrap().0
     }
 }
 
