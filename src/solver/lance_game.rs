@@ -15,12 +15,11 @@ pub struct LanceGame {
 }
 
 impl LanceGame {
-    pub fn new_random(baraja: &Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
+    pub fn new_random(baraja: &mut Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
         let partida;
         loop {
-            let mut b = baraja.clone();
-            b.barajar();
-            let manos = Self::repartir_manos(b);
+            baraja.barajar();
+            let manos = Self::repartir_manos(baraja);
             let intento_partida = PartidaMus::new_partida_lance(lance, manos, tantos);
             if let Some(p) = intento_partida {
                 partida = p;
@@ -38,11 +37,12 @@ impl LanceGame {
         }
     }
 
-    fn repartir_manos(mut b: Baraja) -> [Mano; 4] {
+    fn repartir_manos(b: &Baraja) -> [Mano; 4] {
+        let mut c = b.primeras_n_cartas(16).iter();
         core::array::from_fn(|_| {
             let mut m = Vec::<Carta>::with_capacity(4);
             for _ in 0..4 {
-                m.push(b.repartir().unwrap());
+                m.push(*c.next().unwrap());
             }
             Mano::new(m)
         })

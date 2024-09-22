@@ -1,7 +1,7 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Baraja, Carta, Lance},
-    solver::{BancoEstrategias, LanceGame},
+    solver::{BancoEstrategias, LanceGame, MusGame},
     ActionNode,
 };
 
@@ -44,16 +44,16 @@ fn crear_baraja() -> Baraja {
     for _ in 0..4 {
         b.insertar(Carta::Caballo);
         b.insertar(Carta::Sota);
-        b.insertar(Carta::Siete);
-        b.insertar(Carta::Seis);
-        b.insertar(Carta::Cinco);
+        // b.insertar(Carta::Siete);
+        // b.insertar(Carta::Seis);
+        // b.insertar(Carta::Cinco);
         b.insertar(Carta::Cuatro);
     }
     b.barajar();
     b
 }
 
-fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
+fn external_cfr(lance: Trainer, tantos: [u8; 2], iter: usize) {
     use std::time::Instant;
 
     let action_tree = init_action_tree();
@@ -67,10 +67,18 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
     );
     let mut banco = BancoEstrategias::new();
     let mut util = [0., 0.];
-    let b = crear_baraja();
+    let mut b = crear_baraja();
     for i in 0..iter {
-        let mut p = LanceGame::new_random(&b, lance, tantos);
-        let (b, u) = p.train(banco, &action_tree);
+        let (b, u) = match lance {
+            Trainer::LanceTrainer(lance) => {
+                let mut p = LanceGame::new_random(&mut b, lance, tantos);
+                p.train(banco, &action_tree)
+            }
+            Trainer::MusTrainer => {
+                let mut p = MusGame::new_random(&mut b, tantos);
+                p.train(banco, &action_tree)
+            }
+        };
         banco = b;
 
         util[0] += u[0];
@@ -83,18 +91,21 @@ fn external_cfr(lance: Lance, tantos: [u8; 2], iter: usize) {
                 util[1] / (i as f32),
             ));
         }
-        if i % 100000000 == 0 {
-            banco
-                .export_estrategia_lance(lance)
-                .expect("Error exportando estrategias.");
-        }
+        // if i % 100000000 == 0 {
+        //     banco
+        //         .export_estrategia_lance(lance)
+        //         .expect("Error exportando estrategias.");
+        // }
     }
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     println!("Exportando estrategias...");
-    banco
-        .export_estrategia_lance(lance)
-        .expect("Error exportando estrategias.");
+    match lance {
+        Trainer::LanceTrainer(lance) => banco
+            .export_estrategia_lance(lance)
+            .expect("Error exportando estrategias."),
+        Trainer::MusTrainer => banco.export().expect("Error exportando estrategias."),
+    }
 }
 
 use clap::Parser;
@@ -127,15 +138,28 @@ fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
     }
 }
 
+enum Trainer {
+    LanceTrainer(Lance),
+    MusTrainer,
+}
+
 fn main() {
     let args = Args::parse();
 
     let tantos = args.tantos.unwrap_or_default();
-    let lance = args.lance.unwrap_or(Lance::Grande);
+    let trainer = args
+        .lance
+        .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
 
     println!("Musolver 0.1");
-    println!("Simulando lance: {:?}", lance);
+    println!(
+        "Simulando: {}",
+        match trainer {
+            Trainer::LanceTrainer(lance) => format!("{:?}", lance),
+            Trainer::MusTrainer => "Partida completa".to_owned(),
+        }
+    );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
-    external_cfr(lance, tantos, args.iter);
+    external_cfr(trainer, tantos, args.iter);
 }

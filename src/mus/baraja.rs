@@ -21,6 +21,10 @@ impl Baraja {
     pub fn repartir(&mut self) -> Option<Carta> {
         self.0.pop()
     }
+
+    pub fn primeras_n_cartas(&self, n: usize) -> &[Carta] {
+        &self.0[0..n]
+    }
 }
 
 impl Default for Baraja {
