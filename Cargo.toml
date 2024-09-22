@@ -16,3 +16,4 @@ thiserror = "1.0.63"
 [profile.profiling]
 inherits = "release"
 debug = true
+lto = true
