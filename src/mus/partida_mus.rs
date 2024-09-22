@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::rc::Rc;
 
 use crate::mus::Lance;
 use crate::mus::Mano;
@@ -34,7 +35,7 @@ struct ResultadoLance {
 
 #[derive(Debug, Clone)]
 pub struct PartidaMus {
-    manos: [Mano; 4],
+    manos: Rc<[Mano; 4]>,
     lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
     idx_lance: usize,
@@ -59,7 +60,7 @@ impl PartidaMus {
             lances.push((Lance::Punto, None));
         }
         let mut p = PartidaMus {
-            manos,
+            manos: Rc::new(manos),
             lances,
             idx_lance: 0,
             tantos,
@@ -81,7 +82,7 @@ impl PartidaMus {
         let lances = vec![(lance, None)];
         if lance.se_juega(&manos) {
             let mut p = Self {
-                manos,
+                manos: Rc::new(manos),
                 lances,
                 idx_lance: 0,
                 tantos,
@@ -103,10 +104,10 @@ impl PartidaMus {
         let mut e = EstadoLance::new(
             l.apuesta_minima(),
             tantos_restantes[0].max(tantos_restantes[1]),
-            l.turno_inicial(&self.manos),
+            l.turno_inicial(&*self.manos),
         );
-        if !l.se_juega(&self.manos) {
-            e.resolver_lance(&self.manos, &l);
+        if !l.se_juega(&*self.manos) {
+            e.resolver_lance(&*self.manos, &l);
         }
         e
     }
@@ -115,7 +116,7 @@ impl PartidaMus {
         if let Some(estado_lance) = &mut self.estado_lance {
             let mut tantos = 0;
             let ganador = estado_lance.ganador().unwrap_or_else(|| {
-                let g = estado_lance.resolver_lance(&self.manos, l);
+                let g = estado_lance.resolver_lance(&*self.manos, l);
                 if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
                     tantos += t;
                 }
@@ -133,7 +134,7 @@ impl PartidaMus {
         if let Some(estado_lance) = &mut self.estado_lance {
             let apuesta = estado_lance.tantos_apostados();
             if let Apuesta::Ordago = apuesta {
-                estado_lance.resolver_lance(&self.manos, lance);
+                estado_lance.resolver_lance(&*self.manos, lance);
             }
             let ganador = estado_lance.ganador();
             if let Some(g) = ganador {
@@ -226,7 +227,7 @@ impl PartidaMus {
     }
 
     pub fn manos(&self) -> &[Mano] {
-        &self.manos
+        &*self.manos
     }
 }
 
