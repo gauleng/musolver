@@ -5,7 +5,19 @@ pub struct CartaIter<'a> {
     indices: Vec<usize>,
 }
 
+/// Iterador de manos de cartas de mus.
 impl<'a> CartaIter<'a> {
+    /// Crea un nuevo iterador a partir de un slice de Cartas y el número de cartas que se desean
+    /// tener en la mano. Este iterador asume que las cartas se pueden repetir. Por ejemplo, si
+    /// tenemos:
+    ///
+    /// let cartas = [Carta::As, Carta::Cuatro, Carta::Rey]
+    /// let iter = CartaIter::new(&cartas, 2);
+    ///
+    /// assert_eq!(iter.next().unwrap(), &[Carta::As, Carta::As]);
+    /// assert_eq!(iter.next().unwrap(), &[Carta::Cuatro, Carta::As]);
+    /// assert_eq!(iter.next().unwrap(), &[Carta::Rey, Carta::As]);
+    /// assert_eq!(iter.next().unwrap(), &[Carta::Cuatro, Carta::Cuatro]);
     pub fn new(cartas: &'a [Carta], num_cartas: usize) -> Self {
         Self {
             cartas,
