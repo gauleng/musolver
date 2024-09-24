@@ -1,3 +1,5 @@
+use std::fs::{self, File};
+
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Baraja, Carta, Lance},
@@ -6,31 +8,9 @@ use musolver::{
 };
 
 fn init_action_tree() -> ActionNode<usize, Accion> {
-    let mut n = ActionNode::<usize, Accion>::new(0);
-    let p1paso = n.add_non_terminal_action(Accion::Paso, 1).unwrap();
-    p1paso.add_terminal_action(Accion::Paso);
-    let p2paso_envido = p1paso
-        .add_non_terminal_action(Accion::Envido(2), 0)
-        .unwrap();
-    p2paso_envido.add_terminal_action(Accion::Paso);
-    p2paso_envido.add_terminal_action(Accion::Quiero);
-    let p1paso_envido_ordago = p2paso_envido
-        .add_non_terminal_action(Accion::Ordago, 1)
-        .unwrap();
-    p1paso_envido_ordago.add_terminal_action(Accion::Paso);
-    p1paso_envido_ordago.add_terminal_action(Accion::Quiero);
-    let p2paso_ordago = p1paso.add_non_terminal_action(Accion::Ordago, 0).unwrap();
-    p2paso_ordago.add_terminal_action(Accion::Paso);
-    p2paso_ordago.add_terminal_action(Accion::Quiero);
-    let p1envido = n.add_non_terminal_action(Accion::Envido(2), 1).unwrap();
-    p1envido.add_terminal_action(Accion::Paso);
-    p1envido.add_terminal_action(Accion::Quiero);
-    let p2envido_ordago = p1envido.add_non_terminal_action(Accion::Ordago, 0).unwrap();
-    p2envido_ordago.add_terminal_action(Accion::Paso);
-    p2envido_ordago.add_terminal_action(Accion::Quiero);
-    let p1ordago = n.add_non_terminal_action(Accion::Ordago, 1).unwrap();
-    p1ordago.add_terminal_action(Accion::Paso);
-    p1ordago.add_terminal_action(Accion::Quiero);
+    let contents =
+        fs::read_to_string("config/simple_action_tree.json").expect("Error reading the file.");
+    let n: ActionNode<usize, Accion> = serde_json::from_str(&contents).unwrap();
 
     n
 }
@@ -44,9 +24,9 @@ fn crear_baraja() -> Baraja {
     for _ in 0..4 {
         b.insertar(Carta::Caballo);
         b.insertar(Carta::Sota);
-        // b.insertar(Carta::Siete);
-        // b.insertar(Carta::Seis);
-        // b.insertar(Carta::Cinco);
+        b.insertar(Carta::Siete);
+        b.insertar(Carta::Seis);
+        b.insertar(Carta::Cinco);
         b.insertar(Carta::Cuatro);
     }
     b.barajar();

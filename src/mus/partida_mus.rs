@@ -1,6 +1,9 @@
 use std::fmt::Display;
 use std::rc::Rc;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::mus::Lance;
 use crate::mus::Mano;
 
@@ -8,7 +11,7 @@ use super::Apuesta;
 use super::EstadoLance;
 use super::MusError;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum Accion {
     Paso,
     Envido(u8),

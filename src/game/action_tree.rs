@@ -1,4 +1,6 @@
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ActionNode<P, A> {
     Terminal,
     NonTerminal(P, Vec<(A, ActionNode<P, A>)>),
