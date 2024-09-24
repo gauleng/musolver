@@ -72,7 +72,7 @@ impl<'a> MusGame<'a> {
         &mut self,
         b: BancoEstrategias,
         action_tree: &'a ActionNode<usize, Accion>,
-    ) -> (BancoEstrategias, [f32; 2]) {
+    ) -> (BancoEstrategias, [f64; 2]) {
         self.banco_estrategias = Some(RefCell::new(b));
         self.action_tree = Some(action_tree);
         let banco = self.banco_estrategias.as_ref().unwrap().borrow();
@@ -93,7 +93,7 @@ impl<'a> MusGame<'a> {
 }
 
 impl<'a> Game<usize, Accion> for MusGame<'a> {
-    fn utility(&self, player: usize, history: &[Accion]) -> f32 {
+    fn utility(&self, player: usize, history: &[Accion]) -> f64 {
         let mut partida = self.partida.clone();
         history.iter().for_each(|&a| {
             let _ = partida.actuar(a);
@@ -143,7 +143,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
             //     "Tantos para el jugador {}  con acciones {:?}: {}",
             //     player, self.history, tantos[player]
             // );
-            payoff[player] as f32
+            payoff[player] as f64
         }
     }
 

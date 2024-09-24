@@ -8,52 +8,52 @@ use super::ActionNode;
 
 #[derive(Debug, Clone)]
 pub struct Node {
-    regret_sum: Vec<f32>,
-    strategy: Vec<f32>,
-    strategy_sum: Vec<f32>,
+    regret_sum: Vec<f64>,
+    strategy: Vec<f64>,
+    strategy_sum: Vec<f64>,
 }
 
 impl Node {
     fn new(num_actions: usize) -> Self {
         Self {
             regret_sum: vec![0.; num_actions],
-            strategy: vec![1. / num_actions as f32; num_actions],
+            strategy: vec![1. / num_actions as f64; num_actions],
             strategy_sum: vec![0.; num_actions],
         }
     }
 
-    pub fn update_strategy(&mut self) -> &Vec<f32> {
+    pub fn update_strategy(&mut self) -> &Vec<f64> {
         for i in 0..self.strategy.len() {
             self.strategy[i] = self.regret_sum[i].max(0.);
         }
-        let normalizing_sum: f32 = self.strategy.iter().sum();
+        let normalizing_sum: f64 = self.strategy.iter().sum();
         for i in 0..self.strategy.len() {
             if normalizing_sum > 0. {
                 self.strategy[i] /= normalizing_sum;
             } else {
-                self.strategy[i] = 1. / self.strategy.len() as f32;
+                self.strategy[i] = 1. / self.strategy.len() as f64;
             }
         }
         &self.strategy
     }
 
-    pub fn strategy(&self) -> &Vec<f32> {
+    pub fn strategy(&self) -> &Vec<f64> {
         &self.strategy
     }
 
-    pub fn get_average_strategy(&self) -> Vec<f32> {
-        let normalizing_sum: f32 = self.strategy_sum.iter().sum();
+    pub fn get_average_strategy(&self) -> Vec<f64> {
+        let normalizing_sum: f64 = self.strategy_sum.iter().sum();
         if normalizing_sum > 0. {
             self.strategy_sum
                 .iter()
                 .map(|s| s / normalizing_sum)
                 .collect()
         } else {
-            vec![1. / self.strategy.len() as f32; self.strategy.len()]
+            vec![1. / self.strategy.len() as f64; self.strategy.len()]
         }
     }
 
-    pub fn update_strategy_sum(&mut self, weight: f32) {
+    pub fn update_strategy_sum(&mut self, weight: f64) {
         for i in 0..self.strategy.len() {
             self.strategy_sum[i] += weight * self.strategy[i];
         }
@@ -68,7 +68,7 @@ impl Node {
 }
 
 pub trait Game<P, A> {
-    fn utility(&self, player: P, history: &[A]) -> f32;
+    fn utility(&self, player: P, history: &[A]) -> f64;
     fn info_set_str(&self, player: P, history: &[A]) -> String;
 }
 
@@ -101,9 +101,9 @@ impl Cfr {
         game: &G,
         n: &ActionNode<usize, Accion>,
         player: usize,
-        pi: f32,
-        po: f32,
-    ) -> f32
+        pi: f64,
+        po: f64,
+    ) -> f64
     where
         G: Game<usize, Accion>,
     {
@@ -116,7 +116,7 @@ impl Cfr {
                 let node = self.nodos.get(&info_set_str).unwrap();
                 let strategy = node.strategy().clone();
 
-                let util: Vec<f32> = children
+                let util: Vec<f64> = children
                     .iter()
                     .zip(strategy.iter())
                     .map(|((a, child), s)| {
@@ -149,7 +149,7 @@ impl Cfr {
         }
     }
 
-    pub fn external_cfr<G>(&mut self, game: &G, n: &ActionNode<usize, Accion>, player: usize) -> f32
+    pub fn external_cfr<G>(&mut self, game: &G, n: &ActionNode<usize, Accion>, player: usize) -> f64
     where
         G: Game<usize, Accion>,
     {
@@ -160,7 +160,7 @@ impl Cfr {
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
                 if *p == player {
-                    let util: Vec<f32> = children
+                    let util: Vec<f64> = children
                         .iter()
                         .map(|(a, child)| {
                             self.history.push(*a);

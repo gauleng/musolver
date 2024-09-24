@@ -56,7 +56,7 @@ impl LanceGame {
         &mut self,
         b: BancoEstrategias,
         action_tree: &ActionNode<usize, Accion>,
-    ) -> (BancoEstrategias, [f32; 2]) {
+    ) -> (BancoEstrategias, [f64; 2]) {
         let banco = b;
         self.banco_estrategias = Some(banco);
         let cfr = self
@@ -78,7 +78,7 @@ impl LanceGame {
 }
 
 impl Game<usize, Accion> for LanceGame {
-    fn utility(&self, player: usize, history: &[Accion]) -> f32 {
+    fn utility(&self, player: usize, history: &[Accion]) -> f64 {
         let mut partida = self.partida.clone();
         history.iter().for_each(|&a| {
             let _ = partida.actuar(a);
@@ -97,7 +97,7 @@ impl Game<usize, Accion> for LanceGame {
         //     "Tantos para el jugador {}  con acciones {:?}: {}",
         //     player, self.history, tantos[player]
         // );
-        payoff[player] as f32
+        payoff[player] as f64
     }
 
     fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
