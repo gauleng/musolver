@@ -1,10 +1,12 @@
 use clap::ValueEnum;
+use ndarray_rand::rand_distr::num_traits::PrimInt;
 
 use super::MusError;
 use crate::mus::Accion;
 use crate::mus::Mano;
 
 use std::cmp;
+use std::fmt::Display;
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Juego {
@@ -13,11 +15,37 @@ pub enum Juego {
     Treintayuna,
 }
 
+impl Display for Juego {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Juego::Resto(v) => write!(f, "{v}"),
+            Juego::Treintaydos => write!(f, "32"),
+            Juego::Treintayuna => write!(f, "31"),
+        }
+    }
+}
+
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Pares {
     Pareja(u16),
     Medias(u16),
     Duples(u16),
+}
+
+impl Display for Pares {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Pares::Pareja(v) => write!(f, "P{}", v.trailing_zeros() + 1),
+            Pares::Medias(v) => write!(f, "M{}", v.trailing_zeros() + 1),
+            Pares::Duples(v) => {
+                if v.count_ones() == 2 {
+                    write!(f, "D{},{}", 16 - v.leading_zeros(), v.trailing_zeros() + 1)
+                } else {
+                    write!(f, "D{},{}", v.trailing_zeros(), v.trailing_zeros())
+                }
+            }
+        }
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum)]
