@@ -1,6 +1,9 @@
 mod carta;
 pub use carta::*;
 
+mod carta_iter;
+pub use carta_iter::*;
+
 mod mus_error;
 pub use mus_error::MusError;
 
