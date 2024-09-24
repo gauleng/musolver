@@ -69,8 +69,8 @@ fn external_cfr(
         if i % 1000 == 0 {
             pb.set_message(format!(
                 "Utility: {:.5} {:.5}",
-                util[0] / (i as f32),
-                util[1] / (i as f32),
+                util[0] / (i as f64),
+                util[1] / (i as f64),
             ));
         }
         // if i % 100000000 == 0 {
