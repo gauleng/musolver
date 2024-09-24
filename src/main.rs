@@ -1,4 +1,4 @@
-use std::fs::{self, File};
+use std::fs;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
@@ -7,9 +7,8 @@ use musolver::{
     ActionNode,
 };
 
-fn init_action_tree() -> ActionNode<usize, Accion> {
-    let contents =
-        fs::read_to_string("config/simple_action_tree.json").expect("Error reading the file.");
+fn init_action_tree(action_tree_path: String) -> ActionNode<usize, Accion> {
+    let contents = fs::read_to_string(action_tree_path).expect("Error reading the file.");
     let n: ActionNode<usize, Accion> = serde_json::from_str(&contents).unwrap();
 
     n
@@ -33,10 +32,13 @@ fn crear_baraja() -> Baraja {
     b
 }
 
-fn external_cfr(lance: Trainer, tantos: [u8; 2], iter: usize) {
+fn external_cfr(
+    lance: Trainer,
+    tantos: [u8; 2],
+    iter: usize,
+    action_tree: &ActionNode<usize, Accion>,
+) {
     use std::time::Instant;
-
-    let action_tree = init_action_tree();
 
     let now = Instant::now();
     let pb = ProgressBar::new(iter as u64);
@@ -52,11 +54,11 @@ fn external_cfr(lance: Trainer, tantos: [u8; 2], iter: usize) {
         let (b, u) = match lance {
             Trainer::LanceTrainer(lance) => {
                 let mut p = LanceGame::new_random(&mut b, lance, tantos);
-                p.train(banco, &action_tree)
+                p.train(banco, action_tree)
             }
             Trainer::MusTrainer => {
                 let mut p = MusGame::new_random(&mut b, tantos);
-                p.train(banco, &action_tree)
+                p.train(banco, action_tree)
             }
         };
         banco = b;
@@ -93,14 +95,22 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Número de iteraciones de CFR.
     #[arg(short, long)]
     iter: usize,
 
+    /// Lance a simular. Si no se pasa este parámetro se simula la partida completa.
     #[arg(short, long, value_enum)]
     lance: Option<Lance>,
 
+    /// Marcador inicial de tantos al comienzo de la partida. Deben separarse los números mediante
+    /// dos puntos. Por ejemplo, 25:14.
     #[arg(short, long, value_parser = parse_tantos)]
     tantos: Option<[u8; 2]>,
+
+    /// Ruta al fichero con el árbol de acciones a considerar en el cálculo del equilibrio.
+    #[arg(short, long)]
+    action_tree: Option<String>,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -130,7 +140,11 @@ fn main() {
     let trainer = args
         .lance
         .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
+    let action_tree_path = args
+        .action_tree
+        .unwrap_or_else(|| "config/action_tree.rs".to_string());
 
+    let action_tree = init_action_tree(action_tree_path);
     println!("Musolver 0.1");
     println!(
         "Simulando: {}",
@@ -141,5 +155,5 @@ fn main() {
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
-    external_cfr(trainer, tantos, args.iter);
+    external_cfr(trainer, tantos, args.iter, &action_tree);
 }
