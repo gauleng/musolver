@@ -1,5 +1,4 @@
 use clap::ValueEnum;
-use ndarray_rand::rand_distr::num_traits::PrimInt;
 
 use super::MusError;
 use crate::mus::Accion;
@@ -35,13 +34,13 @@ pub enum Pares {
 impl Display for Pares {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Pares::Pareja(v) => write!(f, "P{}", v.trailing_zeros() + 1),
-            Pares::Medias(v) => write!(f, "M{}", v.trailing_zeros() + 1),
+            Pares::Pareja(v) => write!(f, "P{}", v.trailing_zeros()),
+            Pares::Medias(v) => write!(f, "M{}", v.trailing_zeros()),
             Pares::Duples(v) => {
                 if v.count_ones() == 2 {
-                    write!(f, "D{},{}", 16 - v.leading_zeros(), v.trailing_zeros() + 1)
+                    write!(f, "D{},{}", 15 - v.leading_zeros(), v.trailing_zeros())
                 } else {
-                    write!(f, "D{},{}", v.trailing_zeros(), v.trailing_zeros())
+                    write!(f, "D{},{}", v.trailing_zeros() - 1, v.trailing_zeros() - 1)
                 }
             }
         }
