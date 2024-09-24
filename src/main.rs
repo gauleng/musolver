@@ -142,7 +142,7 @@ fn main() {
         .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
     let action_tree_path = args
         .action_tree
-        .unwrap_or_else(|| "config/action_tree.rs".to_string());
+        .unwrap_or_else(|| "config/action_tree.json".to_string());
 
     let action_tree = init_action_tree(action_tree_path);
     println!("Musolver 0.1");
