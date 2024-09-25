@@ -10,7 +10,7 @@ pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     partida: Option<PartidaMus>,
-    manos_normalizadas: Option<[String; 2]>,
+    info_set_prefix: Option<[String; 2]>,
     tipo_estrategia: Option<TipoEstrategia>,
     baraja: Baraja,
     abstracto: bool,
@@ -25,7 +25,7 @@ impl LanceGame {
             baraja,
             abstracto: false,
             partida: None,
-            manos_normalizadas: None,
+            info_set_prefix: None,
             tipo_estrategia: None,
         }
     }
@@ -38,8 +38,11 @@ impl LanceGame {
             if let Some(p) = intento_partida {
                 let (tipo_estrategia, manos_normalizadas) =
                     TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
-                self.manos_normalizadas =
-                    Some(manos_normalizadas.to_abstract_string_array(&self.lance));
+                let m = manos_normalizadas.to_abstract_string_array(&self.lance);
+                self.info_set_prefix = Some([
+                    tipo_estrategia.to_string() + "," + &m[0],
+                    tipo_estrategia.to_string() + "," + &m[1],
+                ]);
                 self.tipo_estrategia = Some(tipo_estrategia);
                 self.partida = Some(p);
                 break;
@@ -88,7 +91,7 @@ impl Game<usize, Accion> for LanceGame {
 
     fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
         let mut output = String::with_capacity(9 + history.len() + 1);
-        output.push_str(&self.manos_normalizadas.as_ref().unwrap()[player]);
+        output.push_str(&self.info_set_prefix.as_ref().unwrap()[player]);
         output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());

@@ -1,5 +1,6 @@
 use std::{
     cell::{Ref, RefCell},
+    fmt::Display,
     fs::{self, File},
 };
 
@@ -125,6 +126,19 @@ impl<'a> TipoEstrategia {
         }
     }
 }
+
+impl Display for TipoEstrategia {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TipoEstrategia::CuatroManos => write!(f, "2-2"),
+            TipoEstrategia::TresManos1vs2 => write!(f, "1-2"),
+            TipoEstrategia::TresManos1vs2Intermedio => write!(f, "1-1-1"),
+            TipoEstrategia::TresManos2vs1 => write!(f, "2-1"),
+            TipoEstrategia::DosManos => write!(f, "1-1"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct BancoEstrategias {
     grande: Vec<RefCell<Cfr>>,
