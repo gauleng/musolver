@@ -38,9 +38,9 @@ impl Display for Pares {
             Pares::Medias(v) => write!(f, "M{}", v.trailing_zeros()),
             Pares::Duples(v) => {
                 if v.count_ones() == 2 {
-                    write!(f, "D{},{}", 15 - v.leading_zeros(), v.trailing_zeros())
+                    write!(f, "D{}:{}", 15 - v.leading_zeros(), v.trailing_zeros())
                 } else {
-                    write!(f, "D{},{}", v.trailing_zeros() - 1, v.trailing_zeros() - 1)
+                    write!(f, "D{}:{}", v.trailing_zeros() - 1, v.trailing_zeros() - 1)
                 }
             }
         }
