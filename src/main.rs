@@ -84,9 +84,11 @@ fn external_cfr(
     println!("Exportando estrategias...");
     match lance {
         Trainer::LanceTrainer(lance) => banco
-            .export_estrategia_lance(lance)
+            .export_estrategia_lance("output/", lance)
             .expect("Error exportando estrategias."),
-        Trainer::MusTrainer => banco.export().expect("Error exportando estrategias."),
+        Trainer::MusTrainer => banco
+            .export("output/")
+            .expect("Error exportando estrategias."),
     }
 }
 

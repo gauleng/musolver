@@ -28,10 +28,11 @@ impl LanceGame {
         }
         let (tipo_estrategia, manos_normalizadas) =
             TipoEstrategia::normalizar_mano(partida.manos(), &lance);
+        let manos_normalizadas_str = manos_normalizadas.to_abstract_string_array(&lance);
         Self {
             partida,
             lance,
-            manos_normalizadas,
+            manos_normalizadas: manos_normalizadas_str,
             tipo_estrategia,
             banco_estrategias: None,
         }
