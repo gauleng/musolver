@@ -70,6 +70,7 @@ impl Node {
 pub trait Game<P, A> {
     fn utility(&self, player: P, history: &[A]) -> f64;
     fn info_set_str(&self, player: P, history: &[A]) -> String;
+    fn new_random(&mut self);
 }
 
 #[derive(Debug, Clone)]

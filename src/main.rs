@@ -2,7 +2,7 @@ use std::fs;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
-    mus::{Accion, Baraja, Carta, Lance},
+    mus::{Accion, Lance},
     solver::{BancoEstrategias, LanceGame},
     ActionNode, Game,
 };
@@ -36,7 +36,10 @@ struct TrainerConfig {
 }
 
 impl Trainer {
-    fn train(&self, config: &TrainerConfig) {
+    fn train<G>(&self, game: &mut G, config: &TrainerConfig)
+    where
+        G: Game<usize, Accion>,
+    {
         use std::time::Instant;
 
         let now = Instant::now();
@@ -52,21 +55,18 @@ impl Trainer {
         for i in 0..config.iterations {
             match self {
                 Trainer::LanceTrainer(lance) => {
-                    let mut p = LanceGame::new(*lance, config.tantos);
-                    p.new_random();
-                    let mut cfr = banco
-                        .estrategia_lance_mut(*lance, *p.tipo_estrategia().unwrap())
-                        .borrow_mut();
+                    game.new_random();
+                    let mut cfr = banco.estrategia_lance_mut(*lance).borrow_mut();
                     match config.method {
                         CfrMethod::Cfr => todo!(),
                         CfrMethod::CfrPlus => todo!(),
                         CfrMethod::ChanceSampling => {
-                            util[0] += cfr.chance_cfr(&p, &action_tree, 0, 1., 1.);
-                            util[1] += cfr.chance_cfr(&p, &action_tree, 1, 1., 1.);
+                            util[0] += cfr.chance_cfr(game, &action_tree, 0, 1., 1.);
+                            util[1] += cfr.chance_cfr(game, &action_tree, 1, 1., 1.);
                         }
                         CfrMethod::ExternalSampling => {
-                            util[0] += cfr.external_cfr(&p, &action_tree, 0);
-                            util[0] += cfr.external_cfr(&p, &action_tree, 1);
+                            util[0] += cfr.external_cfr(game, &action_tree, 0);
+                            util[0] += cfr.external_cfr(game, &action_tree, 1);
                         }
                     }
                 }
@@ -95,7 +95,7 @@ impl Trainer {
         println!("Exportando estrategias...");
         match self {
             Trainer::LanceTrainer(lance) => banco
-                .export_estrategia_lance(&config.output_path, *lance)
+                .export_estrategia(&config.output_path, *lance)
                 .expect("Error exportando estrategias."),
             Trainer::MusTrainer => banco
                 .export(&config.output_path)
@@ -181,5 +181,11 @@ fn main() {
         tantos,
     };
 
-    trainer.train(&config);
+    match trainer {
+        Trainer::LanceTrainer(lance) => {
+            let mut p = LanceGame::new(lance, config.tantos);
+            trainer.train(&mut p, &config);
+        }
+        Trainer::MusTrainer => todo!(),
+    }
 }

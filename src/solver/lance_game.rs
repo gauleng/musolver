@@ -11,7 +11,6 @@ pub struct LanceGame {
     tantos: [u8; 2],
     partida: Option<PartidaMus>,
     info_set_prefix: Option<[String; 2]>,
-    tipo_estrategia: Option<TipoEstrategia>,
     baraja: Baraja,
     abstracto: bool,
 }
@@ -26,27 +25,6 @@ impl LanceGame {
             abstracto: false,
             partida: None,
             info_set_prefix: None,
-            tipo_estrategia: None,
-        }
-    }
-
-    pub fn new_random(&mut self) {
-        loop {
-            self.baraja.barajar();
-            let manos = Self::repartir_manos(&self.baraja);
-            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
-            if let Some(p) = intento_partida {
-                let (tipo_estrategia, manos_normalizadas) =
-                    TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
-                let m = manos_normalizadas.to_abstract_string_array(&self.lance);
-                self.info_set_prefix = Some([
-                    tipo_estrategia.to_string() + "," + &m[0],
-                    tipo_estrategia.to_string() + "," + &m[1],
-                ]);
-                self.tipo_estrategia = Some(tipo_estrategia);
-                self.partida = Some(p);
-                break;
-            }
         }
     }
 
@@ -60,13 +38,28 @@ impl LanceGame {
             Mano::new(m)
         })
     }
-
-    pub fn tipo_estrategia(&self) -> Option<&TipoEstrategia> {
-        self.tipo_estrategia.as_ref()
-    }
 }
 
 impl Game<usize, Accion> for LanceGame {
+    fn new_random(&mut self) {
+        loop {
+            self.baraja.barajar();
+            let manos = Self::repartir_manos(&self.baraja);
+            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
+            if let Some(p) = intento_partida {
+                let (tipo_estrategia, manos_normalizadas) =
+                    TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
+                let m = manos_normalizadas.to_abstract_string_array(&self.lance);
+                self.info_set_prefix = Some([
+                    tipo_estrategia.to_string() + "," + &m[0],
+                    tipo_estrategia.to_string() + "," + &m[1],
+                ]);
+                self.partida = Some(p);
+                break;
+            }
+        }
+    }
+
     fn utility(&self, player: usize, history: &[Accion]) -> f64 {
         let mut partida = self.partida.as_ref().unwrap().clone();
         history.iter().for_each(|&a| {

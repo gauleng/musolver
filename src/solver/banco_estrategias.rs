@@ -18,6 +18,18 @@ pub enum TipoEstrategia {
     DosManos = 4,
 }
 
+impl Display for TipoEstrategia {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TipoEstrategia::CuatroManos => write!(f, "2-2"),
+            TipoEstrategia::TresManos1vs2 => write!(f, "1-2"),
+            TipoEstrategia::TresManos1vs2Intermedio => write!(f, "1-1-1"),
+            TipoEstrategia::TresManos2vs1 => write!(f, "2-1"),
+            TipoEstrategia::DosManos => write!(f, "1-1"),
+        }
+    }
+}
+
 pub struct ManosNormalizadas<'a>([(&'a Mano, Option<&'a Mano>); 2]);
 
 impl<'a> ManosNormalizadas<'a> {
@@ -126,67 +138,54 @@ impl<'a> TipoEstrategia {
         }
     }
 }
-
-impl Display for TipoEstrategia {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TipoEstrategia::CuatroManos => write!(f, "2-2"),
-            TipoEstrategia::TresManos1vs2 => write!(f, "1-2"),
-            TipoEstrategia::TresManos1vs2Intermedio => write!(f, "1-1-1"),
-            TipoEstrategia::TresManos2vs1 => write!(f, "2-1"),
-            TipoEstrategia::DosManos => write!(f, "1-1"),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct BancoEstrategias {
-    grande: Vec<RefCell<Cfr>>,
-    chica: Vec<RefCell<Cfr>>,
-    pares: Vec<RefCell<Cfr>>,
-    juego: Vec<RefCell<Cfr>>,
-    punto: Vec<RefCell<Cfr>>,
+    grande: RefCell<Cfr>,
+    chica: RefCell<Cfr>,
+    pares: RefCell<Cfr>,
+    juego: RefCell<Cfr>,
+    punto: RefCell<Cfr>,
 }
 
 impl BancoEstrategias {
     pub fn new() -> Self {
         Self {
-            grande: vec![RefCell::new(Cfr::new())],
-            chica: vec![RefCell::new(Cfr::new())],
-            pares: vec![RefCell::new(Cfr::new()); 5],
-            juego: vec![RefCell::new(Cfr::new()); 5],
-            punto: vec![RefCell::new(Cfr::new())],
+            grande: RefCell::new(Cfr::new()),
+            chica: RefCell::new(Cfr::new()),
+            pares: RefCell::new(Cfr::new()),
+            juego: RefCell::new(Cfr::new()),
+            punto: RefCell::new(Cfr::new()),
         }
     }
 
-    pub fn estrategia_lance(&self, l: Lance, t: TipoEstrategia) -> Ref<'_, Cfr> {
+    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr> {
         match l {
-            Lance::Grande => self.grande[0].borrow(),
-            Lance::Chica => self.chica[0].borrow(),
-            Lance::Pares => self.pares[t as usize].borrow(),
-            Lance::Punto => self.punto[0].borrow(),
-            Lance::Juego => self.juego[t as usize].borrow(),
+            Lance::Grande => self.grande.borrow(),
+            Lance::Chica => self.chica.borrow(),
+            Lance::Pares => self.pares.borrow(),
+            Lance::Punto => self.punto.borrow(),
+            Lance::Juego => self.juego.borrow(),
         }
     }
-    pub fn estrategia_lance_mut(&self, l: Lance, t: TipoEstrategia) -> &std::cell::RefCell<Cfr> {
+    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr> {
         match l {
-            Lance::Grande => &self.grande[0],
-            Lance::Chica => &self.chica[0],
-            Lance::Pares => &self.pares[t as usize],
-            Lance::Punto => &self.punto[0],
-            Lance::Juego => &self.juego[t as usize],
+            Lance::Grande => &self.grande,
+            Lance::Chica => &self.chica,
+            Lance::Pares => &self.pares,
+            Lance::Punto => &self.punto,
+            Lance::Juego => &self.juego,
         }
     }
 
-    fn export_estrategia(&self, path: &str, l: Lance, t: TipoEstrategia) -> std::io::Result<()> {
+    pub fn export_estrategia(&self, path: &str, l: Lance) -> std::io::Result<()> {
         fs::create_dir_all(path)?;
-        let file_name = format!("{path}/{:?}_{:?}.csv", l, t);
+        let file_name = format!("{path}/{:?}.csv", l);
         let file = File::create(file_name)?;
         let mut wtr = csv::WriterBuilder::new()
             .flexible(true)
             .quote_style(csv::QuoteStyle::Never)
             .from_writer(&file);
-        let c = self.estrategia_lance(l, t);
+        let c = self.estrategia_lance(l);
 
         let mut v: Vec<(String, Node)> = c
             .nodes()
@@ -207,49 +206,12 @@ impl BancoEstrategias {
         Ok(())
     }
 
-    pub fn export_estrategia_lance(&self, path: &str, l: Lance) -> std::io::Result<()> {
-        match l {
-            Lance::Grande => {
-                self.export_estrategia(path, Lance::Grande, TipoEstrategia::CuatroManos)?;
-            }
-            Lance::Chica => {
-                self.export_estrategia(path, Lance::Chica, TipoEstrategia::CuatroManos)?;
-            }
-            Lance::Pares => {
-                self.export_estrategia(path, Lance::Pares, TipoEstrategia::CuatroManos)?;
-                self.export_estrategia(path, Lance::Pares, TipoEstrategia::TresManos2vs1)?;
-                self.export_estrategia(path, Lance::Pares, TipoEstrategia::TresManos1vs2)?;
-                self.export_estrategia(
-                    path,
-                    Lance::Pares,
-                    TipoEstrategia::TresManos1vs2Intermedio,
-                )?;
-                self.export_estrategia(path, Lance::Pares, TipoEstrategia::DosManos)?;
-            }
-            Lance::Punto => {
-                self.export_estrategia(path, Lance::Punto, TipoEstrategia::CuatroManos)?;
-            }
-            Lance::Juego => {
-                self.export_estrategia(path, Lance::Juego, TipoEstrategia::CuatroManos)?;
-                self.export_estrategia(path, Lance::Juego, TipoEstrategia::TresManos2vs1)?;
-                self.export_estrategia(path, Lance::Juego, TipoEstrategia::TresManos1vs2)?;
-                self.export_estrategia(
-                    path,
-                    Lance::Juego,
-                    TipoEstrategia::TresManos1vs2Intermedio,
-                )?;
-                self.export_estrategia(path, Lance::Juego, TipoEstrategia::DosManos)?;
-            }
-        }
-        Ok(())
-    }
-
     pub fn export(&self, path: &str) -> std::io::Result<()> {
-        self.export_estrategia_lance(path, Lance::Grande)?;
-        self.export_estrategia_lance(path, Lance::Chica)?;
-        self.export_estrategia_lance(path, Lance::Punto)?;
-        self.export_estrategia_lance(path, Lance::Pares)?;
-        self.export_estrategia_lance(path, Lance::Juego)?;
+        self.export_estrategia(path, Lance::Grande)?;
+        self.export_estrategia(path, Lance::Chica)?;
+        self.export_estrategia(path, Lance::Punto)?;
+        self.export_estrategia(path, Lance::Pares)?;
+        self.export_estrategia(path, Lance::Juego)?;
         Ok(())
     }
 }

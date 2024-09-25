@@ -18,7 +18,7 @@ pub struct MusGame<'a> {
 }
 
 impl<'a> MusGame<'a> {
-    pub fn new_random(baraja: &mut Baraja, tantos: [u8; 2]) -> Self {
+    pub fn new(baraja: &mut Baraja, tantos: [u8; 2]) -> Self {
         baraja.barajar();
         let manos = Self::repartir_manos(baraja);
         let partida = PartidaMus::new(manos, tantos);
@@ -78,7 +78,7 @@ impl<'a> MusGame<'a> {
         self.banco_estrategias = Some(RefCell::new(b));
         self.action_tree = Some(action_tree);
         let banco = self.banco_estrategias.as_ref().unwrap().borrow();
-        let cfr = banco.estrategia_lance_mut(Lance::Grande, self.tipo_estrategia);
+        let cfr = banco.estrategia_lance_mut(Lance::Grande);
         let mut c = cfr.take();
         drop(banco);
 
@@ -88,7 +88,7 @@ impl<'a> MusGame<'a> {
         ];
 
         let banco = self.banco_estrategias.as_ref().unwrap().take();
-        let cfr = banco.estrategia_lance_mut(Lance::Grande, self.tipo_estrategia);
+        let cfr = banco.estrategia_lance_mut(Lance::Grande);
         cfr.replace(c);
         (banco, u)
     }
@@ -106,7 +106,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
 
             let mut trainer = MusGame::from_partida_mus(partida);
             let banco = self.banco_estrategias.as_ref().unwrap().take();
-            let cfr = banco.estrategia_lance_mut(lance, trainer.tipo_estrategia);
+            let cfr = banco.estrategia_lance_mut(lance);
             let mut c = cfr.take();
             trainer.banco_estrategias = Some(RefCell::new(banco));
             trainer.action_tree = Some(action_tree);
@@ -125,7 +125,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
             let u = c.chance_cfr(&trainer, action_tree, acting_player, 1., 1.);
 
             let banco = trainer.banco_estrategias.as_ref().unwrap().take();
-            let cfr = banco.estrategia_lance_mut(lance, trainer.tipo_estrategia);
+            let cfr = banco.estrategia_lance_mut(lance);
             cfr.replace(c);
             self.banco_estrategias.as_ref().unwrap().replace(banco);
 
@@ -157,5 +157,9 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
             output.push_str(&i.to_string());
         }
         output
+    }
+
+    fn new_random(&mut self) {
+        todo!()
     }
 }
