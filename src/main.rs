@@ -113,9 +113,11 @@ impl Trainer {
         println!("Exportando estrategias...");
         match self {
             Trainer::LanceTrainer(lance) => banco
-                .export_estrategia_lance(*lance)
+                .export_estrategia_lance(&config.output_path, *lance)
                 .expect("Error exportando estrategias."),
-            Trainer::MusTrainer => banco.export().expect("Error exportando estrategias."),
+            Trainer::MusTrainer => banco
+                .export(&config.output_path)
+                .expect("Error exportando estrategias."),
         }
     }
 }
@@ -145,6 +147,10 @@ struct Args {
     /// Variante de CFR a utilizar.
     #[arg(short, long, value_enum)]
     method: Option<CfrMethod>,
+
+    /// Ruta donde se desean guardar las estrategias generadas.
+    #[arg(short, long)]
+    output: Option<String>,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -173,6 +179,7 @@ fn main() {
         .action_tree
         .unwrap_or_else(|| "config/action_tree.json".to_string());
     let method = args.method.unwrap_or(CfrMethod::ChanceSampling);
+    let output_path = args.output.unwrap_or_else(|| "output/".to_string());
 
     println!("Musolver 0.1");
     println!(
@@ -188,7 +195,7 @@ fn main() {
         iterations: args.iter,
         action_tree_path,
         method,
-        output_path: "output/".to_string(),
+        output_path,
         tantos,
     };
 

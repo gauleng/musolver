@@ -1,6 +1,6 @@
 use std::{
     cell::{Ref, RefCell},
-    fs::File,
+    fs::{self, File},
 };
 
 use crate::{
@@ -164,8 +164,9 @@ impl BancoEstrategias {
         }
     }
 
-    fn export_estrategia(&self, l: Lance, t: TipoEstrategia) -> std::io::Result<()> {
-        let file_name = format!("{:?}_{:?}.csv", l, t);
+    fn export_estrategia(&self, path: &str, l: Lance, t: TipoEstrategia) -> std::io::Result<()> {
+        fs::create_dir_all(path)?;
+        let file_name = format!("{path}/{:?}_{:?}.csv", l, t);
         let file = File::create(file_name)?;
         let mut wtr = csv::WriterBuilder::new()
             .flexible(true)
@@ -192,41 +193,49 @@ impl BancoEstrategias {
         Ok(())
     }
 
-    pub fn export_estrategia_lance(&self, l: Lance) -> std::io::Result<()> {
+    pub fn export_estrategia_lance(&self, path: &str, l: Lance) -> std::io::Result<()> {
         match l {
             Lance::Grande => {
-                self.export_estrategia(Lance::Grande, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(path, Lance::Grande, TipoEstrategia::CuatroManos)?;
             }
             Lance::Chica => {
-                self.export_estrategia(Lance::Chica, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(path, Lance::Chica, TipoEstrategia::CuatroManos)?;
             }
             Lance::Pares => {
-                self.export_estrategia(Lance::Pares, TipoEstrategia::CuatroManos)?;
-                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos2vs1)?;
-                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2)?;
-                self.export_estrategia(Lance::Pares, TipoEstrategia::TresManos1vs2Intermedio)?;
-                self.export_estrategia(Lance::Pares, TipoEstrategia::DosManos)?;
+                self.export_estrategia(path, Lance::Pares, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(path, Lance::Pares, TipoEstrategia::TresManos2vs1)?;
+                self.export_estrategia(path, Lance::Pares, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(
+                    path,
+                    Lance::Pares,
+                    TipoEstrategia::TresManos1vs2Intermedio,
+                )?;
+                self.export_estrategia(path, Lance::Pares, TipoEstrategia::DosManos)?;
             }
             Lance::Punto => {
-                self.export_estrategia(Lance::Punto, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(path, Lance::Punto, TipoEstrategia::CuatroManos)?;
             }
             Lance::Juego => {
-                self.export_estrategia(Lance::Juego, TipoEstrategia::CuatroManos)?;
-                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos2vs1)?;
-                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2)?;
-                self.export_estrategia(Lance::Juego, TipoEstrategia::TresManos1vs2Intermedio)?;
-                self.export_estrategia(Lance::Juego, TipoEstrategia::DosManos)?;
+                self.export_estrategia(path, Lance::Juego, TipoEstrategia::CuatroManos)?;
+                self.export_estrategia(path, Lance::Juego, TipoEstrategia::TresManos2vs1)?;
+                self.export_estrategia(path, Lance::Juego, TipoEstrategia::TresManos1vs2)?;
+                self.export_estrategia(
+                    path,
+                    Lance::Juego,
+                    TipoEstrategia::TresManos1vs2Intermedio,
+                )?;
+                self.export_estrategia(path, Lance::Juego, TipoEstrategia::DosManos)?;
             }
         }
         Ok(())
     }
 
-    pub fn export(&self) -> std::io::Result<()> {
-        self.export_estrategia_lance(Lance::Grande)?;
-        self.export_estrategia_lance(Lance::Chica)?;
-        self.export_estrategia_lance(Lance::Punto)?;
-        self.export_estrategia_lance(Lance::Pares)?;
-        self.export_estrategia_lance(Lance::Juego)?;
+    pub fn export(&self, path: &str) -> std::io::Result<()> {
+        self.export_estrategia_lance(path, Lance::Grande)?;
+        self.export_estrategia_lance(path, Lance::Chica)?;
+        self.export_estrategia_lance(path, Lance::Punto)?;
+        self.export_estrategia_lance(path, Lance::Pares)?;
+        self.export_estrategia_lance(path, Lance::Juego)?;
         Ok(())
     }
 }
