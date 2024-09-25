@@ -24,9 +24,10 @@ impl<'a> MusGame<'a> {
         let partida = PartidaMus::new(manos, tantos);
         let (tipo_estrategia, manos_normalizadas) =
             TipoEstrategia::normalizar_mano(partida.manos(), &Lance::Grande);
+        let manos_normalizadas_str = manos_normalizadas.to_string_array();
         Self {
             partida,
-            manos_normalizadas,
+            manos_normalizadas: manos_normalizadas_str,
             tipo_estrategia,
             banco_estrategias: None,
             action_tree: None,
@@ -40,9 +41,10 @@ impl<'a> MusGame<'a> {
         let tantos = partida.tantos();
         let pareja_mano = partida.turno().unwrap();
         let prefijo = format!("{}:{},", tantos[pareja_mano], tantos[1 - pareja_mano]);
+        let manos_normalizadas_str = manos_normalizadas.to_string_array();
         let mut info_set = [prefijo.clone(), prefijo.clone()];
-        info_set[0].push_str(&manos_normalizadas[0]);
-        info_set[1].push_str(&manos_normalizadas[1]);
+        info_set[0].push_str(&manos_normalizadas_str[0]);
+        info_set[1].push_str(&manos_normalizadas_str[1]);
         Self {
             partida,
             manos_normalizadas: info_set,

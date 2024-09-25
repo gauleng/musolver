@@ -1,9 +1,9 @@
 use crate::{
     mus::{Accion, Baraja, Carta, Lance, Mano, PartidaMus},
-    ActionNode, Game,
+    Game,
 };
 
-use super::{BancoEstrategias, TipoEstrategia};
+use super::TipoEstrategia;
 
 #[derive(Debug)]
 pub struct LanceGame {
@@ -11,7 +11,7 @@ pub struct LanceGame {
     tipo_estrategia: TipoEstrategia,
     partida: PartidaMus,
     lance: Lance,
-    banco_estrategias: Option<BancoEstrategias>,
+    abstracto: bool,
 }
 
 impl LanceGame {
@@ -28,12 +28,13 @@ impl LanceGame {
         }
         let (tipo_estrategia, manos_normalizadas) =
             TipoEstrategia::normalizar_mano(partida.manos(), &lance);
+        let manos_normalizadas_str = manos_normalizadas.to_abstract_string_array(&lance);
         Self {
             partida,
             lance,
-            manos_normalizadas,
+            manos_normalizadas: manos_normalizadas_str,
             tipo_estrategia,
-            banco_estrategias: None,
+            abstracto: false,
         }
     }
 
@@ -50,30 +51,6 @@ impl LanceGame {
 
     pub fn tipo_estrategia(&self) -> TipoEstrategia {
         self.tipo_estrategia
-    }
-
-    pub fn train(
-        &mut self,
-        b: BancoEstrategias,
-        action_tree: &ActionNode<usize, Accion>,
-    ) -> (BancoEstrategias, [f64; 2]) {
-        let banco = b;
-        self.banco_estrategias = Some(banco);
-        let cfr = self
-            .banco_estrategias
-            .as_ref()
-            .unwrap()
-            .estrategia_lance_mut(self.lance, self.tipo_estrategia);
-        let mut c = cfr.take();
-
-        let u = [
-            c.chance_cfr(self, action_tree, 0, 1., 1.),
-            c.chance_cfr(self, action_tree, 1, 1., 1.),
-        ];
-
-        cfr.replace(c);
-        let banco = self.banco_estrategias.take().unwrap();
-        (banco, u)
     }
 }
 
