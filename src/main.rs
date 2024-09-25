@@ -4,7 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Baraja, Carta, Lance},
     solver::{BancoEstrategias, LanceGame},
-    ActionNode,
+    ActionNode, Game,
 };
 
 fn load_action_tree(action_tree_path: &String) -> ActionNode<usize, Accion> {
@@ -36,24 +36,6 @@ struct TrainerConfig {
 }
 
 impl Trainer {
-    fn crear_baraja() -> Baraja {
-        let mut b = Baraja::new();
-        for _ in 0..8 {
-            b.insertar(Carta::As);
-            b.insertar(Carta::Rey);
-        }
-        for _ in 0..4 {
-            b.insertar(Carta::Caballo);
-            b.insertar(Carta::Sota);
-            b.insertar(Carta::Siete);
-            b.insertar(Carta::Seis);
-            b.insertar(Carta::Cinco);
-            b.insertar(Carta::Cuatro);
-        }
-        b.barajar();
-        b
-    }
-
     fn train(&self, config: &TrainerConfig) {
         use std::time::Instant;
 
@@ -67,13 +49,13 @@ impl Trainer {
         let action_tree = load_action_tree(&config.action_tree_path);
         let banco = BancoEstrategias::new();
         let mut util = [0., 0.];
-        let mut b = Self::crear_baraja();
         for i in 0..config.iterations {
             match self {
                 Trainer::LanceTrainer(lance) => {
-                    let p = LanceGame::new_random(&mut b, *lance, config.tantos);
+                    let mut p = LanceGame::new(*lance, config.tantos);
+                    p.new_random();
                     let mut cfr = banco
-                        .estrategia_lance_mut(*lance, p.tipo_estrategia())
+                        .estrategia_lance_mut(*lance, *p.tipo_estrategia().unwrap())
                         .borrow_mut();
                     match config.method {
                         CfrMethod::Cfr => todo!(),

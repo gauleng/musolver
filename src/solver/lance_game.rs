@@ -7,34 +7,43 @@ use super::TipoEstrategia;
 
 #[derive(Debug)]
 pub struct LanceGame {
-    manos_normalizadas: [String; 2],
-    tipo_estrategia: TipoEstrategia,
-    partida: PartidaMus,
     lance: Lance,
+    tantos: [u8; 2],
+    partida: Option<PartidaMus>,
+    manos_normalizadas: Option<[String; 2]>,
+    tipo_estrategia: Option<TipoEstrategia>,
+    baraja: Baraja,
     abstracto: bool,
 }
 
 impl LanceGame {
-    pub fn new_random(baraja: &mut Baraja, lance: Lance, tantos: [u8; 2]) -> Self {
-        let partida;
+    pub fn new(lance: Lance, tantos: [u8; 2]) -> Self {
+        let baraja = Baraja::baraja_mus();
+        Self {
+            lance,
+            tantos,
+            baraja,
+            abstracto: false,
+            partida: None,
+            manos_normalizadas: None,
+            tipo_estrategia: None,
+        }
+    }
+
+    pub fn new_random(&mut self) {
         loop {
-            baraja.barajar();
-            let manos = Self::repartir_manos(baraja);
-            let intento_partida = PartidaMus::new_partida_lance(lance, manos, tantos);
+            self.baraja.barajar();
+            let manos = Self::repartir_manos(&self.baraja);
+            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
             if let Some(p) = intento_partida {
-                partida = p;
+                let (tipo_estrategia, manos_normalizadas) =
+                    TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
+                self.manos_normalizadas =
+                    Some(manos_normalizadas.to_abstract_string_array(&self.lance));
+                self.tipo_estrategia = Some(tipo_estrategia);
+                self.partida = Some(p);
                 break;
             }
-        }
-        let (tipo_estrategia, manos_normalizadas) =
-            TipoEstrategia::normalizar_mano(partida.manos(), &lance);
-        let manos_normalizadas_str = manos_normalizadas.to_abstract_string_array(&lance);
-        Self {
-            partida,
-            lance,
-            manos_normalizadas: manos_normalizadas_str,
-            tipo_estrategia,
-            abstracto: false,
         }
     }
 
@@ -49,14 +58,14 @@ impl LanceGame {
         })
     }
 
-    pub fn tipo_estrategia(&self) -> TipoEstrategia {
-        self.tipo_estrategia
+    pub fn tipo_estrategia(&self) -> Option<&TipoEstrategia> {
+        self.tipo_estrategia.as_ref()
     }
 }
 
 impl Game<usize, Accion> for LanceGame {
     fn utility(&self, player: usize, history: &[Accion]) -> f64 {
-        let mut partida = self.partida.clone();
+        let mut partida = self.partida.as_ref().unwrap().clone();
         history.iter().for_each(|&a| {
             let _ = partida.actuar(a);
         });
@@ -79,7 +88,7 @@ impl Game<usize, Accion> for LanceGame {
 
     fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
         let mut output = String::with_capacity(9 + history.len() + 1);
-        output.push_str(&self.manos_normalizadas[player]);
+        output.push_str(&self.manos_normalizadas.as_ref().unwrap()[player]);
         output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());

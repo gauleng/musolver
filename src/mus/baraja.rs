@@ -10,6 +10,24 @@ impl Baraja {
         Baraja(Vec::with_capacity(40))
     }
 
+    pub fn baraja_mus() -> Baraja {
+        let mut b = Baraja::new();
+        for _ in 0..8 {
+            b.insertar(Carta::As);
+            b.insertar(Carta::Rey);
+        }
+        for _ in 0..4 {
+            b.insertar(Carta::Caballo);
+            b.insertar(Carta::Sota);
+            b.insertar(Carta::Siete);
+            b.insertar(Carta::Seis);
+            b.insertar(Carta::Cinco);
+            b.insertar(Carta::Cuatro);
+        }
+        b.barajar();
+        b
+    }
+
     pub fn insertar(&mut self, c: Carta) {
         self.0.push(c);
     }
