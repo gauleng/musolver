@@ -61,7 +61,7 @@ impl Trainer {
                 }
                 CfrMethod::ExternalSampling => {
                     util[0] += cfr.external_cfr(game, &action_tree, 0);
-                    util[0] += cfr.external_cfr(game, &action_tree, 1);
+                    util[1] += cfr.external_cfr(game, &action_tree, 1);
                 }
             }
 
@@ -173,6 +173,7 @@ fn main() {
             let mut p = LanceGame::new(lance, config.tantos, args.abstract_game);
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut p, &config);
+            drop(cfr);
             println!("Exportando estrategias...");
             banco
                 .export_estrategia(&output_path, lance)
