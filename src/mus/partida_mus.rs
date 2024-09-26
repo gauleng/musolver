@@ -306,6 +306,32 @@ mod tests {
     }
 
     #[test]
+    fn test_punto_miedo() {
+        let manos = [
+            Mano::try_from("1134").unwrap(),
+            Mano::try_from("571S").unwrap(),
+            Mano::try_from("3544").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+        let mut partida = PartidaMus::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), &[2, 0]);
+
+        let manos = [
+            Mano::try_from("1134").unwrap(),
+            Mano::try_from("571S").unwrap(),
+            Mano::try_from("3544").unwrap(),
+            Mano::try_from("257C").unwrap(),
+        ];
+        let mut partida = PartidaMus::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
+        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso);
+        assert_eq!(partida.tantos(), &[0, 2]);
+    }
+
+    #[test]
     fn test_tanteo_limite() {
         let manos = [
             Mano::try_from("1234").unwrap(),
