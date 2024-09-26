@@ -4,7 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Lance},
     solver::{BancoEstrategias, LanceGame},
-    ActionNode, Game,
+    ActionNode, Cfr, Game,
 };
 
 fn load_action_tree(action_tree_path: &String) -> ActionNode<usize, Accion> {
@@ -31,12 +31,11 @@ struct TrainerConfig {
     method: CfrMethod,
     iterations: usize,
     action_tree_path: String,
-    output_path: String,
     tantos: [u8; 2],
 }
 
 impl Trainer {
-    fn train<G>(&self, game: &mut G, config: &TrainerConfig)
+    fn train<G>(&self, cfr: &mut Cfr, game: &mut G, config: &TrainerConfig)
     where
         G: Game<usize, Accion>,
     {
@@ -50,31 +49,21 @@ impl Trainer {
                 .progress_chars("##-"),
         );
         let action_tree = load_action_tree(&config.action_tree_path);
-        let banco = BancoEstrategias::new();
         let mut util = [0., 0.];
         for i in 0..config.iterations {
-            match self {
-                Trainer::LanceTrainer(lance) => {
-                    game.new_random();
-                    let mut cfr = banco.estrategia_lance_mut(*lance).borrow_mut();
-                    match config.method {
-                        CfrMethod::Cfr => todo!(),
-                        CfrMethod::CfrPlus => todo!(),
-                        CfrMethod::ChanceSampling => {
-                            util[0] += cfr.chance_cfr(game, &action_tree, 0, 1., 1.);
-                            util[1] += cfr.chance_cfr(game, &action_tree, 1, 1., 1.);
-                        }
-                        CfrMethod::ExternalSampling => {
-                            util[0] += cfr.external_cfr(game, &action_tree, 0);
-                            util[0] += cfr.external_cfr(game, &action_tree, 1);
-                        }
-                    }
+            game.new_random();
+            match config.method {
+                CfrMethod::Cfr => todo!(),
+                CfrMethod::CfrPlus => todo!(),
+                CfrMethod::ChanceSampling => {
+                    util[0] += cfr.chance_cfr(game, &action_tree, 0, 1., 1.);
+                    util[1] += cfr.chance_cfr(game, &action_tree, 1, 1., 1.);
                 }
-                _ => {
-                    //p = MusGame::new_random(&mut b, config.tantos);
-                    //p.train(banco, &action_tree)
+                CfrMethod::ExternalSampling => {
+                    util[0] += cfr.external_cfr(game, &action_tree, 0);
+                    util[0] += cfr.external_cfr(game, &action_tree, 1);
                 }
-            };
+            }
 
             pb.inc(1);
             if i % 1000 == 0 {
@@ -92,15 +81,6 @@ impl Trainer {
         }
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
-        println!("Exportando estrategias...");
-        match self {
-            Trainer::LanceTrainer(lance) => banco
-                .export_estrategia(&config.output_path, *lance)
-                .expect("Error exportando estrategias."),
-            Trainer::MusTrainer => banco
-                .export(&config.output_path)
-                .expect("Error exportando estrategias."),
-        }
     }
 }
 
@@ -177,15 +157,24 @@ fn main() {
         iterations: args.iter,
         action_tree_path,
         method,
-        output_path,
         tantos,
     };
 
+    let banco = BancoEstrategias::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
             let mut p = LanceGame::new(lance, config.tantos);
-            trainer.train(&mut p, &config);
+            let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
+            trainer.train(&mut cfr, &mut p, &config);
+            println!("Exportando estrategias...");
+            banco
+                .export_estrategia(&output_path, lance)
+                .expect("Error exportando estrategias.");
         }
-        Trainer::MusTrainer => todo!(),
+        Trainer::MusTrainer => {
+            banco
+                .export(&output_path)
+                .expect("Error exportando estrategias.");
+        }
     }
 }
