@@ -1,12 +1,13 @@
 use std::{
     cell::{Ref, RefCell},
     fmt::Display,
-    fs::{self, File},
+    fs::{self},
+    path::{Path, PathBuf},
 };
 
 use crate::{
     mus::{Juego, Lance, Mano, Pares},
-    Cfr, Node,
+    Cfr,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -177,36 +178,26 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn export_estrategia(&self, path: &str, l: Lance) -> std::io::Result<()> {
-        fs::create_dir_all(path)?;
-        let file_name = format!("{path}/{:?}.csv", l);
-        let file = File::create(file_name)?;
-        let mut wtr = csv::WriterBuilder::new()
-            .flexible(true)
-            .quote_style(csv::QuoteStyle::Never)
-            .from_writer(&file);
-        let c = self.estrategia_lance(l);
-
-        let mut v: Vec<(String, Node)> = c
-            .nodes()
-            .iter()
-            .map(|(s, n)| (s.clone(), n.clone()))
-            .collect();
-        v.sort_by(|x, y| x.0.cmp(&y.0));
-        for (k, n) in v {
-            let mut probabilities = n
-                .get_average_strategy()
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<String>>();
-            probabilities.insert(0, k);
-            wtr.write_record(&probabilities)?;
-        }
-        wtr.flush()?;
+    pub fn load_estrategia(&self, path: &Path, l: Lance) -> std::io::Result<()> {
+        let mut file_name = PathBuf::from(path);
+        file_name.push(format!("{:?}", l));
+        file_name.set_extension("csv");
+        let cfr = Cfr::from_file(file_name.as_path())?;
+        self.estrategia_lance_mut(l).replace(cfr);
         Ok(())
     }
 
-    pub fn export(&self, path: &str) -> std::io::Result<()> {
+    pub fn export_estrategia(&self, path: &Path, l: Lance) -> std::io::Result<()> {
+        fs::create_dir_all(path)?;
+        let mut file_name = PathBuf::from(path);
+        file_name.push(format!("{:?}", l));
+        file_name.set_extension("csv");
+        let c = self.estrategia_lance(l);
+        c.to_file(file_name.as_path())?;
+        Ok(())
+    }
+
+    pub fn export(&self, path: &Path) -> std::io::Result<()> {
         self.export_estrategia(path, Lance::Grande)?;
         self.export_estrategia(path, Lance::Chica)?;
         self.export_estrategia(path, Lance::Punto)?;

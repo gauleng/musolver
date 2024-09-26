@@ -1,5 +1,9 @@
-use std::fs;
+use std::{
+    fs::{self},
+    path::{Path, PathBuf},
+};
 
+use chrono::Utc;
 use indicatif::{ProgressBar, ProgressStyle};
 use musolver::{
     mus::{Accion, Lance},
@@ -7,11 +11,16 @@ use musolver::{
     ActionNode, Cfr, Game,
 };
 
-fn load_action_tree(action_tree_path: &String) -> ActionNode<usize, Accion> {
+fn load_action_tree(action_tree_path: &Path) -> ActionNode<usize, Accion> {
     let contents = fs::read_to_string(action_tree_path).expect("Error reading the file.");
     let n: ActionNode<usize, Accion> = serde_json::from_str(&contents).unwrap();
 
     n
+}
+
+fn save_config(config: &TrainerConfig, path: &Path) {
+    let contents = serde_json::to_string(config).expect("Error converting to JSON");
+    fs::write(path, contents).expect("Error writing config");
 }
 
 enum Trainer {
@@ -19,7 +28,7 @@ enum Trainer {
     MusTrainer,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, Serialize, Deserialize)]
 enum CfrMethod {
     Cfr,
     CfrPlus,
@@ -27,10 +36,11 @@ enum CfrMethod {
     ExternalSampling,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 struct TrainerConfig {
     method: CfrMethod,
     iterations: usize,
-    action_tree_path: String,
+    action_tree: ActionNode<usize, Accion>,
     tantos: [u8; 2],
 }
 
@@ -48,7 +58,6 @@ impl Trainer {
                 .unwrap()
                 .progress_chars("##-"),
         );
-        let action_tree = load_action_tree(&config.action_tree_path);
         let mut util = [0., 0.];
         for i in 0..config.iterations {
             game.new_random();
@@ -56,12 +65,12 @@ impl Trainer {
                 CfrMethod::Cfr => todo!(),
                 CfrMethod::CfrPlus => todo!(),
                 CfrMethod::ChanceSampling => {
-                    util[0] += cfr.chance_cfr(game, &action_tree, 0, 1., 1.);
-                    util[1] += cfr.chance_cfr(game, &action_tree, 1, 1., 1.);
+                    util[0] += cfr.chance_cfr(game, &config.action_tree, 0, 1., 1.);
+                    util[1] += cfr.chance_cfr(game, &config.action_tree, 1, 1., 1.);
                 }
                 CfrMethod::ExternalSampling => {
-                    util[0] += cfr.external_cfr(game, &action_tree, 0);
-                    util[1] += cfr.external_cfr(game, &action_tree, 1);
+                    util[0] += cfr.external_cfr(game, &config.action_tree, 0);
+                    util[1] += cfr.external_cfr(game, &config.action_tree, 1);
                 }
             }
 
@@ -85,6 +94,7 @@ impl Trainer {
 }
 
 use clap::{Parser, ValueEnum};
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -144,11 +154,12 @@ fn main() {
     let trainer = args
         .lance
         .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
-    let action_tree_path = args
-        .action_tree
-        .unwrap_or_else(|| "config/action_tree.json".to_string());
+    let action_tree_path = PathBuf::from(
+        args.action_tree
+            .unwrap_or_else(|| "config/action_tree.json".to_string()),
+    );
     let method = args.method.unwrap_or(CfrMethod::ChanceSampling);
-    let output_path = args.output.unwrap_or_else(|| "output/".to_string());
+    let mut output_path = PathBuf::from(args.output.unwrap_or_else(|| "output/".to_string()));
 
     println!("Musolver 0.1");
     println!(
@@ -159,10 +170,10 @@ fn main() {
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
-
+    let action_tree = load_action_tree(action_tree_path.as_path());
     let config = TrainerConfig {
         iterations: args.iter,
-        action_tree_path,
+        action_tree,
         method,
         tantos,
     };
@@ -174,10 +185,17 @@ fn main() {
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut p, &config);
             drop(cfr);
+
             println!("Exportando estrategias...");
+            let curr_time = Utc::now();
+            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H:%M")));
             banco
                 .export_estrategia(&output_path, lance)
                 .expect("Error exportando estrategias.");
+            let mut config_path = output_path.clone();
+            config_path.push("config");
+            config_path.set_extension("json");
+            save_config(&config, config_path.as_path());
         }
         Trainer::MusTrainer => {
             banco

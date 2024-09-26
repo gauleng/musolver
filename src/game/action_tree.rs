@@ -8,7 +8,7 @@ pub enum ActionNode<P, A> {
 
 impl<P, A> ActionNode<P, A>
 where
-    A: Eq,
+    A: Eq + Copy,
 {
     pub fn new(p: P) -> Self {
         Self::NonTerminal(p, Vec::new())

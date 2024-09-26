@@ -1,6 +1,8 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use std::collections::HashMap;
+use std::fs::File;
+use std::path::Path;
 
 use crate::mus::Accion;
 
@@ -85,6 +87,54 @@ impl Cfr {
             history: Vec::new(),
             nodos: HashMap::new(),
         }
+    }
+
+    pub fn from_file(path: &Path) -> std::io::Result<Self> {
+        let file = File::open(path)?;
+        let mut rdr = csv::ReaderBuilder::new().flexible(true).from_reader(file);
+        let mut s = Self::new();
+        for result in rdr.records() {
+            let record = result?;
+            let info_set = format!(
+                "{},{},{},{}",
+                &record[0], &record[1], &record[2], &record[3]
+            );
+            let mut node = Node::new(record.len() - 4);
+            for i in 4..record.len() {
+                let num = record[i].parse::<f64>();
+                if let Ok(v) = num {
+                    node.strategy[i - 4] = v;
+                }
+            }
+            s.nodos.insert(info_set, node);
+        }
+        Ok(s)
+    }
+
+    pub fn to_file(&self, path: &Path) -> std::io::Result<()> {
+        let file = File::create(path)?;
+        let mut wtr = csv::WriterBuilder::new()
+            .flexible(true)
+            .quote_style(csv::QuoteStyle::Never)
+            .from_writer(&file);
+
+        let mut v: Vec<(String, Node)> = self
+            .nodes()
+            .iter()
+            .map(|(s, n)| (s.clone(), n.clone()))
+            .collect();
+        v.sort_by(|x, y| x.0.cmp(&y.0));
+        for (k, n) in v {
+            let mut probabilities = n
+                .get_average_strategy()
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>();
+            probabilities.insert(0, k);
+            wtr.write_record(&probabilities)?;
+        }
+        wtr.flush()?;
+        Ok(())
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node> {
