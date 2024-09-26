@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
-use crate::mus::Accion;
-
 use super::ActionNode;
 
 #[derive(Debug, Clone)]
@@ -76,12 +74,15 @@ pub trait Game<P, A> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Cfr {
-    history: Vec<Accion>,
+pub struct Cfr<A> {
+    history: Vec<A>,
     nodos: HashMap<String, Node>,
 }
 
-impl Cfr {
+impl<A> Cfr<A>
+where
+    A: Eq + Copy,
+{
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
@@ -147,16 +148,17 @@ impl Cfr {
         });
     }
 
-    pub fn chance_cfr<G>(
+    pub fn chance_cfr<G, P>(
         &mut self,
         game: &G,
-        n: &ActionNode<usize, Accion>,
-        player: usize,
+        n: &ActionNode<P, A>,
+        player: P,
         pi: f64,
         po: f64,
     ) -> f64
     where
-        G: Game<usize, Accion>,
+        G: Game<P, A>,
+        P: Eq + Copy,
     {
         match n {
             ActionNode::NonTerminal(p, children) => {
@@ -200,9 +202,10 @@ impl Cfr {
         }
     }
 
-    pub fn external_cfr<G>(&mut self, game: &G, n: &ActionNode<usize, Accion>, player: usize) -> f64
+    pub fn external_cfr<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
     where
-        G: Game<usize, Accion>,
+        G: Game<P, A>,
+        P: Eq + Copy,
     {
         match n {
             ActionNode::NonTerminal(p, children) => {
@@ -248,7 +251,10 @@ impl Cfr {
     }
 }
 
-impl Default for Cfr {
+impl<A> Default for Cfr<A>
+where
+    A: Eq + Copy,
+{
     fn default() -> Self {
         Self::new()
     }

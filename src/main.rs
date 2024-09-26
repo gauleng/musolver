@@ -45,7 +45,7 @@ struct TrainerConfig {
 }
 
 impl Trainer {
-    fn train<G>(&self, cfr: &mut Cfr, game: &mut G, config: &TrainerConfig)
+    fn train<G>(&self, cfr: &mut Cfr<Accion>, game: &mut G, config: &TrainerConfig)
     where
         G: Game<usize, Accion>,
     {
