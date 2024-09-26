@@ -16,13 +16,13 @@ pub struct LanceGame {
 }
 
 impl LanceGame {
-    pub fn new(lance: Lance, tantos: [u8; 2]) -> Self {
+    pub fn new(lance: Lance, tantos: [u8; 2], abstracto: bool) -> Self {
         let baraja = Baraja::baraja_mus();
         Self {
             lance,
             tantos,
             baraja,
-            abstracto: false,
+            abstracto,
             partida: None,
             info_set_prefix: None,
         }
@@ -49,7 +49,11 @@ impl Game<usize, Accion> for LanceGame {
             if let Some(p) = intento_partida {
                 let (tipo_estrategia, manos_normalizadas) =
                     TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
-                let m = manos_normalizadas.to_abstract_string_array(&self.lance);
+                let m = if self.abstracto {
+                    manos_normalizadas.to_abstract_string_array(&self.lance)
+                } else {
+                    manos_normalizadas.to_string_array()
+                };
                 self.info_set_prefix = Some([
                     tipo_estrategia.to_string() + "," + &m[0],
                     tipo_estrategia.to_string() + "," + &m[1],

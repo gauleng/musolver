@@ -102,17 +102,24 @@ struct Args {
     #[arg(short, long, value_parser = parse_tantos)]
     tantos: Option<[u8; 2]>,
 
-    /// Ruta al fichero con el árbol de acciones a considerar en el cálculo del equilibrio.
+    /// Ruta al fichero con el árbol de acciones a considerar en el cálculo del equilibrio. Por
+    /// defecto: config/action_tree.json
     #[arg(short, long)]
     action_tree: Option<String>,
 
-    /// Variante de CFR a utilizar.
+    /// Variante de CFR a utilizar. Por defecto: chance-sampling
     #[arg(short, long, value_enum)]
     method: Option<CfrMethod>,
 
-    /// Ruta donde se desean guardar las estrategias generadas.
+    /// Ruta donde se desean guardar las estrategias generadas. Por defecto: output/
     #[arg(short, long)]
     output: Option<String>,
+
+    /// Si se activa esta opción se calcula la estrategia para una versión simplificada del mus. En
+    /// grande y chica solo se tienen en cuenta las dos cartas más significativas. En pares, juego
+    /// y punto el valor de la jugada.
+    #[arg(long)]
+    abstract_game: bool,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -163,7 +170,7 @@ fn main() {
     let banco = BancoEstrategias::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
-            let mut p = LanceGame::new(lance, config.tantos);
+            let mut p = LanceGame::new(lance, config.tantos, args.abstract_game);
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut p, &config);
             println!("Exportando estrategias...");
