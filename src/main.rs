@@ -11,13 +11,6 @@ use musolver::{
     ActionNode, Cfr, Game,
 };
 
-fn load_action_tree(action_tree_path: &Path) -> ActionNode<usize, Accion> {
-    let contents = fs::read_to_string(action_tree_path).expect("Error reading the file.");
-    let n: ActionNode<usize, Accion> = serde_json::from_str(&contents).unwrap();
-
-    n
-}
-
 fn save_config(config: &TrainerConfig, path: &Path) {
     let contents = serde_json::to_string(config).expect("Error converting to JSON");
     fs::write(path, contents).expect("Error writing config");
@@ -170,7 +163,11 @@ fn main() {
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
-    let action_tree = load_action_tree(action_tree_path.as_path());
+    let action_tree: ActionNode<usize, Accion> =
+        match ActionNode::from_file(action_tree_path.as_path()) {
+            Ok(v) => v,
+            Err(_) => todo!(),
+        };
     let config = TrainerConfig {
         iterations: args.iter,
         action_tree,

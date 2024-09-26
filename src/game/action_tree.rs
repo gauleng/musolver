@@ -1,3 +1,5 @@
+use std::{fs, path::Path};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -8,7 +10,8 @@ pub enum ActionNode<P, A> {
 
 impl<P, A> ActionNode<P, A>
 where
-    A: Eq + Copy,
+    P: for<'a> Deserialize<'a>,
+    A: Eq + Copy + for<'a> Deserialize<'a>,
 {
     pub fn new(p: P) -> Self {
         Self::NonTerminal(p, Vec::new())
@@ -37,5 +40,12 @@ where
                 children.iter().find(|&c| c.0 == action).map(|c| &c.1)
             }
         }
+    }
+
+    pub fn from_file(path: &Path) -> std::io::Result<Self> {
+        let contents = fs::read_to_string(path)?;
+        let n: ActionNode<P, A> = serde_json::from_str(&contents).unwrap();
+
+        Ok(n)
     }
 }
