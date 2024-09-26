@@ -2,6 +2,8 @@ use crate::mus::Carta;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+use super::Mano;
+
 #[derive(Clone, Debug)]
 pub struct Baraja(Vec<Carta>);
 
@@ -26,6 +28,17 @@ impl Baraja {
         }
         b.barajar();
         b
+    }
+
+    pub fn repartir_manos(&self) -> [Mano; 4] {
+        let mut c = self.primeras_n_cartas(16).iter();
+        core::array::from_fn(|_| {
+            let mut m = Vec::<Carta>::with_capacity(4);
+            for _ in 0..4 {
+                m.push(*c.next().unwrap());
+            }
+            Mano::new(m)
+        })
     }
 
     pub fn insertar(&mut self, c: Carta) {
