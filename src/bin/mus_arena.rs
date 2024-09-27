@@ -1,3 +1,4 @@
+use core::panic;
 use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use musolver::{
@@ -286,12 +287,12 @@ fn main() {
     let action_tree_path = PathBuf::from("config/action_tree.json");
     let action_tree_cli = match ActionNode::from_file(action_tree_path.as_path()) {
         Ok(v) => v,
-        _ => todo!(),
+        Err(e) => panic!("Error  cargando el árbol de acciones: {e}"),
     };
 
     let action_tree_musolver = match ActionNode::from_file(action_tree_path.as_path()) {
         Ok(v) => v,
-        _ => todo!(),
+        Err(e) => panic!("Error  cargando el árbol de acciones: {e}"),
     };
 
     let estrategia_path = PathBuf::from("output/2024-09-26 21:47/");
