@@ -13,14 +13,42 @@
                           1,
                           [
                             ["Paso","Terminal"],
-                            ["Quiero","Terminal"]
+                            ["Quiero","Terminal"],
+                            ["Ordago",{"NonTerminal": [
+                                  0,
+                                  [
+                                    ["Paso","Terminal"],
+                                    ["Quiero","Terminal"]
+                                  ]
+                            ]}]
                           ]
                     ]}],
                     [{"Envido": 5},{"NonTerminal": [
                           1,
                           [
                             ["Paso","Terminal"],
-                            ["Quiero","Terminal"]
+                            ["Quiero","Terminal"],
+                            ["Ordago",{"NonTerminal": [
+                                  0,
+                                  [
+                                    ["Paso","Terminal"],
+                                    ["Quiero","Terminal"]
+                                  ]
+                            ]}]
+                          ]
+                    ]}],
+                    [{"Envido": 10},{"NonTerminal": [
+                          1,
+                          [
+                            ["Paso","Terminal"],
+                            ["Quiero","Terminal"],
+                            ["Ordago",{"NonTerminal": [
+                                  0,
+                                  [
+                                    ["Paso","Terminal"],
+                                    ["Quiero","Terminal"]
+                                  ]
+                            ]}]
                           ]
                     ]}],
                     ["Ordago",{"NonTerminal": [
@@ -33,6 +61,20 @@
                   ]
             ]}],
             [{"Envido": 5},{"NonTerminal": [
+                  0,
+                  [
+                    ["Paso","Terminal"],
+                    ["Quiero","Terminal"],
+                    ["Ordago",{"NonTerminal": [
+                          1,
+                          [
+                            ["Paso","Terminal"],
+                            ["Quiero","Terminal"]
+                          ]
+                    ]}]
+                  ]
+            ]}],
+            [{"Envido": 10},{"NonTerminal": [
                   0,
                   [
                     ["Paso","Terminal"],
@@ -64,14 +106,43 @@
                     0,
                     [
                       ["Paso","Terminal"],
-                      ["Quiero","Terminal"]
+                      ["Quiero","Terminal"],
+                      ["Ordago",{"NonTerminal": [
+                            1,
+                            [
+                              ["Paso", "Terminal"],
+                              ["Quiero","Terminal"]
+                            ]
+                      ]}]
                     ]
               ]}],
               [{"Envido": 5},{ "NonTerminal": [
                     0,
                     [
                       ["Paso","Terminal"],
-                      ["Quiero","Terminal"]
+                      ["Quiero","Terminal"],
+                      ["Ordago",{"NonTerminal": [
+                            1,
+                            [
+                              ["Paso", "Terminal"],
+                              ["Quiero","Terminal"]
+                            ]
+                      ]}]
+                    ]
+                  ]}
+              ],
+              [{"Envido": 10},{ "NonTerminal": [
+                    0,
+                    [
+                      ["Paso","Terminal"],
+                      ["Quiero","Terminal"],
+                      ["Ordago",{"NonTerminal": [
+                            1,
+                            [
+                              ["Paso", "Terminal"],
+                              ["Quiero","Terminal"]
+                            ]
+                      ]}]
                     ]
                   ]}
               ],
@@ -85,6 +156,20 @@
             ]
       ]}],
       [{ "Envido": 5 }, {"NonTerminal": [
+            1,
+            [
+              ["Paso","Terminal"],
+              ["Quiero","Terminal"],
+              ["Ordago", {"NonTerminal": [
+                    0,
+                    [
+                      ["Paso", "Terminal"],
+                      ["Quiero", "Terminal"]
+                    ]
+              ]}]
+            ]
+      ]}],
+      [{ "Envido": 10 }, {"NonTerminal": [
             1,
             [
               ["Paso","Terminal"],
