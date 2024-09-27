@@ -42,6 +42,17 @@ where
         }
     }
 
+    pub fn search_action_node(&self, history: &[A]) -> &ActionNode<P, A> {
+        let mut current_node = self;
+        history.iter().for_each(|a| {
+            current_node = match current_node.next_node(*a) {
+                Some(n) => n,
+                None => current_node,
+            };
+        });
+        current_node
+    }
+
     pub fn from_file(path: &Path) -> std::io::Result<Self> {
         let contents = fs::read_to_string(path)?;
         let n: ActionNode<P, A> = serde_json::from_str(&contents).unwrap();
