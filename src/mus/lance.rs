@@ -277,7 +277,7 @@ impl EstadoLance {
             bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
             activos: [true, true],
             turno: Some(turno_inicial),
-            ultimo_envite: 0,
+            ultimo_envite: turno_inicial,
             apuesta_minima,
             apuesta_maxima,
             ganador: None,
