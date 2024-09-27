@@ -1,4 +1,3 @@
-use core::panic;
 use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use musolver::{
@@ -291,20 +290,9 @@ impl MusArena {
 }
 
 fn main() {
-    let action_tree_path = PathBuf::from("config/action_tree.json");
-    let action_tree_cli = match ActionNode::from_file(action_tree_path.as_path()) {
-        Ok(v) => v,
-        Err(e) => panic!("Error  cargando el árbol de acciones: {e}"),
-    };
-
-    let action_tree_musolver = match ActionNode::from_file(action_tree_path.as_path()) {
-        Ok(v) => v,
-        Err(e) => panic!("Error  cargando el árbol de acciones: {e}"),
-    };
-
-    let estrategia_path = PathBuf::from("output/2024-09-26 21:47/");
+    let estrategia_path = PathBuf::from("output/2024-09-27 22:56/");
     let banco = BancoEstrategias::new();
-    banco
+    let trainer_config = banco
         .load_estrategia(estrategia_path.as_path(), Lance::Juego)
         .expect("Error cargando estrategia");
 
@@ -313,9 +301,15 @@ fn main() {
     let kibitzer_cli = KibitzerCli::new(1);
     let action_recorder = ActionRecorder::new();
 
-    let agente_cli = AgenteCli::new(action_tree_cli, action_recorder.history.clone());
-    let agente_musolver =
-        AgenteMusolver::new(banco, action_tree_musolver, action_recorder.history.clone());
+    let agente_cli = AgenteCli::new(
+        trainer_config.action_tree.clone(),
+        action_recorder.history.clone(),
+    );
+    let agente_musolver = AgenteMusolver::new(
+        banco,
+        trainer_config.action_tree.clone(),
+        action_recorder.history.clone(),
+    );
 
     arena.kibitzers.push(Box::new(action_recorder));
     arena.kibitzers.push(Box::new(kibitzer_cli));

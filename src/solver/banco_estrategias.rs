@@ -10,6 +10,8 @@ use crate::{
     Cfr,
 };
 
+use super::TrainerConfig;
+
 #[derive(Debug, Clone, Copy)]
 pub enum TipoEstrategia {
     CuatroManos = 0,
@@ -139,6 +141,12 @@ impl<'a> TipoEstrategia {
         }
     }
 }
+
+pub struct GameConfig {
+    pub tantos: [u8; 2],
+    pub abstract_game: bool,
+}
+
 #[derive(Debug)]
 pub struct BancoEstrategias {
     grande: RefCell<Cfr<Accion>>,
@@ -178,31 +186,45 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn load_estrategia(&self, path: &Path, l: Lance) -> std::io::Result<()> {
-        let mut file_name = PathBuf::from(path);
-        file_name.push(format!("{:?}", l));
-        file_name.set_extension("csv");
-        let cfr = Cfr::from_file(file_name.as_path())?;
+    pub fn load_estrategia(&self, path: &Path, l: Lance) -> std::io::Result<TrainerConfig> {
+        let mut estrategia_path = PathBuf::from(path);
+        estrategia_path.push(format!("{:?}", l));
+        estrategia_path.set_extension("csv");
+        let cfr = Cfr::from_file(estrategia_path.as_path())?;
         self.estrategia_lance_mut(l).replace(cfr);
-        Ok(())
+
+        let mut config_path = PathBuf::from(path);
+        config_path.push("config");
+        config_path.set_extension("json");
+        TrainerConfig::from_file(config_path.as_path())
     }
 
-    pub fn export_estrategia(&self, path: &Path, l: Lance) -> std::io::Result<()> {
+    pub fn export_estrategia(
+        &self,
+        path: &Path,
+        l: Lance,
+        trainer_config: &TrainerConfig,
+    ) -> std::io::Result<()> {
         fs::create_dir_all(path)?;
-        let mut file_name = PathBuf::from(path);
-        file_name.push(format!("{:?}", l));
-        file_name.set_extension("csv");
+        let mut estrategia_path = PathBuf::from(path);
+        estrategia_path.push(format!("{:?}", l));
+        estrategia_path.set_extension("csv");
         let c = self.estrategia_lance(l);
-        c.to_file(file_name.as_path())?;
+        c.to_file(estrategia_path.as_path())?;
+
+        let mut config_path = PathBuf::from(path);
+        config_path.push("config");
+        config_path.set_extension("json");
+        trainer_config.to_file(config_path.as_path());
         Ok(())
     }
 
-    pub fn export(&self, path: &Path) -> std::io::Result<()> {
-        self.export_estrategia(path, Lance::Grande)?;
-        self.export_estrategia(path, Lance::Chica)?;
-        self.export_estrategia(path, Lance::Punto)?;
-        self.export_estrategia(path, Lance::Pares)?;
-        self.export_estrategia(path, Lance::Juego)?;
+    pub fn export(&self, path: &Path, trainer_config: &TrainerConfig) -> std::io::Result<()> {
+        self.export_estrategia(path, Lance::Grande, trainer_config)?;
+        self.export_estrategia(path, Lance::Chica, trainer_config)?;
+        self.export_estrategia(path, Lance::Punto, trainer_config)?;
+        self.export_estrategia(path, Lance::Pares, trainer_config)?;
+        self.export_estrategia(path, Lance::Juego, trainer_config)?;
         Ok(())
     }
 }
