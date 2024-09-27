@@ -98,7 +98,7 @@ impl Kibitzer for ActionRecorder {
 
 struct KibitzerCli {
     manos: Vec<Mano>,
-    marcador: [u8; 2],
+    marcador: [usize; 2],
     cli_player: usize,
     pareja_mano: usize,
 }
@@ -119,7 +119,6 @@ impl Kibitzer for KibitzerCli {
         match &action {
             MusAction::GameStart(p) => {
                 self.pareja_mano = *p;
-                println!("Pareja mano: {p}");
                 self.manos.clear();
                 println!();
                 println!();
@@ -138,6 +137,14 @@ impl Kibitzer for KibitzerCli {
                 } else {
                     false
                 };
+                let valor = m
+                    .juego()
+                    .map(|j| match j {
+                        musolver::mus::Juego::Resto(v) => format!("({v})"),
+                        musolver::mus::Juego::Treintaydos => "(32)".to_string(),
+                        musolver::mus::Juego::Treintayuna => "(31)".to_string(),
+                    })
+                    .unwrap_or_default();
                 let suffix = if hay_jugada {
                     "*".to_owned()
                 } else {
@@ -146,7 +153,7 @@ impl Kibitzer for KibitzerCli {
                 if self.pareja_mano == self.cli_player && p % 2 == 0
                     || self.pareja_mano != self.cli_player && p % 2 == 1
                 {
-                    println!("Mano jugador {p}: {m} {suffix}");
+                    println!("Mano jugador {p}: {m} {valor} {suffix}");
                 } else {
                     println!("Mano jugador {p}: XXXX {suffix}");
                 }
@@ -162,7 +169,7 @@ impl Kibitzer for KibitzerCli {
                     self.manos[pareja],
                     self.manos[pareja + 2]
                 );
-                self.marcador[*p] += t;
+                self.marcador[*p] += *t as usize;
             }
             MusAction::LanceStart(lance) => println!("Lance: {:?}", lance),
         }
