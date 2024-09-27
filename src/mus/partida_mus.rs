@@ -239,22 +239,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_turno() {
-        let manos = [
-            Mano::try_from("7111").unwrap(),
-            Mano::try_from("RRRS").unwrap(),
-            Mano::try_from("RCS5").unwrap(),
-            Mano::try_from("RS51").unwrap(),
-        ];
-        let mut partida = PartidaMus::new_partida_lance(Lance::Juego, manos, [0, 0]).unwrap();
-        assert_eq!(partida.turno(), Some(1));
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.turno(), Some(0));
-        let _ = partida.actuar(Accion::Paso);
-        assert_eq!(partida.turno(), None);
-    }
-
-    #[test]
     fn test_tanteo() {
         let manos = [
             Mano::try_from("1234").unwrap(),

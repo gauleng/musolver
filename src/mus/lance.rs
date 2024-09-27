@@ -396,6 +396,11 @@ mod tests {
         assert_eq!(partida.turno(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+
+        let mut partida = EstadoLance::new(0, 40, 1);
+        assert_eq!(partida.turno(), Some(1));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(0));
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
 
     #[test]
