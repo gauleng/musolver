@@ -53,6 +53,13 @@ where
         current_node
     }
 
+    pub fn children(&self) -> Option<&Vec<(A, ActionNode<P, A>)>> {
+        match self {
+            ActionNode::Terminal => None,
+            ActionNode::NonTerminal(_, vec) => Some(vec),
+        }
+    }
+
     pub fn from_file(path: &Path) -> std::io::Result<Self> {
         let contents = fs::read_to_string(path)?;
         let n: ActionNode<P, A> = serde_json::from_str(&contents).unwrap();

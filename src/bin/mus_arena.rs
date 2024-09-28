@@ -218,19 +218,26 @@ impl Agent for AgenteMusolver {
             manos_normalizadas_str[turno],
             h.join("")
         );
+        let action_node = self.action_tree.search_action_node(&self.history.borrow());
         let cfr = self.banco.estrategia_lance(lance);
         let strategy = match cfr.nodes().get(&info_set) {
             None => {
                 println!("ERROR: InfoSet no encontrado: {info_set}");
-                Node::new(4).strategy().clone()
+                let num_children = match action_node.children() {
+                    None => {
+                        println!("ERROR: La lista de acciones no está en el árbol.");
+                        2
+                    }
+                    Some(c) => c.len(),
+                };
+                Node::new(num_children).strategy().clone()
             }
             Some(n) => n.strategy().clone(),
         };
         // println!("{info_set} {:?}", n.strategy());
         let dist = WeightedIndex::new(strategy).unwrap();
         let action_index = dist.sample(&mut rand::thread_rng());
-        let node = self.action_tree.search_action_node(&self.history.borrow());
-        if let ActionNode::NonTerminal(_, children) = node {
+        if let ActionNode::NonTerminal(_, children) = action_node {
             children[action_index].0
         } else {
             Accion::Paso
