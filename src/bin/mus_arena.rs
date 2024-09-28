@@ -172,7 +172,7 @@ impl Kibitzer for KibitzerCli {
                         println!(
                             "Manos del rival: {} {}",
                             self.manos[1 - pareja],
-                            self.manos[1 + pareja]
+                            self.manos[3 - pareja]
                         );
                     } else {
                         println!(
