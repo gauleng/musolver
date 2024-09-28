@@ -14,7 +14,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(num_actions: usize) -> Self {
+    pub fn new(num_actions: usize) -> Self {
         Self {
             regret_sum: vec![0.; num_actions],
             strategy: vec![1. / num_actions as f64; num_actions],

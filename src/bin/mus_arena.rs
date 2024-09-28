@@ -3,7 +3,7 @@ use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
     solver::{BancoEstrategias, TipoEstrategia},
-    ActionNode,
+    ActionNode, Node,
 };
 use rand::{distributions::WeightedIndex, prelude::Distribution};
 
@@ -219,13 +219,19 @@ impl Agent for AgenteMusolver {
             h.join("")
         );
         let cfr = self.banco.estrategia_lance(lance);
-        let n = cfr.nodes().get(&info_set).unwrap();
+        let strategy = match cfr.nodes().get(&info_set) {
+            None => {
+                println!("ERROR: InfoSet no encontrado: {info_set}");
+                Node::new(4).strategy().clone()
+            }
+            Some(n) => n.strategy().clone(),
+        };
         // println!("{info_set} {:?}", n.strategy());
-        let dist = WeightedIndex::new(n.strategy()).unwrap();
-        let a = dist.sample(&mut rand::thread_rng());
+        let dist = WeightedIndex::new(strategy).unwrap();
+        let action_index = dist.sample(&mut rand::thread_rng());
         let node = self.action_tree.search_action_node(&self.history.borrow());
         if let ActionNode::NonTerminal(_, children) = node {
-            children[a].0
+            children[action_index].0
         } else {
             Accion::Paso
         }
