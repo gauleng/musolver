@@ -2,10 +2,9 @@ use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
-    solver::{BancoEstrategias, LanceGame, TipoEstrategia},
+    solver::{BancoEstrategias, LanceGame},
     ActionNode, Game, Node,
 };
-use rand::{distributions::WeightedIndex, prelude::Distribution};
 
 trait Agent {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion;
@@ -121,7 +120,7 @@ impl Kibitzer for KibitzerCli {
                 self.manos.clear();
                 println!();
                 println!();
-                println!("Game starts!");
+                println!("🥊🥊🥊 Game starts! Fight! 🥊🥊🥊");
                 println!("Marcador: {}-{}", self.marcador[0], self.marcador[1]);
                 println!();
                 println!();
@@ -136,7 +135,7 @@ impl Kibitzer for KibitzerCli {
                 } else {
                     false
                 };
-                let valor = m
+                let ayuda_valor = m
                     .juego()
                     .map(|j| match j {
                         musolver::mus::Juego::Resto(v) => format!("({v})"),
@@ -152,22 +151,37 @@ impl Kibitzer for KibitzerCli {
                 if self.pareja_mano == self.cli_player && p % 2 == 0
                     || self.pareja_mano != self.cli_player && p % 2 == 1
                 {
-                    println!("Mano jugador {p}: {m} {valor} {suffix}");
+                    println!("Mano jugador {p}: {m} {ayuda_valor} {suffix}");
                 } else {
                     println!("Mano jugador {p}: XXXX {suffix}");
                 }
                 self.manos.push(m.clone());
             }
             MusAction::PlayerAction(p, accion) => {
-                println!("Pareja {p} ha actuado: {:?}", accion);
+                if *p != self.cli_player {
+                    println!("❗❗❗Pareja {p} ha actuado: {:?}", accion);
+                }
             }
             MusAction::Payoff(p, t) => {
-                let pareja = if *p == self.pareja_mano { 0 } else { 1 };
-                println!(
-                    "Pareja {p} ha ganado {t} tantos con manos: {} {}",
-                    self.manos[pareja],
-                    self.manos[pareja + 2]
-                );
+                if *t > 0 {
+                    let pareja = if *p == self.pareja_mano { 0 } else { 1 };
+                    if *p == self.cli_player {
+                        println!();
+                        println!("¡¡¡¡HAS GANADO {t} tantos!!!! 🚀🚀🚀");
+                        println!();
+                        println!(
+                            "Manos del rival: {} {}",
+                            self.manos[1 - pareja],
+                            self.manos[1 + pareja]
+                        );
+                    } else {
+                        println!(
+                            "Pareja {p} ha ganado {t} tantos con manos: {} {}",
+                            self.manos[pareja],
+                            self.manos[pareja + 2]
+                        );
+                    }
+                }
                 self.marcador[*p] += *t as usize;
             }
             MusAction::LanceStart(lance) => println!("Lance: {:?}", lance),
@@ -197,37 +211,38 @@ impl AgenteMusolver {
 
 impl Agent for AgenteMusolver {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let lance = partida_mus.lance_actual().unwrap();
-        let turno_inicial = lance.turno_inicial(partida_mus.manos());
-        let mut turno = partida_mus.turno().unwrap();
-        if turno_inicial == 1 {
-            turno = 1 - turno;
-        }
-        let lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
-        let info_set = lance_game.info_set_str(turno, &self.history.borrow());
-        let action_node = self.action_tree.search_action_node(&self.history.borrow());
-        let cfr = self.banco.estrategia_lance(lance);
-        let strategy = match cfr.nodes().get(&info_set) {
+        let next_actions = self
+            .action_tree
+            .search_action_node(&self.history.borrow())
+            .children();
+        match next_actions {
             None => {
-                println!("ERROR: InfoSet no encontrado: {info_set}");
-                let num_children = match action_node.children() {
-                    None => {
-                        println!("ERROR: La lista de acciones no está en el árbol.");
-                        2
-                    }
-                    Some(c) => c.len(),
-                };
-                Node::new(num_children).strategy().clone()
+                println!(
+                    "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
+                    self.history.borrow()
+                );
+                Accion::Paso
             }
-            Some(n) => n.strategy().clone(),
-        };
-        // println!("{info_set} {:?}", n.strategy());
-        let dist = WeightedIndex::new(strategy).unwrap();
-        let action_index = dist.sample(&mut rand::thread_rng());
-        if let ActionNode::NonTerminal(_, children) = action_node {
-            children[action_index].0
-        } else {
-            Accion::Paso
+            Some(c) => {
+                let lance = partida_mus.lance_actual().unwrap();
+                let turno_inicial = lance.turno_inicial(partida_mus.manos());
+                let mut turno = partida_mus.turno().unwrap();
+                if turno_inicial == 1 {
+                    turno = 1 - turno;
+                }
+                let info_set = LanceGame::from_partida_mus(partida_mus, true)
+                    .unwrap()
+                    .info_set_str(turno, &self.history.borrow());
+                let cfr = self.banco.estrategia_lance(lance);
+                let node = match cfr.nodes().get(&info_set) {
+                    None => {
+                        println!("ERROR: InfoSet no encontrado: {info_set}");
+                        Node::new(c.len())
+                    }
+                    Some(n) => n.clone(),
+                };
+                c[node.get_random_action()].0
+            }
         }
     }
 }

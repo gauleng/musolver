@@ -59,10 +59,8 @@ impl Node {
         }
     }
 
-    pub fn get_random_action(&mut self) -> usize {
-        let s = self.update_strategy();
-        let dist = WeightedIndex::new(s).unwrap();
-        self.update_strategy_sum(1.);
+    pub fn get_random_action(&self) -> usize {
+        let dist = WeightedIndex::new(&self.strategy).unwrap();
         dist.sample(&mut rand::thread_rng())
     }
 }
@@ -233,11 +231,11 @@ where
                         .for_each(|(r, u)| *r += u - node_util);
                     node_util
                 } else {
-                    let s = self
-                        .nodos
-                        .get_mut(&info_set_str)
-                        .unwrap()
-                        .get_random_action();
+                    let node = self.nodos.get_mut(&info_set_str).unwrap();
+
+                    node.update_strategy();
+                    node.update_strategy_sum(1.);
+                    let s = node.get_random_action();
                     let accion = children.get(s).unwrap();
 
                     self.history.push(accion.0);
