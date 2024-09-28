@@ -28,6 +28,32 @@ impl LanceGame {
         }
     }
 
+    pub fn from_partida_mus(partida_mus: &PartidaMus, abstracto: bool) -> Option<Self> {
+        Some(Self {
+            lance: partida_mus.lance_actual()?,
+            tantos: *partida_mus.tantos(),
+            baraja: Baraja::baraja_mus(),
+            abstracto,
+            partida: Some(partida_mus.clone()),
+            info_set_prefix: LanceGame::prefix(partida_mus, abstracto),
+        })
+    }
+
+    fn prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 2]> {
+        let lance = partida_mus.lance_actual()?;
+        let (tipo_estrategia, manos_normalizadas) =
+            TipoEstrategia::normalizar_mano(partida_mus.manos(), &lance);
+        let m = if abstracto {
+            manos_normalizadas.to_abstract_string_array(&lance)
+        } else {
+            manos_normalizadas.to_string_array()
+        };
+        Some([
+            tipo_estrategia.to_string() + "," + &m[0],
+            tipo_estrategia.to_string() + "," + &m[1],
+        ])
+    }
+
     fn repartir_manos(b: &Baraja) -> [Mano; 4] {
         let mut c = b.primeras_n_cartas(16).iter();
         core::array::from_fn(|_| {

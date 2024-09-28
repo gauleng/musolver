@@ -2,8 +2,8 @@ use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
-    solver::{BancoEstrategias, TipoEstrategia},
-    ActionNode, Node,
+    solver::{BancoEstrategias, LanceGame, TipoEstrategia},
+    ActionNode, Game, Node,
 };
 use rand::{distributions::WeightedIndex, prelude::Distribution};
 
@@ -203,21 +203,8 @@ impl Agent for AgenteMusolver {
         if turno_inicial == 1 {
             turno = 1 - turno;
         }
-        let (tipo_estrategia, manos_normalizadas) =
-            TipoEstrategia::normalizar_mano(partida_mus.manos(), &lance);
-        let manos_normalizadas_str = manos_normalizadas.to_abstract_string_array(&lance);
-        let h: Vec<String> = self
-            .history
-            .borrow()
-            .iter()
-            .map(|a| a.to_string())
-            .collect();
-        let info_set = format!(
-            "{},{},{}",
-            tipo_estrategia,
-            manos_normalizadas_str[turno],
-            h.join("")
-        );
+        let lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
+        let info_set = lance_game.info_set_str(turno, &self.history.borrow());
         let action_node = self.action_tree.search_action_node(&self.history.borrow());
         let cfr = self.banco.estrategia_lance(lance);
         let strategy = match cfr.nodes().get(&info_set) {
