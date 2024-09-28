@@ -1,11 +1,12 @@
 use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
+use clap::{command, Parser};
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
     solver::{LanceGame, Strategy},
     ActionNode, Game, Node,
 };
-use rand::{distributions::WeightedIndex, prelude::Distribution};
+use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 trait Agent {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion;
@@ -190,6 +191,43 @@ impl Kibitzer for KibitzerCli {
     }
 }
 
+struct AgenteAleatorio {
+    history: Rc<RefCell<Vec<Accion>>>,
+    action_tree: ActionNode<usize, Accion>,
+}
+
+impl AgenteAleatorio {
+    pub fn new(action_tree: ActionNode<usize, Accion>, history: Rc<RefCell<Vec<Accion>>>) -> Self {
+        Self {
+            history,
+            action_tree,
+        }
+    }
+}
+
+impl Agent for AgenteAleatorio {
+    fn actuar(&mut self, _partida_mus: &PartidaMus) -> Accion {
+        let next_actions = self
+            .action_tree
+            .search_action_node(&self.history.borrow())
+            .children();
+        match next_actions {
+            None => {
+                println!(
+                    "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
+                    self.history.borrow()
+                );
+                Accion::Paso
+            }
+            Some(c) => {
+                let mut rng = rand::thread_rng();
+                let idx = rng.gen_range(0..c.len());
+                c[idx].0
+            }
+        }
+    }
+}
+
 struct AgenteMusolver {
     strategy: Strategy,
     history: Rc<RefCell<Vec<Accion>>>,
@@ -309,9 +347,18 @@ impl MusArena {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Ruta al fihero JSON que contiene la estrategia a utilizar.
+    #[arg(short, long)]
+    strategy_path: String,
+}
+
 fn main() {
-    let mut estrategia_path = PathBuf::from("output/2024-09-28 20:52");
-    estrategia_path.push("Juego.json");
+    let args = Args::parse();
+
+    let estrategia_path = PathBuf::from(args.strategy_path);
     let strategy =
         Strategy::from_file(estrategia_path.as_path()).expect("Error cargando estrategia");
 
@@ -320,6 +367,10 @@ fn main() {
     let kibitzer_cli = KibitzerCli::new(1);
     let action_recorder = ActionRecorder::new();
 
+    let _agente_aleatorio = AgenteAleatorio::new(
+        strategy.strategy_config.trainer_config.action_tree.clone(),
+        action_recorder.history.clone(),
+    );
     let agente_cli = AgenteCli::new(
         strategy.strategy_config.trainer_config.action_tree.clone(),
         action_recorder.history.clone(),
@@ -330,6 +381,7 @@ fn main() {
     arena.kibitzers.push(Box::new(kibitzer_cli));
 
     arena.agents.push(Box::new(agente_musolver));
+    // arena.agents.push(Box::new(agente_aleatorio));
     arena.agents.push(Box::new(agente_cli));
 
     loop {
