@@ -22,7 +22,7 @@ pub enum CfrMethod {
     ExternalSampling,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainerConfig {
     pub method: CfrMethod,
     pub iterations: usize,

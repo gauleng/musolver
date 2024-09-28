@@ -1,4 +1,6 @@
 use clap::ValueEnum;
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::MusError;
 use crate::mus::Accion;
@@ -47,7 +49,7 @@ impl Display for Pares {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum)]
+#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 pub enum Lance {
     Grande,
     Chica,

@@ -2,9 +2,10 @@ use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
-    solver::{BancoEstrategias, LanceGame},
+    solver::{LanceGame, Strategy},
     ActionNode, Game, Node,
 };
+use rand::{distributions::WeightedIndex, prelude::Distribution};
 
 trait Agent {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion;
@@ -190,22 +191,13 @@ impl Kibitzer for KibitzerCli {
 }
 
 struct AgenteMusolver {
-    banco: BancoEstrategias,
-    action_tree: ActionNode<usize, Accion>,
+    strategy: Strategy,
     history: Rc<RefCell<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
-    pub fn new(
-        banco: BancoEstrategias,
-        action_tree: ActionNode<usize, Accion>,
-        history: Rc<RefCell<Vec<Accion>>>,
-    ) -> Self {
-        Self {
-            action_tree,
-            banco,
-            history,
-        }
+    pub fn new(strategy: Strategy, history: Rc<RefCell<Vec<Accion>>>) -> Self {
+        Self { strategy, history }
     }
 
     fn accion_aleatoria(&mut self, partida_mus: &PartidaMus, acciones: Vec<Accion>) -> Accion {
@@ -215,24 +207,32 @@ impl AgenteMusolver {
         if turno_inicial == 1 {
             turno = 1 - turno;
         }
-        let info_set = LanceGame::from_partida_mus(partida_mus, true)
-            .unwrap()
-            .info_set_str(turno, &self.history.borrow());
-        let cfr = self.banco.estrategia_lance(lance);
-        let node = match cfr.nodes().get(&info_set) {
+        let info_set = LanceGame::from_partida_mus(
+            partida_mus,
+            self.strategy.strategy_config.game_config.abstract_game,
+        )
+        .unwrap()
+        .info_set_str(turno, &self.history.borrow());
+        let probabilities = match self.strategy.nodes.get(&info_set) {
             None => {
                 println!("ERROR: InfoSet no encontrado: {info_set}");
-                &Node::new(acciones.len())
+                &Node::new(acciones.len()).strategy().clone()
             }
             Some(n) => n,
         };
-        acciones[node.get_random_action()]
+
+        let dist = WeightedIndex::new(probabilities).unwrap();
+        let idx = dist.sample(&mut rand::thread_rng());
+        acciones[idx]
     }
 }
 
 impl Agent for AgenteMusolver {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
         let next_actions = self
+            .strategy
+            .strategy_config
+            .trainer_config
             .action_tree
             .search_action_node(&self.history.borrow())
             .children();
@@ -310,11 +310,10 @@ impl MusArena {
 }
 
 fn main() {
-    let estrategia_path = PathBuf::from("output/2024-09-27 22:56/");
-    let banco = BancoEstrategias::new();
-    let trainer_config = banco
-        .load_estrategia(estrategia_path.as_path(), Lance::Juego)
-        .expect("Error cargando estrategia");
+    let mut estrategia_path = PathBuf::from("output/2024-09-28 20:52");
+    estrategia_path.push("Juego.json");
+    let strategy =
+        Strategy::from_file(estrategia_path.as_path()).expect("Error cargando estrategia");
 
     let mut arena = MusArena::new();
 
@@ -322,14 +321,10 @@ fn main() {
     let action_recorder = ActionRecorder::new();
 
     let agente_cli = AgenteCli::new(
-        trainer_config.action_tree.clone(),
+        strategy.strategy_config.trainer_config.action_tree.clone(),
         action_recorder.history.clone(),
     );
-    let agente_musolver = AgenteMusolver::new(
-        banco,
-        trainer_config.action_tree.clone(),
-        action_recorder.history.clone(),
-    );
+    let agente_musolver = AgenteMusolver::new(strategy, action_recorder.history.clone());
 
     arena.kibitzers.push(Box::new(action_recorder));
     arena.kibitzers.push(Box::new(kibitzer_cli));

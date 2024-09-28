@@ -95,13 +95,13 @@ fn main() {
     };
     let game_config = GameConfig {
         abstract_game: args.abstract_game,
-        tantos,
+        lance: args.lance,
     };
 
     let banco = BancoEstrategias::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
-            let mut p = LanceGame::new(lance, game_config.tantos, game_config.abstract_game);
+            let mut p = LanceGame::new(lance, tantos, game_config.abstract_game);
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut p, &trainer_config);
             drop(cfr);
@@ -110,12 +110,12 @@ fn main() {
             let curr_time = Utc::now();
             output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H:%M")));
             banco
-                .export_estrategia(&output_path, lance, &trainer_config)
+                .export_estrategia(&output_path, lance, &trainer_config, &game_config)
                 .expect("Error exportando estrategias.");
         }
         Trainer::MusTrainer => {
             banco
-                .export(&output_path, &trainer_config)
+                .export(&output_path, &trainer_config, &game_config)
                 .expect("Error exportando estrategias.");
         }
     }

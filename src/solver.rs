@@ -9,3 +9,6 @@ pub use mus_game::*;
 
 mod trainer;
 pub use trainer::*;
+
+mod strategy;
+pub use strategy::*;

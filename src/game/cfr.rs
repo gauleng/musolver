@@ -1,12 +1,11 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
 
 use super::ActionNode;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     regret_sum: Vec<f64>,
     strategy: Vec<f64>,
@@ -74,7 +73,7 @@ pub trait Game<P, A> {
 #[derive(Debug, Clone)]
 pub struct Cfr<A> {
     history: Vec<A>,
-    nodos: HashMap<String, Node>,
+    nodes: HashMap<String, Node>,
 }
 
 impl<A> Cfr<A>
@@ -84,64 +83,16 @@ where
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
-            nodos: HashMap::new(),
+            nodes: HashMap::new(),
         }
-    }
-
-    pub fn from_file(path: &Path) -> std::io::Result<Self> {
-        let file = File::open(path)?;
-        let mut rdr = csv::ReaderBuilder::new().flexible(true).from_reader(file);
-        let mut s = Self::new();
-        for result in rdr.records() {
-            let record = result?;
-            let info_set = format!(
-                "{},{},{},{}",
-                &record[0], &record[1], &record[2], &record[3]
-            );
-            let mut node = Node::new(record.len() - 4);
-            for i in 4..record.len() {
-                let num = record[i].parse::<f64>();
-                if let Ok(v) = num {
-                    node.strategy[i - 4] = v;
-                }
-            }
-            s.nodos.insert(info_set, node);
-        }
-        Ok(s)
-    }
-
-    pub fn to_file(&self, path: &Path) -> std::io::Result<()> {
-        let file = File::create(path)?;
-        let mut wtr = csv::WriterBuilder::new()
-            .flexible(true)
-            .quote_style(csv::QuoteStyle::Never)
-            .from_writer(&file);
-
-        let mut v: Vec<(String, Node)> = self
-            .nodes()
-            .iter()
-            .map(|(s, n)| (s.clone(), n.clone()))
-            .collect();
-        v.sort_by(|x, y| x.0.cmp(&y.0));
-        for (k, n) in v {
-            let mut probabilities = n
-                .get_average_strategy()
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<String>>();
-            probabilities.insert(0, k);
-            wtr.write_record(&probabilities)?;
-        }
-        wtr.flush()?;
-        Ok(())
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node> {
-        &self.nodos
+        &self.nodes
     }
 
     pub fn update_strategy(&mut self) {
-        self.nodos.values_mut().for_each(|n| {
+        self.nodes.values_mut().for_each(|n| {
             n.update_strategy();
         });
     }
@@ -161,10 +112,10 @@ where
         match n {
             ActionNode::NonTerminal(p, children) => {
                 let info_set_str = game.info_set_str(*p, &self.history);
-                self.nodos
+                self.nodes
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
-                let node = self.nodos.get(&info_set_str).unwrap();
+                let node = self.nodes.get(&info_set_str).unwrap();
                 let strategy = node.strategy().clone();
 
                 let util: Vec<f64> = children
@@ -183,7 +134,7 @@ where
                     .collect();
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-                if let Some(node) = self.nodos.get_mut(&info_set_str) {
+                if let Some(node) = self.nodes.get_mut(&info_set_str) {
                     if *p == player {
                         node.regret_sum
                             .iter_mut()
@@ -208,7 +159,7 @@ where
         match n {
             ActionNode::NonTerminal(p, children) => {
                 let info_set_str = game.info_set_str(*p, &self.history);
-                self.nodos
+                self.nodes
                     .entry(info_set_str.clone())
                     .or_insert(Node::new(children.len()));
                 if *p == player {
@@ -221,7 +172,7 @@ where
                             u
                         })
                         .collect();
-                    let nodo = self.nodos.get_mut(&info_set_str).unwrap();
+                    let nodo = self.nodes.get_mut(&info_set_str).unwrap();
                     let strategy = nodo.update_strategy();
 
                     let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
@@ -231,7 +182,7 @@ where
                         .for_each(|(r, u)| *r += u - node_util);
                     node_util
                 } else {
-                    let node = self.nodos.get_mut(&info_set_str).unwrap();
+                    let node = self.nodes.get_mut(&info_set_str).unwrap();
 
                     node.update_strategy();
                     node.update_strategy_sum(1.);
