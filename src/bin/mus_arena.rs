@@ -207,6 +207,27 @@ impl AgenteMusolver {
             history,
         }
     }
+
+    fn accion_aleatoria(&mut self, partida_mus: &PartidaMus, acciones: Vec<Accion>) -> Accion {
+        let lance = partida_mus.lance_actual().unwrap();
+        let turno_inicial = lance.turno_inicial(partida_mus.manos());
+        let mut turno = partida_mus.turno().unwrap();
+        if turno_inicial == 1 {
+            turno = 1 - turno;
+        }
+        let info_set = LanceGame::from_partida_mus(partida_mus, true)
+            .unwrap()
+            .info_set_str(turno, &self.history.borrow());
+        let cfr = self.banco.estrategia_lance(lance);
+        let node = match cfr.nodes().get(&info_set) {
+            None => {
+                println!("ERROR: InfoSet no encontrado: {info_set}");
+                &Node::new(acciones.len())
+            }
+            Some(n) => n,
+        };
+        acciones[node.get_random_action()]
+    }
 }
 
 impl Agent for AgenteMusolver {
@@ -224,24 +245,8 @@ impl Agent for AgenteMusolver {
                 Accion::Paso
             }
             Some(c) => {
-                let lance = partida_mus.lance_actual().unwrap();
-                let turno_inicial = lance.turno_inicial(partida_mus.manos());
-                let mut turno = partida_mus.turno().unwrap();
-                if turno_inicial == 1 {
-                    turno = 1 - turno;
-                }
-                let info_set = LanceGame::from_partida_mus(partida_mus, true)
-                    .unwrap()
-                    .info_set_str(turno, &self.history.borrow());
-                let cfr = self.banco.estrategia_lance(lance);
-                let node = match cfr.nodes().get(&info_set) {
-                    None => {
-                        println!("ERROR: InfoSet no encontrado: {info_set}");
-                        Node::new(c.len())
-                    }
-                    Some(n) => n.clone(),
-                };
-                c[node.get_random_action()].0
+                let acciones: Vec<Accion> = c.iter().map(|a| a.0).collect();
+                self.accion_aleatoria(partida_mus, acciones)
             }
         }
     }
