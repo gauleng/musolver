@@ -90,7 +90,7 @@ impl ActionRecorder {
 impl Kibitzer for ActionRecorder {
     fn record(&mut self, _partida_mus: &PartidaMus, action: MusAction) {
         match &action {
-            MusAction::GameStart(_) => self.history.borrow_mut().clear(),
+            MusAction::GameStart(_) | MusAction::LanceStart(_) => self.history.borrow_mut().clear(),
             MusAction::PlayerAction(_, accion) => self.history.borrow_mut().push(*accion),
             _ => {}
         }
@@ -348,13 +348,20 @@ impl MusArena {
         for (i, m) in manos.iter().enumerate() {
             self.record_action(MusAction::DealHand(i, m.clone()));
         }
-        self.record_action(MusAction::LanceStart(
-            self.partida_mus.lance_actual().unwrap(),
-        ));
+        let mut lance = self.partida_mus.lance_actual();
+        self.record_action(MusAction::LanceStart(lance.unwrap()));
         while let Some(turno) = self.partida_mus.turno() {
             let accion = self.agents[self.order[turno]].actuar(&self.partida_mus);
-            self.record_action(MusAction::PlayerAction(self.order[turno], accion));
-            let _ = self.partida_mus.actuar(accion);
+            if self.partida_mus.actuar(accion).is_ok() {
+                self.record_action(MusAction::PlayerAction(self.order[turno], accion));
+                let nuevo_lance = self.partida_mus.lance_actual();
+                if nuevo_lance != lance {
+                    lance = nuevo_lance;
+                    if let Some(l) = lance {
+                        self.record_action(MusAction::LanceStart(l));
+                    }
+                }
+            }
         }
         let tantos = *self.partida_mus.tantos();
         self.record_action(MusAction::Payoff(self.order[0], tantos[0]));
