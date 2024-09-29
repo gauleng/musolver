@@ -1,6 +1,6 @@
 use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
-use clap::{command, Parser};
+use clap::{command, Parser, ValueEnum};
 use musolver::{
     mus::{Accion, Baraja, Lance, Mano, PartidaMus},
     solver::{LanceGame, Strategy},
@@ -26,6 +26,7 @@ trait Kibitzer {
     fn record(&mut self, partida_mus: &PartidaMus, action: MusAction);
 }
 
+#[derive(Debug, Clone)]
 struct AgenteCli {
     history: Rc<RefCell<Vec<Accion>>>,
     action_tree: ActionNode<usize, Accion>,
@@ -137,14 +138,18 @@ impl Kibitzer for KibitzerCli {
                 } else {
                     false
                 };
-                let ayuda_valor = m
-                    .juego()
-                    .map(|j| match j {
-                        musolver::mus::Juego::Resto(v) => format!("({v})"),
-                        musolver::mus::Juego::Treintaydos => "(32)".to_string(),
-                        musolver::mus::Juego::Treintayuna => "(31)".to_string(),
-                    })
-                    .unwrap_or_default();
+                let ayuda_valor = match partida_mus.lance_actual().unwrap() {
+                    Lance::Juego => m
+                        .juego()
+                        .map(|j| match j {
+                            musolver::mus::Juego::Resto(v) => format!("({v})"),
+                            musolver::mus::Juego::Treintaydos => "(32)".to_string(),
+                            musolver::mus::Juego::Treintayuna => "(31)".to_string(),
+                        })
+                        .unwrap_or_default(),
+                    Lance::Punto => format!("({})", m.valor_puntos()),
+                    _ => "".to_string(),
+                };
                 let suffix = if hay_jugada {
                     "*".to_owned()
                 } else {
@@ -191,6 +196,7 @@ impl Kibitzer for KibitzerCli {
     }
 }
 
+#[derive(Debug, Clone)]
 struct AgenteAleatorio {
     history: Rc<RefCell<Vec<Accion>>>,
     action_tree: ActionNode<usize, Accion>,
@@ -228,6 +234,7 @@ impl Agent for AgenteAleatorio {
     }
 }
 
+#[derive(Debug, Clone)]
 struct AgenteMusolver {
     strategy: Strategy,
     history: Rc<RefCell<Vec<Accion>>>,
@@ -294,28 +301,36 @@ struct MusArena {
     agents: Vec<Box<dyn Agent>>,
     kibitzers: Vec<Box<dyn Kibitzer>>,
     partida_mus: PartidaMus,
+    lance: Option<Lance>,
     order: [usize; 2],
 }
 
 impl MusArena {
-    pub fn new() -> Self {
+    pub fn new(lance: Option<Lance>) -> Self {
         MusArena {
             agents: vec![],
             kibitzers: vec![],
-            partida_mus: MusArena::new_partida_lance(),
+            partida_mus: MusArena::new_partida(lance),
             order: [0, 1],
+            lance,
         }
     }
 
-    fn new_partida_lance() -> PartidaMus {
+    fn new_partida(lance: Option<Lance>) -> PartidaMus {
         let mut baraja = Baraja::baraja_mus();
-        loop {
-            baraja.barajar();
-            let manos = baraja.repartir_manos();
-            let posible_partida_mus = PartidaMus::new_partida_lance(Lance::Juego, manos, [0, 0]);
-            if let Some(partida_mus) = posible_partida_mus {
-                return partida_mus;
+        match lance {
+            None => {
+                let manos = baraja.repartir_manos();
+                PartidaMus::new(manos, [0, 0])
             }
+            Some(lance) => loop {
+                baraja.barajar();
+                let manos = baraja.repartir_manos();
+                let posible_partida_mus = PartidaMus::new_partida_lance(lance, manos, [0, 0]);
+                if let Some(partida_mus) = posible_partida_mus {
+                    return partida_mus;
+                }
+            },
         }
     }
 
@@ -326,7 +341,7 @@ impl MusArena {
     }
 
     pub fn start(&mut self) {
-        self.partida_mus = MusArena::new_partida_lance();
+        self.partida_mus = MusArena::new_partida(self.lance);
         self.order.swap(0, 1);
         self.record_action(MusAction::GameStart(self.order[0]));
         let manos = self.partida_mus.manos().clone();
@@ -347,12 +362,42 @@ impl MusArena {
     }
 }
 
+fn show_strategy_data(strategy: &Strategy) {
+    println!("Estrategia cargada:");
+    println!("Lance: {:?}", strategy.strategy_config.game_config.lance);
+    println!(
+        "Juego abstracto: {}",
+        strategy.strategy_config.game_config.abstract_game
+    );
+    println!(
+        "Iteraciones:{:?}",
+        strategy.strategy_config.trainer_config.iterations
+    );
+    println!(
+        "Método de cálculo: {:?}",
+        strategy.strategy_config.trainer_config.method
+    );
+    println!();
+}
+#[derive(Debug, ValueEnum, Clone)]
+enum AgentType {
+    Cli,
+    Random,
+    Musolver,
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     /// Ruta al fihero JSON que contiene la estrategia a utilizar.
     #[arg(short, long)]
     strategy_path: String,
+
+    #[arg(long, value_enum)]
+    agent1: AgentType,
+
+    #[arg(long, value_enum)]
+    agent2: AgentType,
 }
 
 fn main() {
@@ -361,13 +406,13 @@ fn main() {
     let estrategia_path = PathBuf::from(args.strategy_path);
     let strategy =
         Strategy::from_file(estrategia_path.as_path()).expect("Error cargando estrategia");
+    show_strategy_data(&strategy);
 
-    let mut arena = MusArena::new();
+    let mut arena = MusArena::new(strategy.strategy_config.game_config.lance);
 
-    let kibitzer_cli = KibitzerCli::new(1);
     let action_recorder = ActionRecorder::new();
 
-    let _agente_aleatorio = AgenteAleatorio::new(
+    let agente_aleatorio = AgenteAleatorio::new(
         strategy.strategy_config.trainer_config.action_tree.clone(),
         action_recorder.history.clone(),
     );
@@ -378,11 +423,27 @@ fn main() {
     let agente_musolver = AgenteMusolver::new(strategy, action_recorder.history.clone());
 
     arena.kibitzers.push(Box::new(action_recorder));
-    arena.kibitzers.push(Box::new(kibitzer_cli));
 
-    arena.agents.push(Box::new(agente_musolver));
-    // arena.agents.push(Box::new(agente_aleatorio));
-    arena.agents.push(Box::new(agente_cli));
+    let mut cli_client = 0;
+    match args.agent1 {
+        AgentType::Cli => {
+            arena.agents.push(Box::new(agente_cli.clone()));
+            cli_client = 0;
+        }
+        AgentType::Random => arena.agents.push(Box::new(agente_aleatorio.clone())),
+        AgentType::Musolver => arena.agents.push(Box::new(agente_musolver.clone())),
+    }
+
+    match args.agent2 {
+        AgentType::Cli => {
+            arena.agents.push(Box::new(agente_cli.clone()));
+            cli_client = 1;
+        }
+        AgentType::Random => arena.agents.push(Box::new(agente_aleatorio.clone())),
+        AgentType::Musolver => arena.agents.push(Box::new(agente_musolver.clone())),
+    }
+    let kibitzer_cli = KibitzerCli::new(cli_client);
+    arena.kibitzers.push(Box::new(kibitzer_cli));
 
     loop {
         arena.start();

@@ -25,7 +25,7 @@ pub struct StrategyConfig {
     pub game_config: GameConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
     pub nodes: HashMap<String, Vec<f64>>,
