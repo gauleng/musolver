@@ -23,13 +23,16 @@ pub enum CfrMethod {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TrainerConfig {
+pub struct TrainerConfig<A> {
     pub method: CfrMethod,
     pub iterations: usize,
-    pub action_tree: ActionNode<usize, Accion>,
+    pub action_tree: ActionNode<usize, A>,
 }
 
-impl TrainerConfig {
+impl<A> TrainerConfig<A>
+where
+    A: Serialize + for<'a> Deserialize<'a>,
+{
     pub fn to_file(&self, path: &Path) {
         let contents = serde_json::to_string(self).expect("Error converting to JSON");
         fs::write(path, contents).expect("Error writing config");
@@ -44,9 +47,10 @@ impl TrainerConfig {
 }
 
 impl Trainer {
-    pub fn train<G>(&self, cfr: &mut Cfr<Accion>, game: &mut G, config: &TrainerConfig)
+    pub fn train<G, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<A>)
     where
-        G: Game<usize, Accion>,
+        G: Game<usize, A>,
+        A: Eq + Copy,
     {
         use std::time::Instant;
 
