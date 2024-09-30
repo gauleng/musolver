@@ -4,10 +4,7 @@ use clap::ValueEnum;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    mus::{Accion, Lance},
-    ActionNode, Cfr, Game,
-};
+use crate::{mus::Lance, ActionNode, Cfr, Game};
 
 pub enum Trainer {
     LanceTrainer(Lance),
