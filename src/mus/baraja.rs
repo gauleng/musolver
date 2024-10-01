@@ -8,6 +8,17 @@ use super::Mano;
 pub struct Baraja(Vec<Carta>);
 
 impl Baraja {
+    pub const FREC_BARAJA_MUS: [(Carta, u8); 8] = [
+        (Carta::As, 8),
+        (Carta::Cuatro, 4),
+        (Carta::Cinco, 4),
+        (Carta::Seis, 4),
+        (Carta::Siete, 4),
+        (Carta::Sota, 4),
+        (Carta::Caballo, 4),
+        (Carta::Rey, 8),
+    ];
+
     pub fn new() -> Self {
         Baraja(Vec::with_capacity(40))
     }

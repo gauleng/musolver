@@ -28,6 +28,19 @@ impl Carta {
             Carta::Tres | Carta::Rey => 12,
         }
     }
+
+    pub const CARTAS: [Carta; 10] = [
+        Carta::As,
+        Carta::Dos,
+        Carta::Tres,
+        Carta::Cuatro,
+        Carta::Cinco,
+        Carta::Seis,
+        Carta::Siete,
+        Carta::Sota,
+        Carta::Caballo,
+        Carta::Rey,
+    ];
 }
 
 impl From<&Carta> for char {
