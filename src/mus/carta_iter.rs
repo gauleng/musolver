@@ -166,11 +166,11 @@ impl<'a> DistribucionDobleCartaIter<'a> {
     }
 
     fn new_iter2(&mut self) {
-        let idx1 = self.iter1.next();
-        if let Some(m) = &idx1 {
-            self.mano_actual1 = Some((m.0.iter().map(|idx| self.cartas[*idx].0).collect(), m.1));
+        let next = self.iter1.next();
+        if let Some((idx, frec)) = &next {
+            self.mano_actual1 = Some((idx.iter().map(|idx| self.cartas[*idx].0).collect(), *frec));
             let frecuencias2 = self.iter1.current_frequencies.clone();
-            self.iter2 = CombinationsWithReplacementProb::new(m.0.len(), frecuencias2);
+            self.iter2 = CombinationsWithReplacementProb::new(idx.len(), frecuencias2);
         } else {
             self.mano_actual1 = None;
         }
@@ -268,5 +268,13 @@ mod tests {
                 1. / 6.
             )
         );
+    }
+
+    #[test]
+    fn test_current_frequencies() {
+        let cartas = [(Carta::As, 2), (Carta::Cuatro, 2)];
+        let mut it = DistribucionDobleCartaIter::new(&cartas, 2);
+        it.next();
+        assert_eq!(it.current_frequencies(), &[0, 0]);
     }
 }
