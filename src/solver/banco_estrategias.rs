@@ -199,7 +199,7 @@ impl BancoEstrategias {
         &self,
         path: &Path,
         l: Lance,
-        trainer_config: &TrainerConfig<Accion>,
+        trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
     ) -> std::io::Result<()> {
         fs::create_dir_all(path)?;
@@ -214,7 +214,7 @@ impl BancoEstrategias {
     pub fn export(
         &self,
         path: &Path,
-        trainer_config: &TrainerConfig<Accion>,
+        trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
     ) -> std::io::Result<()> {
         self.export_estrategia(path, Lance::Grande, trainer_config, game_config)?;

@@ -21,7 +21,7 @@ pub struct GameConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StrategyConfig {
-    pub trainer_config: TrainerConfig<Accion>,
+    pub trainer_config: TrainerConfig<usize, Accion>,
     pub game_config: GameConfig,
 }
 
@@ -34,7 +34,7 @@ pub struct Strategy {
 impl Strategy {
     pub fn new(
         cfr: &Cfr<Accion>,
-        trainer_config: &TrainerConfig<Accion>,
+        trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
     ) -> Self {
         let nodes = cfr

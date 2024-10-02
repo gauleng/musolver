@@ -1,4 +1,4 @@
-use std::{fmt::Debug, fs, path::Path};
+use std::fmt::Debug;
 
 use clap::ValueEnum;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -20,34 +20,18 @@ pub enum CfrMethod {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TrainerConfig<A> {
+pub struct TrainerConfig<P, A> {
     pub method: CfrMethod,
     pub iterations: usize,
-    pub action_tree: ActionNode<usize, A>,
-}
-
-impl<A> TrainerConfig<A>
-where
-    A: Serialize + for<'a> Deserialize<'a>,
-{
-    pub fn to_file(&self, path: &Path) {
-        let contents = serde_json::to_string(self).expect("Error converting to JSON");
-        fs::write(path, contents).expect("Error writing config");
-    }
-
-    pub fn from_file(path: &Path) -> std::io::Result<Self> {
-        let contents = fs::read_to_string(path)?;
-        let n: Self = serde_json::from_str(&contents).unwrap();
-
-        Ok(n)
-    }
+    pub action_tree: ActionNode<P, A>,
 }
 
 impl Trainer {
-    pub fn train<G, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<A>)
+    pub fn train<G, P, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<P, A>)
     where
-        G: Game<usize, A> + Debug,
+        G: Game<P, A> + Debug,
         A: Eq + Copy,
+        P: Eq + Copy,
     {
         use std::time::Instant;
 
