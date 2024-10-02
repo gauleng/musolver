@@ -1,5 +1,5 @@
 use crate::{
-    mus::{Accion, Baraja, Carta, Lance, Mano, PartidaMus},
+    mus::{Accion, Baraja, Lance, PartidaMus},
     Game,
 };
 
@@ -10,36 +10,36 @@ pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     partida: Option<PartidaMus>,
-    info_set_prefix: Option<[String; 2]>,
     baraja: Baraja,
-    abstracto: bool,
+    info_set_prefix: Option<[String; 2]>,
+    abstract_game: bool,
 }
 
 impl LanceGame {
-    pub fn new(lance: Lance, tantos: [u8; 2], abstracto: bool) -> Self {
+    pub fn new(lance: Lance, tantos: [u8; 2], abstract_game: bool) -> Self {
         let baraja = Baraja::baraja_mus();
         Self {
             lance,
             tantos,
             baraja,
-            abstracto,
+            abstract_game,
             partida: None,
             info_set_prefix: None,
         }
     }
 
-    pub fn from_partida_mus(partida_mus: &PartidaMus, abstracto: bool) -> Option<Self> {
+    pub fn from_partida_mus(partida_mus: &PartidaMus, abstract_game: bool) -> Option<Self> {
         Some(Self {
             lance: partida_mus.lance_actual()?,
             tantos: *partida_mus.tantos(),
             baraja: Baraja::baraja_mus(),
-            abstracto,
+            abstract_game,
             partida: Some(partida_mus.clone()),
-            info_set_prefix: LanceGame::prefix(partida_mus, abstracto),
+            info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
         })
     }
 
-    fn prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 2]> {
+    fn info_set_prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 2]> {
         let lance = partida_mus.lance_actual()?;
         let (tipo_estrategia, manos_normalizadas) =
             TipoEstrategia::normalizar_mano(partida_mus.manos(), &lance);
@@ -53,37 +53,16 @@ impl LanceGame {
             tipo_estrategia.to_string() + "," + &m[1],
         ])
     }
-
-    fn repartir_manos(b: &Baraja) -> [Mano; 4] {
-        let mut c = b.primeras_n_cartas(16).iter();
-        core::array::from_fn(|_| {
-            let mut m = Vec::<Carta>::with_capacity(4);
-            for _ in 0..4 {
-                m.push(*c.next().unwrap());
-            }
-            Mano::new(m)
-        })
-    }
 }
 
 impl Game<usize, Accion> for LanceGame {
     fn new_random(&mut self) {
         loop {
             self.baraja.barajar();
-            let manos = Self::repartir_manos(&self.baraja);
+            let manos = self.baraja.repartir_manos();
             let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
             if let Some(p) = intento_partida {
-                let (tipo_estrategia, manos_normalizadas) =
-                    TipoEstrategia::normalizar_mano(p.manos(), &self.lance);
-                let m = if self.abstracto {
-                    manos_normalizadas.to_abstract_string_array(&self.lance)
-                } else {
-                    manos_normalizadas.to_string_array()
-                };
-                self.info_set_prefix = Some([
-                    tipo_estrategia.to_string() + "," + &m[0],
-                    tipo_estrategia.to_string() + "," + &m[1],
-                ]);
+                self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
                 self.partida = Some(p);
                 break;
             }
@@ -92,12 +71,11 @@ impl Game<usize, Accion> for LanceGame {
 
     fn utility(&self, player: usize, history: &[Accion]) -> f64 {
         let mut partida = self.partida.as_ref().unwrap().clone();
+        let turno_inicial = partida.turno().unwrap();
         history.iter().for_each(|&a| {
             let _ = partida.actuar(a);
         });
-        let turno_inicial = self.lance.turno_inicial(partida.manos());
         let mut tantos = *partida.tantos();
-
         if turno_inicial == 1 {
             tantos.swap(0, 1);
         }
@@ -105,10 +83,6 @@ impl Game<usize, Accion> for LanceGame {
             tantos[0] as i8 - tantos[1] as i8,
             tantos[1] as i8 - tantos[0] as i8,
         ];
-        // println!(
-        //     "Tantos para el jugador {}  con acciones {:?}: {}",
-        //     player, self.history, tantos[player]
-        // );
         payoff[player] as f64
     }
 
