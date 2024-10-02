@@ -162,4 +162,19 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
     fn new_random(&mut self) {
         todo!()
     }
+
+    fn new_iter<F>(&mut self, _f: F)
+    where
+        F: FnMut(&Self, f64),
+    {
+        todo!()
+    }
+
+    fn num_players(&self) -> usize {
+        2
+    }
+
+    fn player_id(&self, idx: usize) -> usize {
+        idx
+    }
 }

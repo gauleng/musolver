@@ -1,5 +1,5 @@
 use crate::{
-    mus::{Accion, Baraja, Lance, PartidaMus},
+    mus::{Accion, Baraja, DistribucionDobleCartaIter, Lance, Mano, PartidaMus},
     Game,
 };
 
@@ -69,6 +69,38 @@ impl Game<usize, Accion> for LanceGame {
         }
     }
 
+    fn new_iter<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&Self, f64),
+    {
+        let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4);
+        let mut frecuencia_baraja_2 = Baraja::FREC_BARAJA_MUS;
+        while let Some(mano_pareja1) = iter.next() {
+            let frequencies2 = iter.current_frequencies();
+            frecuencia_baraja_2
+                .iter_mut()
+                .zip(frequencies2.iter())
+                .for_each(|(carta, f2)| {
+                    carta.1 = *f2 as u8;
+                });
+            let iter2 = DistribucionDobleCartaIter::new(&frecuencia_baraja_2, 4);
+            for mano_pareja2 in iter2 {
+                let manos = [
+                    Mano::new(mano_pareja1.0.clone()),
+                    Mano::new(mano_pareja2.0.clone()),
+                    Mano::new(mano_pareja1.1.clone()),
+                    Mano::new(mano_pareja2.1.clone()),
+                ];
+                let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
+                if let Some(p) = intento_partida {
+                    self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
+                    self.partida = Some(p);
+                    f(self, mano_pareja1.2 * mano_pareja2.2);
+                }
+            }
+        }
+    }
+
     fn utility(&self, player: usize, history: &[Accion]) -> f64 {
         let mut partida = self.partida.as_ref().unwrap().clone();
         let turno_inicial = partida.turno().unwrap();
@@ -94,5 +126,13 @@ impl Game<usize, Accion> for LanceGame {
             output.push_str(&i.to_string());
         }
         output
+    }
+
+    fn player_id(&self, idx: usize) -> usize {
+        idx
+    }
+
+    fn num_players(&self) -> usize {
+        2
     }
 }

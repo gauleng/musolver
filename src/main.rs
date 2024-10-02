@@ -101,9 +101,9 @@ fn main() {
     let banco = BancoEstrategias::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
-            let mut p = LanceGame::new(lance, tantos, game_config.abstract_game);
+            let mut lance_game = LanceGame::new(lance, tantos, game_config.abstract_game);
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
-            trainer.train(&mut cfr, &mut p, &trainer_config);
+            trainer.train(&mut cfr, &mut lance_game, &trainer_config);
             drop(cfr);
 
             println!("Exportando estrategias...");

@@ -65,9 +65,14 @@ impl Node {
 }
 
 pub trait Game<P, A> {
+    fn num_players(&self) -> usize;
+    fn player_id(&self, idx: usize) -> P;
     fn utility(&self, player: P, history: &[A]) -> f64;
     fn info_set_str(&self, player: P, history: &[A]) -> String;
     fn new_random(&mut self);
+    fn new_iter<F>(&mut self, f: F)
+    where
+        F: FnMut(&Self, f64);
 }
 
 #[derive(Debug, Clone)]

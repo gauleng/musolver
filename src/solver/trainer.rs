@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fmt::Debug, fs, path::Path};
 
 use clap::ValueEnum;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -46,7 +46,7 @@ where
 impl Trainer {
     pub fn train<G, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<A>)
     where
-        G: Game<usize, A>,
+        G: Game<usize, A> + Debug,
         A: Eq + Copy,
     {
         use std::time::Instant;
@@ -58,22 +58,28 @@ impl Trainer {
                 .unwrap()
                 .progress_chars("##-"),
         );
-        let mut util = [0., 0.];
+        let mut util = vec![0.; game.num_players()];
         for i in 0..config.iterations {
-            game.new_random();
-            match config.method {
-                CfrMethod::Cfr => todo!(),
-                CfrMethod::CfrPlus => todo!(),
-                CfrMethod::ChanceSampling => {
-                    util[0] += cfr.chance_cfr(game, &config.action_tree, 0, 1., 1.);
-                    util[1] += cfr.chance_cfr(game, &config.action_tree, 1, 1., 1.);
-                }
-                CfrMethod::ExternalSampling => {
-                    util[0] += cfr.external_cfr(game, &config.action_tree, 0);
-                    util[1] += cfr.external_cfr(game, &config.action_tree, 1);
+            for (player_idx, u) in util.iter_mut().enumerate() {
+                let player_id = game.player_id(player_idx);
+                match config.method {
+                    CfrMethod::Cfr => {
+                        game.new_iter(|game, po| {
+                            *u += po * cfr.chance_cfr(game, &config.action_tree, player_id, 1., po);
+                            pb.inc(1);
+                        });
+                    }
+                    CfrMethod::CfrPlus => todo!(),
+                    CfrMethod::ChanceSampling => {
+                        game.new_random();
+                        *u += cfr.chance_cfr(game, &config.action_tree, player_id, 1., 1.);
+                    }
+                    CfrMethod::ExternalSampling => {
+                        game.new_random();
+                        *u += cfr.external_cfr(game, &config.action_tree, player_id);
+                    }
                 }
             }
-
             pb.inc(1);
             if i % 1000 == 0 {
                 pb.set_message(format!(
