@@ -43,14 +43,14 @@ impl LanceGame {
         let lance = partida_mus.lance_actual()?;
         let (tipo_estrategia, manos_normalizadas) =
             TipoEstrategia::normalizar_mano(partida_mus.manos(), &lance);
-        let m = if abstracto {
+        let manos_str = if abstracto {
             manos_normalizadas.to_abstract_string_array(&lance)
         } else {
             manos_normalizadas.to_string_array()
         };
         Some([
-            tipo_estrategia.to_string() + "," + &m[0],
-            tipo_estrategia.to_string() + "," + &m[1],
+            tipo_estrategia.to_string() + "," + &manos_str[0],
+            tipo_estrategia.to_string() + "," + &manos_str[1],
         ])
     }
 }
