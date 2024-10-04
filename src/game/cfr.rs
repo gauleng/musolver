@@ -164,9 +164,6 @@ where
         match n {
             ActionNode::NonTerminal(p, children) => {
                 let info_set_str = game.info_set_str(*p, &self.history);
-                self.nodes
-                    .entry(info_set_str.clone())
-                    .or_insert_with(|| Node::new(children.len()));
                 if *p == player {
                     let util: Vec<f64> = children
                         .iter()
@@ -177,17 +174,23 @@ where
                             u
                         })
                         .collect();
-                    let nodo = self.nodes.get_mut(&info_set_str).unwrap();
-                    let strategy = nodo.update_strategy();
+                    let node = self
+                        .nodes
+                        .entry(info_set_str.clone())
+                        .or_insert_with(|| Node::new(children.len()));
+                    let strategy = node.update_strategy();
 
                     let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
-                    nodo.regret_sum
+                    node.regret_sum
                         .iter_mut()
                         .zip(util.iter())
                         .for_each(|(r, u)| *r += u - node_util);
                     node_util
                 } else {
-                    let node = self.nodes.get_mut(&info_set_str).unwrap();
+                    let node = self
+                        .nodes
+                        .entry(info_set_str.clone())
+                        .or_insert_with(|| Node::new(children.len()));
 
                     node.update_strategy();
                     node.update_strategy_sum(1.);
