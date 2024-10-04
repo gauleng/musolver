@@ -49,18 +49,19 @@ impl Trainer {
                 match config.method {
                     CfrMethod::Cfr => {
                         game.new_iter(|game, po| {
-                            *u += po * cfr.chance_cfr(game, &config.action_tree, player_id, 1., po);
+                            *u += po
+                                * cfr.chance_sampling(game, &config.action_tree, player_id, 1., po);
                             pb.inc(1);
                         });
                     }
                     CfrMethod::CfrPlus => todo!(),
                     CfrMethod::ChanceSampling => {
                         game.new_random();
-                        *u += cfr.chance_cfr(game, &config.action_tree, player_id, 1., 1.);
+                        *u += cfr.chance_sampling(game, &config.action_tree, player_id, 1., 1.);
                     }
                     CfrMethod::ExternalSampling => {
                         game.new_random();
-                        *u += cfr.external_cfr(game, &config.action_tree, player_id);
+                        *u += cfr.external_sampling(game, &config.action_tree, player_id);
                     }
                 }
             }

@@ -102,7 +102,7 @@ where
         });
     }
 
-    pub fn chance_cfr<G, P>(
+    pub fn chance_sampling<G, P>(
         &mut self,
         game: &G,
         n: &ActionNode<P, A>,
@@ -117,10 +117,10 @@ where
         match n {
             ActionNode::NonTerminal(p, children) => {
                 let info_set_str = game.info_set_str(*p, &self.history);
-                self.nodes
+                let node = self
+                    .nodes
                     .entry(info_set_str.clone())
-                    .or_insert(Node::new(children.len()));
-                let node = self.nodes.get(&info_set_str).unwrap();
+                    .or_insert_with(|| Node::new(children.len()));
                 let strategy = node.strategy().clone();
 
                 let util: Vec<f64> = children
@@ -129,9 +129,9 @@ where
                     .map(|((a, child), s)| {
                         self.history.push(*a);
                         let u = if *p == player {
-                            self.chance_cfr(game, child, player, pi * s, po)
+                            self.chance_sampling(game, child, player, pi * s, po)
                         } else {
-                            self.chance_cfr(game, child, player, pi, po * s)
+                            self.chance_sampling(game, child, player, pi, po * s)
                         };
                         self.history.pop();
                         u
@@ -156,7 +156,7 @@ where
         }
     }
 
-    pub fn external_cfr<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
+    pub fn external_sampling<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
     where
         G: Game<P, A>,
         P: Eq + Copy,
@@ -166,13 +166,13 @@ where
                 let info_set_str = game.info_set_str(*p, &self.history);
                 self.nodes
                     .entry(info_set_str.clone())
-                    .or_insert(Node::new(children.len()));
+                    .or_insert_with(|| Node::new(children.len()));
                 if *p == player {
                     let util: Vec<f64> = children
                         .iter()
                         .map(|(a, child)| {
                             self.history.push(*a);
-                            let u = self.external_cfr(game, child, player);
+                            let u = self.external_sampling(game, child, player);
                             self.history.pop();
                             u
                         })
@@ -195,7 +195,7 @@ where
                     let accion = children.get(s).unwrap();
 
                     self.history.push(accion.0);
-                    let util = self.external_cfr(game, &accion.1, player);
+                    let util = self.external_sampling(game, &accion.1, player);
                     self.history.pop();
                     util
                 }

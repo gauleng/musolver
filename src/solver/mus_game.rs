@@ -83,8 +83,8 @@ impl<'a> MusGame<'a> {
         drop(banco);
 
         let u = [
-            c.chance_cfr(self, self.action_tree.as_ref().unwrap(), 0, 1., 1.),
-            c.chance_cfr(self, self.action_tree.as_ref().unwrap(), 1, 1., 1.),
+            c.chance_sampling(self, self.action_tree.as_ref().unwrap(), 0, 1., 1.),
+            c.chance_sampling(self, self.action_tree.as_ref().unwrap(), 1, 1., 1.),
         ];
 
         let banco = self.banco_estrategias.as_ref().unwrap().take();
@@ -122,7 +122,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
                         acting_player = 1 - acting_player;
                     }
                 });
-            let u = c.chance_cfr(&trainer, action_tree, acting_player, 1., 1.);
+            let u = c.chance_sampling(&trainer, action_tree, acting_player, 1., 1.);
 
             let banco = trainer.banco_estrategias.as_ref().unwrap().take();
             let cfr = banco.estrategia_lance_mut(lance);

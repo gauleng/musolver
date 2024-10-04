@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use musolver::mus::{Baraja, Lance};
 
 fn bench_hay_lance_juego(c: &mut Criterion) {
-    c.bench_function("se_juega_lance", |b| {
+    c.bench_function("hay_lance_juego", |b| {
         b.iter_batched(
             || {
                 let mut baraja = Baraja::baraja_mus();
@@ -18,7 +18,7 @@ fn bench_hay_lance_juego(c: &mut Criterion) {
 }
 
 fn bench_hay_lance_pares(c: &mut Criterion) {
-    c.bench_function("se_juega_lance", |b| {
+    c.bench_function("hay_lance_pares", |b| {
         b.iter_batched(
             || {
                 let mut baraja = Baraja::baraja_mus();
@@ -34,7 +34,7 @@ fn bench_hay_lance_pares(c: &mut Criterion) {
 }
 
 fn bench_se_juega_lance_juego(c: &mut Criterion) {
-    c.bench_function("se_juega_lance", |b| {
+    c.bench_function("se_juega_lance_juego", |b| {
         b.iter_batched(
             || {
                 let mut baraja = Baraja::baraja_mus();
@@ -50,7 +50,7 @@ fn bench_se_juega_lance_juego(c: &mut Criterion) {
 }
 
 fn bench_se_juega_lance_pares(c: &mut Criterion) {
-    c.bench_function("se_juega_lance", |b| {
+    c.bench_function("se_juega_lance_pares", |b| {
         b.iter_batched(
             || {
                 let mut baraja = Baraja::baraja_mus();

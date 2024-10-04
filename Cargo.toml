@@ -34,3 +34,7 @@ harness = false
 [[bench]]
 name = "acciones_partida"
 harness = false
+
+[[bench]]
+name = "cfr"
+harness = false
