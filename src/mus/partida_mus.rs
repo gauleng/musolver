@@ -10,6 +10,7 @@ use crate::mus::Mano;
 use super::Apuesta;
 use super::EstadoLance;
 use super::MusError;
+use super::RankingManos;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum Accion {
@@ -104,13 +105,15 @@ impl PartidaMus {
             Self::MAX_TANTOS - self.tantos[0],
             Self::MAX_TANTOS - self.tantos[1],
         ];
+        let pareja_mejor_mano = l.mejor_mano(&*self.manos);
         let mut e = EstadoLance::new(
             l.apuesta_minima(),
             tantos_restantes[0].max(tantos_restantes[1]),
             l.turno_inicial(&*self.manos),
+            pareja_mejor_mano,
         );
         if !l.se_juega(&*self.manos) {
-            e.resolver_lance(&*self.manos, &l);
+            e.resolver_lance();
         }
         e
     }
@@ -119,7 +122,7 @@ impl PartidaMus {
         if let Some(estado_lance) = &mut self.estado_lance {
             let mut tantos = 0;
             let ganador = estado_lance.ganador().unwrap_or_else(|| {
-                let g = estado_lance.resolver_lance(&*self.manos, l);
+                let g = estado_lance.resolver_lance();
                 if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
                     tantos += t;
                 }
@@ -133,11 +136,11 @@ impl PartidaMus {
         }
     }
 
-    fn tanteo_envites_lance(&mut self, lance: &Lance) {
+    fn tanteo_envites_lance(&mut self) {
         if let Some(estado_lance) = &mut self.estado_lance {
             let apuesta = estado_lance.tantos_apostados();
             if let Apuesta::Ordago = apuesta {
-                estado_lance.resolver_lance(&*self.manos, lance);
+                estado_lance.resolver_lance();
             }
             let ganador = estado_lance.ganador();
             if let Some(g) = ganador {
@@ -188,7 +191,7 @@ impl PartidaMus {
             return Ok(turno);
         }
         let lance = self.lances[self.idx_lance].0;
-        self.tanteo_envites_lance(&lance);
+        self.tanteo_envites_lance();
         self.tanteo_final_lance(&lance);
         loop {
             let estado_lance = self.siguiente_lance();

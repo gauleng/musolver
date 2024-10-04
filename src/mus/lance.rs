@@ -268,10 +268,16 @@ pub struct EstadoLance {
     apuesta_maxima: u8,
     apuesta_minima: u8,
     ganador: Option<usize>,
+    jugador_mejor_mano: usize,
 }
 
 impl EstadoLance {
-    pub fn new(apuesta_minima: u8, apuesta_maxima: u8, turno_inicial: usize) -> Self {
+    pub fn new(
+        apuesta_minima: u8,
+        apuesta_maxima: u8,
+        turno_inicial: usize,
+        jugador_mejor_mano: usize,
+    ) -> Self {
         EstadoLance {
             bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
             activos: [true, true],
@@ -280,6 +286,7 @@ impl EstadoLance {
             apuesta_minima,
             apuesta_maxima,
             ganador: None,
+            jugador_mejor_mano,
         }
     }
 
@@ -365,12 +372,9 @@ impl EstadoLance {
     /// tantos. En caso contrario, resuelve el lance con las manos recibidas.
     /// Si el lance está resuelto y se vuelve a llamar a esta función, devolverá el mismo ganador
     /// ya calculado anteriormente. Devuelve el número de pareja que ha ganado el lance.
-    pub fn resolver_lance<R>(&mut self, manos: &[Mano], r: &R) -> usize
-    where
-        R: RankingManos,
-    {
+    pub fn resolver_lance(&mut self) -> usize {
         self.turno = None;
-        *self.ganador.get_or_insert_with(|| r.mejor_mano(manos) % 2)
+        *self.ganador.get_or_insert(self.jugador_mejor_mano % 2)
     }
 
     /// India si ya hay un ganador en el lance, bien sea porque una pareja ha rechazado un envite o
@@ -391,12 +395,12 @@ mod tests {
 
     #[test]
     fn test_turno() {
-        let mut partida = EstadoLance::new(0, 40, 0);
+        let mut partida = EstadoLance::new(0, 40, 0, 0);
         assert_eq!(partida.turno(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
 
-        let mut partida = EstadoLance::new(0, 40, 1);
+        let mut partida = EstadoLance::new(0, 40, 1, 0);
         assert_eq!(partida.turno(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
@@ -404,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_turno2() {
-        let mut partida = EstadoLance::new(0, 40, 0);
+        let mut partida = EstadoLance::new(0, 40, 0, 0);
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
@@ -417,10 +421,10 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(0));
 
         let manos = vec![
@@ -429,10 +433,10 @@ mod tests {
             Mano::try_from("RRR1").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(0));
 
         let manos = vec![
@@ -441,10 +445,10 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(1));
 
         let manos = vec![
@@ -453,10 +457,10 @@ mod tests {
             Mano::try_from("1111").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(0));
 
         let manos = vec![
@@ -465,10 +469,10 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(1));
 
         let manos = vec![
@@ -477,10 +481,10 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(1));
 
         let manos = vec![
@@ -489,10 +493,10 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("RR11").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(1));
 
         let manos = vec![
@@ -501,10 +505,10 @@ mod tests {
             Mano::try_from("RR11").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0);
+        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
-        partida.resolver_lance(&manos, &Lance::Grande);
+        partida.resolver_lance();
         assert_eq!(partida.ganador(), Some(0));
     }
 
@@ -578,38 +582,38 @@ mod tests {
 
     #[test]
     fn test_tanteo() {
-        let mut e = EstadoLance::new(0, 40, 0);
+        let mut e = EstadoLance::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), None);
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(0));
 
-        let mut e = EstadoLance::new(1, 40, 0);
+        let mut e = EstadoLance::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), None);
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(0, 40, 0);
+        let mut e = EstadoLance::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(0));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(1, 40, 0);
+        let mut e = EstadoLance::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(0));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(0, 40, 0);
+        let mut e = EstadoLance::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(1));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(1, 40, 0);
+        let mut e = EstadoLance::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
