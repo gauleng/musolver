@@ -196,15 +196,6 @@ impl Lance {
         }
     }
 
-    fn se_juega_jugadas<T>(&self, manos: &[Option<T>]) -> bool
-    where
-        T: Copy + Clone,
-    {
-        (manos[0].or_else(|| manos[2]))
-            .and_then(|_| manos[1].or_else(|| manos[3]))
-            .is_some()
-    }
-
     fn hay_lance_jugadas<T>(&self, manos: &[Option<T>]) -> bool {
         manos.iter().any(|j| j.is_some())
     }
@@ -240,17 +231,23 @@ impl Lance {
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => self.hay_lance_jugadas(&self.jugadas(manos, |m| m.pares())),
-            Lance::Juego => self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
-            Lance::Punto => !self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
+            Lance::Pares => manos.iter().map(|m| m.pares().is_some()).any(|b| b),
+            Lance::Juego => manos.iter().map(|m| m.juego().is_some()).any(|b| b),
+            Lance::Punto => !Lance::Juego.hay_lance(manos),
         }
     }
 
     pub fn se_juega(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => self.se_juega_jugadas(&self.jugadas(manos, |m| m.pares())),
-            Lance::Juego => self.se_juega_jugadas(&self.jugadas(manos, |m| m.juego())),
+            Lance::Pares => {
+                (manos[0].pares().is_some() || manos[2].pares().is_some())
+                    && (manos[1].pares().is_some() || manos[3].pares().is_some())
+            }
+            Lance::Juego => {
+                (manos[0].juego().is_some() || manos[2].juego().is_some())
+                    && (manos[1].juego().is_some() || manos[3].juego().is_some())
+            }
             Lance::Punto => !self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
         }
     }
