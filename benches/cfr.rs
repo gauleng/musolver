@@ -11,15 +11,15 @@ fn bench_chance_sampling(c: &mut Criterion) {
     c.bench_function("chance_sampling", |b| {
         b.iter_batched(
             || {
-                let mut game = LanceGame::new(Lance::Juego, [0, 0], true);
+                let game = LanceGame::new(Lance::Grande, [0, 0], true);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
                 let cfr = Cfr::new();
-                game.new_random();
                 (cfr, game, action_tree)
             },
-            |(mut cfr, game, action_tree)| {
+            |(mut cfr, mut game, action_tree)| {
+                game.new_random();
                 cfr.chance_sampling(&game, &action_tree, 0, 1., 1.);
                 cfr.chance_sampling(&game, &action_tree, 1, 1., 1.);
             },
@@ -32,15 +32,15 @@ fn bench_external_sampling(c: &mut Criterion) {
     c.bench_function("external_sampling", |b| {
         b.iter_batched(
             || {
-                let mut game = LanceGame::new(Lance::Juego, [0, 0], true);
+                let game = LanceGame::new(Lance::Grande, [0, 0], true);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
                 let cfr = Cfr::new();
-                game.new_random();
                 (cfr, game, action_tree)
             },
-            |(mut cfr, game, action_tree)| {
+            |(mut cfr, mut game, action_tree)| {
+                game.new_random();
                 cfr.external_sampling(&game, &action_tree, 0);
                 cfr.external_sampling(&game, &action_tree, 1);
             },
