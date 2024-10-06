@@ -102,6 +102,7 @@ struct KibitzerCli {
     marcador: [usize; 2],
     cli_player: usize,
     pareja_mano: usize,
+    lance_actual: Option<Lance>,
 }
 
 impl KibitzerCli {
@@ -111,6 +112,37 @@ impl KibitzerCli {
             marcador: [0, 0],
             cli_player,
             pareja_mano: 0,
+            lance_actual: None,
+        }
+    }
+
+    fn hand_str(lance: &Lance, m: &Mano, hidden: bool) -> String {
+        let hay_jugada = match lance {
+            Lance::Grande | Lance::Chica | Lance::Punto => false,
+            Lance::Pares => m.pares().is_some(),
+            Lance::Juego => m.juego().is_some(),
+        };
+        let ayuda_valor = match lance {
+            Lance::Juego => m
+                .juego()
+                .map(|j| match j {
+                    musolver::mus::Juego::Resto(v) => format!("({v})"),
+                    musolver::mus::Juego::Treintaydos => "(32)".to_string(),
+                    musolver::mus::Juego::Treintayuna => "(31)".to_string(),
+                })
+                .unwrap_or_default(),
+            Lance::Punto => format!("({})", m.valor_puntos()),
+            _ => "".to_string(),
+        };
+        let suffix = if hay_jugada {
+            "*".to_owned()
+        } else {
+            "".to_owned()
+        };
+        if hidden {
+            format!("XXXX {suffix}")
+        } else {
+            format!("{m} {ayuda_valor} {suffix}")
         }
     }
 }
@@ -119,6 +151,7 @@ impl Kibitzer for KibitzerCli {
     fn record(&mut self, partida_mus: &PartidaMus, action: MusAction) {
         match &action {
             MusAction::GameStart(p) => {
+                self.lance_actual = None;
                 self.pareja_mano = *p;
                 self.manos.clear();
                 println!();
@@ -129,39 +162,15 @@ impl Kibitzer for KibitzerCli {
                 println!();
             }
             MusAction::DealHand(p, m) => {
-                let hay_jugada = if let Some(lance) = partida_mus.lance_actual() {
-                    match lance {
-                        Lance::Grande | Lance::Chica | Lance::Punto => false,
-                        Lance::Pares => m.pares().is_some(),
-                        Lance::Juego => m.juego().is_some(),
-                    }
-                } else {
-                    false
-                };
-                let ayuda_valor = match partida_mus.lance_actual().unwrap() {
-                    Lance::Juego => m
-                        .juego()
-                        .map(|j| match j {
-                            musolver::mus::Juego::Resto(v) => format!("({v})"),
-                            musolver::mus::Juego::Treintaydos => "(32)".to_string(),
-                            musolver::mus::Juego::Treintayuna => "(31)".to_string(),
-                        })
-                        .unwrap_or_default(),
-                    Lance::Punto => format!("({})", m.valor_puntos()),
-                    _ => "".to_string(),
-                };
-                let suffix = if hay_jugada {
-                    "*".to_owned()
-                } else {
-                    "".to_owned()
-                };
-                if self.pareja_mano == self.cli_player && p % 2 == 0
+                let lance = partida_mus.lance_actual().unwrap();
+                let hand_str = if self.pareja_mano == self.cli_player && p % 2 == 0
                     || self.pareja_mano != self.cli_player && p % 2 == 1
                 {
-                    println!("Mano jugador {p}: {m} {ayuda_valor} {suffix}");
+                    KibitzerCli::hand_str(&lance, m, false)
                 } else {
-                    println!("Mano jugador {p}: XXXX {suffix}");
-                }
+                    KibitzerCli::hand_str(&lance, m, true)
+                };
+                println!("Mano jugador {p}: {hand_str}");
                 self.manos.push(m.clone());
             }
             MusAction::PlayerAction(p, accion) => {
@@ -178,20 +187,36 @@ impl Kibitzer for KibitzerCli {
                         println!();
                         println!(
                             "Manos del rival: {} {}",
-                            self.manos[1 - pareja],
-                            self.manos[3 - pareja]
+                            KibitzerCli::hand_str(
+                                &self.lance_actual.unwrap(),
+                                &self.manos[1 - pareja],
+                                false
+                            ),
+                            KibitzerCli::hand_str(
+                                &self.lance_actual.unwrap(),
+                                &self.manos[3 - pareja],
+                                false
+                            ),
                         );
                     } else {
                         println!(
                             "Pareja {p} ha ganado {t} tantos con manos: {} {}",
-                            self.manos[pareja],
-                            self.manos[pareja + 2]
+                            KibitzerCli::hand_str(
+                                &self.lance_actual.unwrap(),
+                                &self.manos[pareja],
+                                false
+                            ),
+                            KibitzerCli::hand_str(
+                                &self.lance_actual.unwrap(),
+                                &self.manos[pareja + 2],
+                                false
+                            ),
                         );
                     }
                 }
                 self.marcador[*p] += *t as usize;
             }
-            MusAction::LanceStart(lance) => println!("Lance: {:?}", lance),
+            MusAction::LanceStart(lance) => self.lance_actual = Some(*lance),
         }
     }
 }
