@@ -25,9 +25,10 @@ pub struct ActionPath {
 
 impl ActionPath {
     fn new() -> Self {
+        let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"))
+            .expect("Error cargando estrategia.");
         let action_tree: ActionNode<usize, Accion> =
-            ActionNode::from_file(Path::new("config/action_tree.json"))
-                .expect("Error loading action tree.");
+            strategy.strategy_config.trainer_config.action_tree;
         if let ActionNode::NonTerminal(_, children) = &action_tree {
             let mut valores: Vec<String> = children.iter().map(|c| c.0.to_string()).collect();
             valores.insert(0, "".to_string());
@@ -135,7 +136,6 @@ impl Square {
 impl View for Square {}
 
 fn main() {
-    let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"));
     let _ = Application::new(|cx| {
         SquareData {
             v: vec![(0.2, 0.1, 0.4), (0.5, 0.2, 0.4)],
