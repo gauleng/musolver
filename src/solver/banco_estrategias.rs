@@ -12,7 +12,7 @@ use crate::{
 
 use super::{GameConfig, Strategy, TrainerConfig};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TipoEstrategia {
     CuatroManos = 0,
     TresManos1vs2 = 1,

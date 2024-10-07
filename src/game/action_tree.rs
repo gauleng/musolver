@@ -2,8 +2,9 @@ use std::{fs, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum ActionNode<P, A> {
+    #[default]
     Terminal,
     NonTerminal(P, Vec<(A, ActionNode<P, A>)>),
 }
