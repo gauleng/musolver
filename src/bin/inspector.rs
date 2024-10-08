@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::Path};
+use std::{collections::HashMap, fmt::Display, path::Path};
 
 use iced::{
     alignment::Vertical::Top,
@@ -6,8 +6,9 @@ use iced::{
     Element,
     Length::Fill,
 };
+use itertools::Itertools;
 use musolver::{
-    mus::Accion,
+    mus::{Accion, Carta, CartaIter, Juego, Mano},
     solver::{Strategy, TipoEstrategia},
     ActionNode,
 };
@@ -73,6 +74,30 @@ impl ActionPath {
         }
     }
 
+    fn update_squares(&self) {
+        let history = self
+            .selected_actions
+            .iter()
+            .map(|a| {
+                if let Some(action) = a {
+                    action.0.unwrap().to_string()
+                } else {
+                    "".to_string()
+                }
+            })
+            .join("");
+        let mano1 = CartaIter::new(&Carta::CARTAS, 4);
+        let buckets: HashMap<Juego, Mano> = mano1
+            .filter_map(|c| {
+                let m = Mano::new(c);
+                println!("{m}");
+                m.juego().map(|j| (j, m))
+            })
+            .collect();
+        println!("{},XXXX,XXXX,{history}", self.selected_strategy.unwrap());
+        println!("{:?}", buckets);
+    }
+
     fn update(&mut self, message: AppEvent) {
         match message {
             AppEvent::SetAction(level, action) => {
@@ -91,7 +116,12 @@ impl ActionPath {
                     }
                     if let ActionNode::NonTerminal(_, children) = &current_node {
                         let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-                        valores.extend(children.iter().map(|c| OptionalAction(Some(c.0))));
+                        valores.extend(
+                            children
+                                .iter()
+                                .filter(|c| c.1 != ActionNode::Terminal)
+                                .map(|c| OptionalAction(Some(c.0))),
+                        );
                         self.selected_actions.push(None);
                         self.actions.push(valores);
                     }
@@ -99,6 +129,7 @@ impl ActionPath {
             }
             AppEvent::SetStrategy(strategy) => self.selected_strategy = Some(strategy),
         }
+        self.update_squares();
     }
 
     fn view(&self) -> Element<AppEvent> {
@@ -118,16 +149,14 @@ impl ActionPath {
         .placeholder("Select an action");
         top_row = top_row.push(pick_action1);
 
-        if self.selected_actions.len() > 1 {
-            for level in 1..self.selected_actions.len() {
-                let pick_action_n = pick_list(
-                    &self.actions[level][..],
-                    self.selected_actions[level],
-                    move |elem| AppEvent::SetAction(level, elem),
-                )
-                .placeholder("Select an action");
-                top_row = top_row.push(pick_action_n);
-            }
+        for level in 1..self.selected_actions.len() {
+            let pick_action_n = pick_list(
+                &self.actions[level][..],
+                self.selected_actions[level],
+                move |elem| AppEvent::SetAction(level, elem),
+            )
+            .placeholder("Select an action");
+            top_row = top_row.push(pick_action_n);
         }
         top_row = top_row.width(Fill).align_y(Top).spacing(10);
 

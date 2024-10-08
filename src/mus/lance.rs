@@ -9,7 +9,7 @@ use crate::mus::Mano;
 use std::cmp;
 use std::fmt::Display;
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Juego {
     Resto(u8),
     Treintaydos,
@@ -26,7 +26,7 @@ impl Display for Juego {
     }
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Pares {
     Pareja(u16),
     Medias(u16),
