@@ -41,6 +41,17 @@ impl Carta {
         Carta::Caballo,
         Carta::Rey,
     ];
+
+    pub const CARTAS_MUS: [Carta; 8] = [
+        Carta::As,
+        Carta::Cuatro,
+        Carta::Cinco,
+        Carta::Seis,
+        Carta::Siete,
+        Carta::Sota,
+        Carta::Caballo,
+        Carta::Rey,
+    ];
 }
 
 impl From<&Carta> for char {
