@@ -45,7 +45,7 @@ impl<'a> ManosNormalizadas<'a> {
         manos.0.to_string() + "," + &manos.1.map_or_else(|| "".to_owned(), |m| m.to_string())
     }
 
-    fn mano_to_abstract_string(m: &Mano, l: &Lance) -> String {
+    pub fn mano_to_abstract_string(m: &Mano, l: &Lance) -> String {
         match l {
             Lance::Grande | Lance::Chica => m.to_string(),
             Lance::Punto => m.valor_puntos().to_string(),
@@ -67,7 +67,7 @@ impl<'a> ManosNormalizadas<'a> {
         }
     }
 
-    fn par_manos_to_abstract_string(manos: &(&'a Mano, Option<&'a Mano>), l: &Lance) -> String {
+    pub fn par_manos_to_abstract_string(manos: &(&'a Mano, Option<&'a Mano>), l: &Lance) -> String {
         Self::mano_to_abstract_string(manos.0, l)
             + ","
             + &manos
