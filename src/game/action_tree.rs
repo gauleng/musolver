@@ -11,7 +11,7 @@ pub enum ActionNode<P, A> {
 
 impl<P, A> ActionNode<P, A>
 where
-    P: for<'a> Deserialize<'a>,
+    P: for<'a> Deserialize<'a> + Copy,
     A: Eq + Copy + for<'a> Deserialize<'a>,
 {
     pub fn new(p: P) -> Self {
@@ -58,6 +58,22 @@ where
         match self {
             ActionNode::Terminal => None,
             ActionNode::NonTerminal(_, vec) => Some(vec),
+        }
+    }
+
+    pub fn actions(&self) -> Option<Vec<A>> {
+        match self {
+            ActionNode::Terminal => None,
+            ActionNode::NonTerminal(_, vec) => {
+                Some(vec.iter().map(|(action, _)| *action).collect())
+            }
+        }
+    }
+
+    pub fn to_play(&self) -> Option<P> {
+        match self {
+            ActionNode::Terminal => None,
+            ActionNode::NonTerminal(player, _) => Some(*player),
         }
     }
 
