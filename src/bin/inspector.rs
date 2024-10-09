@@ -1,26 +1,32 @@
-use std::{collections::HashMap, fmt::Display, path::Path};
+use std::{fmt::Display, iter::zip, path::Path};
 
 use iced::{
-    alignment::Vertical::Top,
-    widget::{pick_list, scrollable, Row},
-    Element,
-    Length::Fill,
+    alignment::{
+        Horizontal,
+        Vertical::{self, Top},
+    },
+    mouse,
+    widget::{
+        canvas::{self, Stroke},
+        column, pick_list, row, scrollable, Canvas, Column, Container, Row, Text,
+    },
+    Alignment, Color, Element,
+    Length::{self, Fill},
+    Pixels, Point, Renderer, Size, Theme,
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, Carta, CartaIter, Juego, Mano},
-    solver::{Strategy, TipoEstrategia},
+    mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
+    solver::{ManosNormalizadas, Strategy, TipoEstrategia},
     ActionNode,
 };
-
-pub struct SquareData {
-    pub v: Vec<(f32, f32, f32)>,
-}
 
 #[derive(Clone, Debug)]
 enum AppEvent {
     SetAction(usize, OptionalAction),
     SetStrategy(TipoEstrategia),
+    SetTantosMano(u8),
+    SetTantosPostre(u8),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -35,13 +41,190 @@ impl Display for OptionalAction {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct Legend {}
+
+impl<AppEvent> canvas::Program<AppEvent> for Legend {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: iced::Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry<Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let height = bounds.height;
+        let width = bounds.width;
+
+        let region_widths = [width / 6.; 6];
+        let region_x_position: Vec<f32> = (0..6).map(|v| width * v as f32 / 6.).collect();
+        let region_colors = [
+            Color::parse("006E90").unwrap(),
+            Color::parse("2F9332").unwrap(),
+            Color::parse("FABC3F").unwrap(),
+            Color::parse("E85C0D").unwrap(),
+            Color::parse("C7253E").unwrap(),
+            Color::parse("821131").unwrap(),
+        ];
+        let region_text = [
+            "Paso",
+            "Quiero",
+            "Envido 2",
+            "Envido 5",
+            "Envido 10",
+            "Órdago",
+        ];
+
+        for i in 0..region_widths.len() {
+            frame.fill_rectangle(
+                Point::new(region_x_position[i], 0.),
+                Size::new(width / 6., height),
+                region_colors[i],
+            );
+            let mut text = iced::widget::canvas::Text {
+                content: String::from(region_text[i]),
+                position: Point::new(region_x_position[i] + 10., height / 2.0),
+                color: theme.palette().text,
+                ..iced::widget::canvas::Text::default()
+            };
+            text.vertical_alignment = Vertical::Center;
+            frame.fill_text(text);
+        }
+
+        vec![frame.into_geometry()]
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SquareData {
+    pub paso: f64,
+    pub quiero: f64,
+    pub envido2: f64,
+    pub envido5: f64,
+    pub envido10: f64,
+    pub ordago: f64,
+    pub resto: f64,
+    pub mano: String,
+}
+
+impl SquareData {
+    pub fn update_with_node(&mut self, action_node: &Option<Vec<Accion>>, probabilities: &[f64]) {
+        if let Some(children) = &action_node {
+            self.reset_probabilities();
+            children
+                .iter()
+                .zip(probabilities.iter())
+                .for_each(|(c, p)| match c {
+                    Accion::Paso => self.paso = *p,
+                    Accion::Envido(2) => self.envido2 = *p,
+                    Accion::Envido(5) => self.envido5 = *p,
+                    Accion::Envido(10) => self.envido10 = *p,
+                    Accion::Quiero => self.quiero = *p,
+                    Accion::Ordago => self.ordago = *p,
+                    _ => self.resto = *p,
+                });
+        }
+    }
+
+    pub fn reset_probabilities(&mut self) {
+        *self = Self {
+            mano: self.mano.clone(),
+            ..Default::default()
+        };
+    }
+}
+
+impl<AppEvent> canvas::Program<AppEvent> for SquareData {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: iced::Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry<Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let height = bounds.height;
+        let width = bounds.width;
+        let region_widths = [
+            width * self.paso as f32,
+            width * self.quiero as f32,
+            width * self.envido2 as f32,
+            width * self.envido5 as f32,
+            width * self.envido10 as f32,
+            width * self.ordago as f32,
+        ];
+        let region_colors = [
+            Color::parse("006E90").unwrap(),
+            Color::parse("2F9332").unwrap(),
+            Color::parse("FABC3F").unwrap(),
+            Color::parse("E85C0D").unwrap(),
+            Color::parse("C7253E").unwrap(),
+            Color::parse("821131").unwrap(),
+        ];
+        let region_x_position: Vec<f32> = region_widths
+            .iter()
+            .scan(0., |x_pos, width| {
+                let ret = Some(*x_pos);
+                *x_pos += width;
+                ret
+            })
+            .collect();
+
+        for i in 0..region_widths.len() {
+            let rect_quiero = canvas::Path::rectangle(
+                Point::new(region_x_position[i], 0.),
+                Size::new(region_widths[i], height),
+            );
+            frame.fill(&rect_quiero, region_colors[i]);
+        }
+        frame.stroke_rectangle(
+            Point::ORIGIN,
+            Size::new(width, height),
+            Stroke::default().with_color(Color::BLACK).with_width(2.),
+        );
+        let mut text = iced::widget::canvas::Text {
+            content: String::from(&self.mano),
+            position: Point::new(width / 2.0, height / 2.0),
+            color: theme.palette().text,
+            ..iced::widget::canvas::Text::default()
+        };
+        text.vertical_alignment = Vertical::Center;
+        text.horizontal_alignment = Horizontal::Center;
+        text.size = Pixels(10.);
+        frame.fill_text(text);
+
+        // Then, we produce the geometry
+        vec![frame.into_geometry()]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ViewMode {
+    OneHand = 0,
+    TwoHands = 1,
+}
+
 #[derive(Debug)]
 pub struct ActionPath {
-    pub action_tree: ActionNode<usize, Accion>,
+    pub strategy: Strategy,
+    pub selected_tantos_mano: Option<u8>,
+    pub tantos_mano: Vec<u8>,
+    pub selected_tantos_postre: Option<u8>,
+    pub tantos_postre: Vec<u8>,
     pub selected_strategy: Option<TipoEstrategia>,
     pub strategies: Vec<TipoEstrategia>,
     pub selected_actions: Vec<Option<OptionalAction>>,
     pub actions: Vec<Vec<OptionalAction>>,
+    pub one_hand_list: Vec<Mano>,
+    pub view_mode: ViewMode,
+    pub one_hand_squares: Vec<SquareData>,
+    pub two_hands_squares: Vec<Vec<SquareData>>,
 }
 
 impl Default for ActionPath {
@@ -52,29 +235,86 @@ impl Default for ActionPath {
 
 impl ActionPath {
     fn new() -> Self {
-        let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"))
+        // let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"))
+        //     .expect("Error cargando estrategia.");
+        let strategy = Strategy::from_file(Path::new("output/2024-10-04 22:08/Juego.json"))
             .expect("Error cargando estrategia.");
-        let action_tree: ActionNode<usize, Accion> =
-            strategy.strategy_config.trainer_config.action_tree;
-        let children = action_tree.children().unwrap();
-        let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-        valores.extend(children.iter().map(|c| OptionalAction(Some(c.0))));
-        Self {
-            action_tree,
-            selected_actions: vec![None],
-            actions: vec![valores],
-            selected_strategy: Some(TipoEstrategia::DosManos),
-            strategies: vec![
-                TipoEstrategia::DosManos,
-                TipoEstrategia::TresManos1vs2,
-                TipoEstrategia::TresManos1vs2Intermedio,
-                TipoEstrategia::TresManos2vs1,
-                TipoEstrategia::CuatroManos,
+        let one_hand_list = ActionPath::one_hand_list(&strategy);
+        let strategies = match strategy.strategy_config.game_config.lance {
+            Some(lance) => match lance {
+                Lance::Grande | Lance::Chica | Lance::Punto => vec![TipoEstrategia::CuatroManos],
+                _ => vec![
+                    TipoEstrategia::DosManos,
+                    TipoEstrategia::TresManos1vs2,
+                    TipoEstrategia::TresManos1vs2Intermedio,
+                    TipoEstrategia::TresManos2vs1,
+                    TipoEstrategia::CuatroManos,
+                ],
+            },
+            None => todo!(),
+        };
+        let mut action_path = Self {
+            one_hand_squares: vec![SquareData::default(); one_hand_list.len()],
+            two_hands_squares: vec![
+                vec![SquareData::default(); one_hand_list.len()];
+                one_hand_list.len()
             ],
+            view_mode: ViewMode::TwoHands,
+            one_hand_list,
+            strategy: strategy.to_owned(),
+            selected_tantos_mano: Some(0),
+            tantos_mano: Vec::from_iter(0..40),
+            selected_tantos_postre: Some(0),
+            tantos_postre: Vec::from_iter(0..40),
+            selected_actions: vec![],
+            actions: vec![],
+            selected_strategy: Some(TipoEstrategia::CuatroManos),
+            strategies,
+        };
+        action_path.append_action_picklists(&strategy.strategy_config.trainer_config.action_tree);
+        action_path.update_squares();
+        action_path
+    }
+
+    fn one_hand_list(s: &Strategy) -> Vec<Mano> {
+        let manos = CartaIter::new(&Carta::CARTAS_MUS, 4).map(Mano::new);
+        if let Some(lance) = &s.strategy_config.game_config.lance {
+            match lance {
+                musolver::mus::Lance::Pares => manos
+                    .filter(|m| m.pares().is_some())
+                    .sorted_by(|a, b| lance.compara_manos(a, b))
+                    .collect(),
+                musolver::mus::Lance::Punto => manos
+                    .filter(|m| m.valor_puntos() <= 30)
+                    .sorted_by(|a, b| lance.compara_manos(a, b))
+                    .collect(),
+                musolver::mus::Lance::Juego => manos
+                    .filter(|m| m.juego().is_some())
+                    .sorted_by(|a, b| lance.compara_manos(a, b))
+                    .collect(),
+                _ => manos.sorted_by(|a, b| lance.compara_manos(a, b)).collect(),
+            }
+        } else {
+            manos.collect()
         }
     }
 
-    fn update_squares(&self) {
+    fn append_action_picklists(&mut self, action_node: &ActionNode<usize, Accion>) {
+        if let ActionNode::NonTerminal(_, children) = action_node {
+            let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
+            valores.extend(
+                children
+                    .iter()
+                    .filter(|c| c.1 != ActionNode::Terminal)
+                    .map(|c| OptionalAction(Some(c.0))),
+            );
+            self.selected_actions.push(None);
+            self.actions.push(valores);
+        }
+    }
+
+    fn update_squares(&mut self) {
+        let tipo_estrategia = self.selected_strategy.unwrap();
         let history = self
             .selected_actions
             .iter()
@@ -86,16 +326,67 @@ impl ActionPath {
                 }
             })
             .join("");
-        let mano1 = CartaIter::new(&Carta::CARTAS, 4);
-        let buckets: HashMap<Juego, Mano> = mano1
-            .filter_map(|c| {
-                let m = Mano::new(c);
-                println!("{m}");
-                m.juego().map(|j| (j, m))
-            })
-            .collect();
-        println!("{},XXXX,XXXX,{history}", self.selected_strategy.unwrap());
-        println!("{:?}", buckets);
+        let lance = self.strategy.strategy_config.game_config.lance;
+        let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
+        let actions = self.selected_action_node().actions();
+        if self.view_mode == ViewMode::OneHand {
+            for (hand, square) in zip(&self.one_hand_list, &mut self.one_hand_squares) {
+                let manos_normalizadas = if let Some(l) = &lance {
+                    if abstract_game {
+                        ManosNormalizadas::par_manos_to_abstract_string(&(hand, None), l)
+                    } else {
+                        hand.to_string()
+                    }
+                } else {
+                    hand.to_string()
+                };
+                let info_set = format!("{},{},{}", tipo_estrategia, manos_normalizadas, history);
+                let node = self.strategy.nodes.get(&info_set);
+                if let Some(probabilities) = node {
+                    square.update_with_node(&actions, probabilities);
+                    square.mano = hand.to_string();
+                }
+            }
+        } else {
+            for column in 0..self.one_hand_list.len() {
+                for row in 0..self.one_hand_list.len() {
+                    let square = &mut self.two_hands_squares[row][column];
+                    let hand1 = &self.one_hand_list[row];
+                    let hand2 = &self.one_hand_list[column];
+                    let manos_normalizadas = if let Some(l) = &lance {
+                        if abstract_game {
+                            ManosNormalizadas::par_manos_to_abstract_string(
+                                &(hand1, Some(hand2)),
+                                l,
+                            )
+                        } else {
+                            format!("{hand1},{hand2}")
+                        }
+                    } else {
+                        format!("{hand1},{hand2}")
+                    };
+                    let info_set =
+                        format!("{},{},{}", tipo_estrategia, manos_normalizadas, history);
+                    let node = self.strategy.nodes.get(&info_set);
+                    if let Some(probabilities) = node {
+                        square.update_with_node(&actions, probabilities);
+                        square.mano = format!("{hand1},{hand2}");
+                    }
+                }
+            }
+        }
+    }
+
+    fn selected_action_node(&self) -> &ActionNode<usize, Accion> {
+        let mut current_node = &self.strategy.strategy_config.trainer_config.action_tree;
+        for s in &self.selected_actions {
+            if let Some(a) = s {
+                current_node = current_node.next_node(a.0.unwrap()).unwrap();
+            } else {
+                break;
+            }
+        }
+        current_node
     }
 
     fn update(&mut self, message: AppEvent) {
@@ -106,28 +397,34 @@ impl ActionPath {
                 self.actions.drain(level + 1..);
 
                 if action.0.is_some() {
-                    let mut current_node = &self.action_tree;
-                    for s in &self.selected_actions {
-                        if let Some(a) = s {
-                            current_node = current_node.next_node(a.0.unwrap()).unwrap();
-                        } else {
-                            break;
-                        }
-                    }
-                    if let ActionNode::NonTerminal(_, children) = &current_node {
-                        let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-                        valores.extend(
-                            children
-                                .iter()
-                                .filter(|c| c.1 != ActionNode::Terminal)
-                                .map(|c| OptionalAction(Some(c.0))),
-                        );
-                        self.selected_actions.push(None);
-                        self.actions.push(valores);
-                    }
+                    let current_node = self.selected_action_node();
+                    self.append_action_picklists(&current_node.to_owned());
                 }
             }
-            AppEvent::SetStrategy(strategy) => self.selected_strategy = Some(strategy),
+            AppEvent::SetStrategy(strategy) => {
+                let turn = self.selected_action_node().to_play();
+                self.view_mode = match strategy {
+                    TipoEstrategia::DosManos => ViewMode::OneHand,
+                    TipoEstrategia::CuatroManos => ViewMode::TwoHands,
+                    TipoEstrategia::TresManos1vs2 | TipoEstrategia::TresManos1vs2Intermedio => {
+                        if turn.unwrap() == 0 {
+                            ViewMode::OneHand
+                        } else {
+                            ViewMode::TwoHands
+                        }
+                    }
+                    TipoEstrategia::TresManos2vs1 => {
+                        if turn.unwrap() == 0 {
+                            ViewMode::TwoHands
+                        } else {
+                            ViewMode::OneHand
+                        }
+                    }
+                };
+                self.selected_strategy = Some(strategy);
+            }
+            AppEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
+            AppEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
         }
         self.update_squares();
     }
@@ -142,6 +439,13 @@ impl ActionPath {
         )
         .placeholder("Select a strategy");
         top_row = top_row.push(pick_strategy);
+
+        let pick_tantos_mano = pick_list(&self.tantos_mano[..], Some(0), AppEvent::SetTantosMano);
+        top_row = top_row.push(pick_tantos_mano);
+
+        let pick_tantos_postre =
+            pick_list(&self.tantos_postre[..], Some(0), AppEvent::SetTantosPostre);
+        top_row = top_row.push(pick_tantos_postre);
 
         let pick_action1 = pick_list(&self.actions[0][..], self.selected_actions[0], |elem| {
             AppEvent::SetAction(0, elem)
@@ -160,59 +464,37 @@ impl ActionPath {
         }
         top_row = top_row.width(Fill).align_y(Top).spacing(10);
 
-        scrollable(top_row).into()
+        let legend =
+            Container::new(Canvas::new(Legend::default()).width(700).height(60)).padding(20);
+
+        let mut matrix = Column::new();
+        if self.view_mode == ViewMode::OneHand {
+            for square in &self.one_hand_squares {
+                matrix = matrix.push(row![Canvas::new(square).width(60).height(60)])
+            }
+        } else {
+            for square_column in &self.two_hands_squares {
+                let mut row = Row::new();
+                for square_row in square_column {
+                    row = row.push(Canvas::new(square_row).width(60).height(60));
+                }
+                matrix = matrix.push(row);
+            }
+        }
+
+        let scrollable_matrix = scrollable(matrix)
+            .direction(scrollable::Direction::Both {
+                vertical: scrollable::Scrollbar::default(),
+                horizontal: scrollable::Scrollbar::default(),
+            })
+            .width(Length::Fill);
+        let layout = column![top_row, legend, scrollable_matrix].align_x(Horizontal::Center);
+
+        layout.into()
     }
 }
-
-// struct Square {}
-
-// impl Square {
-//     pub fn new<L>(cx: &mut Context, v1: L) -> Handle<Self>
-//     where
-//         L: Lens<Target = (f32, f32, f32)>,
-//     {
-//         Self {}.build(cx, |cx| {
-//             let sum = v1.map(|v| {
-//                 let sum = v.0 + v.1 + v.2;
-//                 (
-//                     Percentage(100. * v.0 / sum),
-//                     Percentage(100. * v.1 / sum),
-//                     Percentage(100. * v.2 / sum),
-//                 )
-//             });
-//             HStack::new(cx, |cx| {
-//                 Element::new(cx)
-//                     .background_color(Color::rgb(255, 0, 0))
-//                     .width(sum.map(|v| v.0));
-//                 Element::new(cx)
-//                     .background_color(Color::rgb(0, 255, 0))
-//                     .width(sum.map(|v| v.1));
-//                 Element::new(cx)
-//                     .background_color(Color::rgb(0, 0, 255))
-//                     .width(sum.map(|v| v.2));
-//             })
-//             .width(Units::Pixels(100.))
-//             .height(Units::Pixels(100.));
-//         })
-//     }
-// }
-
-// impl View for Square {}
-
-fn main() {
-    let _ = iced::run("Inspector", ActionPath::update, ActionPath::view);
-    // let _ = Application::new(|cx| {
-    //     SquareData {
-    //         v: vec![(0.2, 0.1, 0.4), (0.5, 0.2, 0.4)],
-    //     }
-    //     .build(cx);
-    //     ActionPath::new().build(cx);
-    //     HStack::new(cx, |cx| {
-    //         Square::new(cx, SquareData::v.idx(0));
-    //         Square::new(cx, SquareData::v.idx(1));
-    //     });
-    // })
-    // .title("Counter")
-    // .inner_size((400, 400))
-    // .run();
+fn main() -> iced::Result {
+    iced::application("Inspector", ActionPath::update, ActionPath::view)
+        .theme(|_| Theme::GruvboxDark)
+        .run()
 }
