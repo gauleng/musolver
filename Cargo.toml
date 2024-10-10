@@ -3,6 +3,9 @@ name = "musolver"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["inspector"]
+
 [dependencies]
 approx = "0.5.1"
 chrono = "0.4.38"
