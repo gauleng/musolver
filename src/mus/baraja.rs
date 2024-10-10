@@ -4,6 +4,7 @@ use rand::thread_rng;
 
 use super::Mano;
 
+/// Baraja española de cartas.
 #[derive(Clone, Debug)]
 pub struct Baraja(Vec<Carta>);
 
@@ -19,10 +20,12 @@ impl Baraja {
         (Carta::Rey, 8),
     ];
 
+    /// Devuelve una nueva baraja vacía.
     pub fn new() -> Self {
         Baraja(Vec::with_capacity(40))
     }
 
+    /// Devuelve una baraj de mus. Incluye ocho ases y ocho reyes, y no incluye ni doses ni treses.
     pub fn baraja_mus() -> Baraja {
         let mut b = Baraja::new();
         for _ in 0..8 {
@@ -41,6 +44,9 @@ impl Baraja {
         b
     }
 
+    /// Genera cuatro manos a partir de las primeras dieciseis cartas de la baraja en el momento de
+    /// la llamada a la función. Esta funcion no baraja las cartas y tampoco las elimina de la
+    /// baraja.
     pub fn repartir_manos(&self) -> [Mano; 4] {
         let mut c = self.primeras_n_cartas(16).iter();
         core::array::from_fn(|_| {
@@ -52,18 +58,23 @@ impl Baraja {
         })
     }
 
+    /// Inserta una carta en la baraja.
     pub fn insertar(&mut self, c: Carta) {
         self.0.push(c);
     }
 
+    /// Baraja las cartas. Utiliza el algoritmo shuffle del crate rand.
     pub fn barajar(&mut self) {
         self.0.shuffle(&mut thread_rng());
     }
 
+    /// Elimina una carta de la baraja y la devuelve. En caso de que sea una baraja vacía devuelve
+    /// None.
     pub fn repartir(&mut self) -> Option<Carta> {
         self.0.pop()
     }
 
+    /// Devuelve un slice de las primeras n cartas de la baraja.
     pub fn primeras_n_cartas(&self, n: usize) -> &[Carta] {
         &self.0[0..n]
     }
