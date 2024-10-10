@@ -5,12 +5,12 @@ use crate::{
     ActionNode, Game,
 };
 
-use super::{BancoEstrategias, TipoEstrategia};
+use super::{BancoEstrategias, HandConfiguration};
 
 #[derive(Debug)]
 pub struct MusGame<'a> {
     manos_normalizadas: [String; 2],
-    tipo_estrategia: TipoEstrategia,
+    tipo_estrategia: HandConfiguration,
     partida: PartidaMus,
     banco_estrategias: Option<RefCell<BancoEstrategias>>,
     action_tree: Option<&'a ActionNode<usize, Accion>>,
@@ -23,7 +23,7 @@ impl<'a> MusGame<'a> {
         let manos = Self::repartir_manos(baraja);
         let partida = PartidaMus::new(manos, tantos);
         let (tipo_estrategia, manos_normalizadas) =
-            TipoEstrategia::normalizar_mano(partida.manos(), &Lance::Grande);
+            HandConfiguration::normalizar_mano(partida.manos(), &Lance::Grande);
         let manos_normalizadas_str = manos_normalizadas.to_string_array();
         Self {
             partida,
@@ -37,7 +37,7 @@ impl<'a> MusGame<'a> {
 
     fn from_partida_mus(partida: PartidaMus) -> Self {
         let (tipo_estrategia, manos_normalizadas) =
-            TipoEstrategia::normalizar_mano(partida.manos(), &partida.lance_actual().unwrap());
+            HandConfiguration::normalizar_mano(partida.manos(), &partida.lance_actual().unwrap());
         let tantos = partida.tantos();
         let pareja_mano = partida.turno().unwrap();
         let prefijo = format!("{}:{},", tantos[pareja_mano], tantos[1 - pareja_mano]);
@@ -66,7 +66,7 @@ impl<'a> MusGame<'a> {
         })
     }
 
-    pub fn tipo_estrategia(&self) -> TipoEstrategia {
+    pub fn tipo_estrategia(&self) -> HandConfiguration {
         self.tipo_estrategia
     }
 

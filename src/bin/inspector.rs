@@ -17,14 +17,14 @@ use iced::{
 use itertools::Itertools;
 use musolver::{
     mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
-    solver::{ManosNormalizadas, Strategy, TipoEstrategia},
+    solver::{HandConfiguration, InfoSet, Strategy},
     ActionNode,
 };
 
 #[derive(Clone, Debug)]
 enum AppEvent {
     SetAction(usize, OptionalAction),
-    SetStrategy(TipoEstrategia),
+    SetStrategy(HandConfiguration),
     SetTantosMano(u8),
     SetTantosPostre(u8),
 }
@@ -218,8 +218,8 @@ pub struct ActionPath {
     pub tantos_mano: Vec<u8>,
     pub selected_tantos_postre: Option<u8>,
     pub tantos_postre: Vec<u8>,
-    pub selected_strategy: Option<TipoEstrategia>,
-    pub strategies: Vec<TipoEstrategia>,
+    pub selected_strategy: Option<HandConfiguration>,
+    pub strategies: Vec<HandConfiguration>,
     pub selected_actions: Vec<Option<OptionalAction>>,
     pub actions: Vec<Vec<OptionalAction>>,
     pub one_hand_list: Vec<Mano>,
@@ -238,7 +238,7 @@ impl ActionPath {
     fn new() -> Self {
         // let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"))
         //     .expect("Error cargando estrategia.");
-        let strategy = Strategy::from_file(Path::new("output/2024-10-04 22:08/Juego.json"))
+        let strategy = Strategy::from_file(Path::new("output/2024-10-10 16:42/Juego.json"))
             .expect("Error cargando estrategia.");
         let one_hand_list = ActionPath::one_hand_list(&strategy);
         let mut one_hand_squares = Vec::with_capacity(one_hand_list.len());
@@ -259,13 +259,13 @@ impl ActionPath {
         }
         let strategies = match strategy.strategy_config.game_config.lance {
             Some(lance) => match lance {
-                Lance::Grande | Lance::Chica | Lance::Punto => vec![TipoEstrategia::CuatroManos],
+                Lance::Grande | Lance::Chica | Lance::Punto => vec![HandConfiguration::CuatroManos],
                 _ => vec![
-                    TipoEstrategia::DosManos,
-                    TipoEstrategia::TresManos1vs2,
-                    TipoEstrategia::TresManos1vs2Intermedio,
-                    TipoEstrategia::TresManos2vs1,
-                    TipoEstrategia::CuatroManos,
+                    HandConfiguration::DosManos,
+                    HandConfiguration::TresManos1vs2,
+                    HandConfiguration::TresManos1vs2Intermedio,
+                    HandConfiguration::TresManos2vs1,
+                    HandConfiguration::CuatroManos,
                 ],
             },
             None => todo!(),
@@ -282,7 +282,7 @@ impl ActionPath {
             tantos_postre: Vec::from_iter(0..40),
             selected_actions: vec![],
             actions: vec![],
-            selected_strategy: Some(TipoEstrategia::CuatroManos),
+            selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
         };
         action_path.append_action_picklists(&strategy.strategy_config.trainer_config.action_tree);
@@ -329,33 +329,28 @@ impl ActionPath {
 
     fn update_squares(&mut self) {
         let tipo_estrategia = self.selected_strategy.unwrap();
-        let history = self
+        let history: Vec<Accion> = self
             .selected_actions
             .iter()
-            .map(|a| {
-                if let Some(action) = a {
-                    action.0.unwrap().to_string()
-                } else {
-                    "".to_string()
-                }
-            })
-            .join("");
+            .filter_map(|a| if let Some(action) = a { action.0 } else { None })
+            .collect();
         let lance = self.strategy.strategy_config.game_config.lance;
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
         let actions = self.selected_action_node().actions();
+        let mut info_set = InfoSet {
+            tipo_estrategia,
+            tantos: [
+                self.selected_tantos_mano.unwrap_or_default(),
+                self.selected_tantos_postre.unwrap_or_default(),
+            ],
+            manos: (Mano::default(), Some(Mano::default())),
+            history,
+            abstract_game: if abstract_game { lance } else { None },
+        };
         if self.view_mode == ViewMode::OneHand {
             for (hand, square) in zip(&self.one_hand_list, &mut self.one_hand_squares) {
-                let manos_normalizadas = if let Some(l) = &lance {
-                    if abstract_game {
-                        ManosNormalizadas::par_manos_to_abstract_string(&(hand, None), l)
-                    } else {
-                        hand.to_string()
-                    }
-                } else {
-                    hand.to_string()
-                };
-                let info_set = format!("{},{},{}", tipo_estrategia, manos_normalizadas, history);
-                let node = self.strategy.nodes.get(&info_set);
+                info_set.manos = (hand.to_owned(), None);
+                let node = self.strategy.nodes.get(&info_set.to_string());
                 if let Some(probabilities) = node {
                     square.update_with_node(&actions, probabilities);
                     square.mano = hand.to_string();
@@ -367,21 +362,8 @@ impl ActionPath {
                     let square = &mut self.two_hands_squares[row][column];
                     let hand1 = &self.one_hand_list[row];
                     let hand2 = &self.one_hand_list[column];
-                    let manos_normalizadas = if let Some(l) = &lance {
-                        if abstract_game {
-                            ManosNormalizadas::par_manos_to_abstract_string(
-                                &(hand1, Some(hand2)),
-                                l,
-                            )
-                        } else {
-                            format!("{hand1},{hand2}")
-                        }
-                    } else {
-                        format!("{hand1},{hand2}")
-                    };
-                    let info_set =
-                        format!("{},{},{}", tipo_estrategia, manos_normalizadas, history);
-                    let node = self.strategy.nodes.get(&info_set);
+                    info_set.manos = (hand1.to_owned(), Some(hand2.to_owned()));
+                    let node = self.strategy.nodes.get(&info_set.to_string());
                     if let Some(probabilities) = node {
                         square.update_with_node(&actions, probabilities);
                         square.mano = format!("{hand1},{hand2}");
@@ -418,16 +400,17 @@ impl ActionPath {
             AppEvent::SetStrategy(strategy) => {
                 let turn = self.selected_action_node().to_play();
                 self.view_mode = match strategy {
-                    TipoEstrategia::DosManos => ViewMode::OneHand,
-                    TipoEstrategia::CuatroManos => ViewMode::TwoHands,
-                    TipoEstrategia::TresManos1vs2 | TipoEstrategia::TresManos1vs2Intermedio => {
+                    HandConfiguration::DosManos => ViewMode::OneHand,
+                    HandConfiguration::CuatroManos => ViewMode::TwoHands,
+                    HandConfiguration::TresManos1vs2
+                    | HandConfiguration::TresManos1vs2Intermedio => {
                         if turn.unwrap() == 0 {
                             ViewMode::OneHand
                         } else {
                             ViewMode::TwoHands
                         }
                     }
-                    TipoEstrategia::TresManos2vs1 => {
+                    HandConfiguration::TresManos2vs1 => {
                         if turn.unwrap() == 0 {
                             ViewMode::TwoHands
                         } else {

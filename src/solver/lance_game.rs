@@ -1,9 +1,43 @@
+use std::fmt::Display;
+
+use itertools::Itertools;
+
 use crate::{
     mus::{Accion, Baraja, DistribucionDobleCartaIter, Lance, Mano, PartidaMus},
+    solver::ManosNormalizadas,
     Game,
 };
 
-use super::TipoEstrategia;
+use super::HandConfiguration;
+
+pub struct InfoSet {
+    pub tipo_estrategia: HandConfiguration,
+    pub tantos: [u8; 2],
+    pub manos: (Mano, Option<Mano>),
+    pub history: Vec<Accion>,
+    pub abstract_game: Option<Lance>,
+}
+
+impl Display for InfoSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{},{},{},{}",
+            self.tantos[0],
+            self.tantos[1],
+            self.tipo_estrategia,
+            if let Some(lance) = self.abstract_game {
+                ManosNormalizadas::par_manos_to_abstract_string(&self.manos, &lance)
+            } else {
+                ManosNormalizadas::par_manos_to_string(&self.manos)
+            },
+            self.history
+                .iter()
+                .map(|accion| accion.to_string())
+                .join("")
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct LanceGame {
@@ -42,16 +76,18 @@ impl LanceGame {
     fn info_set_prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 2]> {
         let lance = partida_mus.lance_actual()?;
         let (tipo_estrategia, manos_normalizadas) =
-            TipoEstrategia::normalizar_mano(partida_mus.manos(), &lance);
-        let manos_str = if abstracto {
-            manos_normalizadas.to_abstract_string_array(&lance)
-        } else {
-            manos_normalizadas.to_string_array()
-        };
-        Some([
-            tipo_estrategia.to_string() + "," + &manos_str[0],
-            tipo_estrategia.to_string() + "," + &manos_str[1],
-        ])
+            HandConfiguration::normalizar_mano(partida_mus.manos(), &lance);
+        let info_set_prefix: [String; 2] = core::array::from_fn(|i| {
+            InfoSet {
+                tantos: *partida_mus.tantos(),
+                tipo_estrategia,
+                manos: manos_normalizadas.manos(i).to_owned(),
+                history: vec![],
+                abstract_game: if abstracto { Some(lance) } else { None },
+            }
+            .to_string()
+        });
+        Some(info_set_prefix)
     }
 }
 
@@ -121,7 +157,6 @@ impl Game<usize, Accion> for LanceGame {
     fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
         let mut output = String::with_capacity(9 + history.len() + 1);
         output.push_str(&self.info_set_prefix.as_ref().unwrap()[player]);
-        output.push(',');
         for i in history.iter() {
             output.push_str(&i.to_string());
         }

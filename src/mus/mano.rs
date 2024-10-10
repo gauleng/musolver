@@ -1,7 +1,7 @@
 use super::mus_error::MusError;
 use super::Carta;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Default)]
 pub struct Mano(Vec<Carta>);
 
 impl Mano {

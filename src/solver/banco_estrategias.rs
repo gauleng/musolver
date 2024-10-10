@@ -13,36 +13,41 @@ use crate::{
 use super::{GameConfig, Strategy, TrainerConfig};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TipoEstrategia {
-    CuatroManos = 0,
-    TresManos1vs2 = 1,
-    TresManos1vs2Intermedio = 2,
-    TresManos2vs1 = 3,
-    DosManos = 4,
+pub enum HandConfiguration {
+    CuatroManos,
+    TresManos1vs2,
+    TresManos1vs2Intermedio,
+    TresManos2vs1,
+    DosManos,
 }
 
-impl Display for TipoEstrategia {
+impl Display for HandConfiguration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TipoEstrategia::CuatroManos => write!(f, "2-2"),
-            TipoEstrategia::TresManos1vs2 => write!(f, "1-2"),
-            TipoEstrategia::TresManos1vs2Intermedio => write!(f, "1-1-1"),
-            TipoEstrategia::TresManos2vs1 => write!(f, "2-1"),
-            TipoEstrategia::DosManos => write!(f, "1-1"),
+            HandConfiguration::CuatroManos => write!(f, "2-2"),
+            HandConfiguration::TresManos1vs2 => write!(f, "1-2"),
+            HandConfiguration::TresManos1vs2Intermedio => write!(f, "1-1-1"),
+            HandConfiguration::TresManos2vs1 => write!(f, "2-1"),
+            HandConfiguration::DosManos => write!(f, "1-1"),
         }
     }
 }
 
-pub struct ManosNormalizadas<'a>([(&'a Mano, Option<&'a Mano>); 2]);
+pub struct ManosNormalizadas([(Mano, Option<Mano>); 2]);
 
-impl<'a> ManosNormalizadas<'a> {
+impl ManosNormalizadas {
     //// Manos de la pareja mano o postre según el parámetro recibido.
-    pub fn manos(&self, p: usize) -> &(&'a Mano, Option<&'a Mano>) {
+    pub fn manos(&self, p: usize) -> &(Mano, Option<Mano>) {
         &self.0[p]
     }
 
-    fn par_manos_to_string(manos: &(&'a Mano, Option<&'a Mano>)) -> String {
-        manos.0.to_string() + "," + &manos.1.map_or_else(|| "".to_owned(), |m| m.to_string())
+    pub fn par_manos_to_string(manos: &(Mano, Option<Mano>)) -> String {
+        manos.0.to_string()
+            + ","
+            + &manos
+                .1
+                .as_ref()
+                .map_or_else(|| "".to_owned(), |m| m.to_string())
     }
 
     pub fn mano_to_abstract_string(m: &Mano, l: &Lance) -> String {
@@ -67,11 +72,12 @@ impl<'a> ManosNormalizadas<'a> {
         }
     }
 
-    pub fn par_manos_to_abstract_string(manos: &(&'a Mano, Option<&'a Mano>), l: &Lance) -> String {
-        Self::mano_to_abstract_string(manos.0, l)
+    pub fn par_manos_to_abstract_string(manos: &(Mano, Option<Mano>), l: &Lance) -> String {
+        Self::mano_to_abstract_string(&manos.0, l)
             + ","
             + &manos
                 .1
+                .as_ref()
                 .map_or_else(|| "".to_string(), |m| Self::mano_to_abstract_string(m, l))
     }
 
@@ -90,12 +96,15 @@ impl<'a> ManosNormalizadas<'a> {
     }
 }
 
-impl<'a> TipoEstrategia {
-    pub fn normalizar_mano(m: &'a [Mano], l: &Lance) -> (Self, ManosNormalizadas<'a>) {
+impl<'a> HandConfiguration {
+    pub fn normalizar_mano(m: &'a [Mano], l: &Lance) -> (Self, ManosNormalizadas) {
         match l {
             Lance::Grande | Lance::Chica | Lance::Punto => {
-                let mn = [(&m[0], Some(&m[2])), (&m[1], Some(&m[3]))];
-                (TipoEstrategia::CuatroManos, ManosNormalizadas(mn))
+                let mn = [
+                    (m[0].clone(), Some(m[2].clone())),
+                    (m[1].clone(), Some(m[3].clone())),
+                ];
+                (HandConfiguration::CuatroManos, ManosNormalizadas(mn))
             }
             Lance::Pares => {
                 let jugadas: Vec<Option<Pares>> = m.iter().map(|m| m.pares()).collect();
@@ -111,7 +120,7 @@ impl<'a> TipoEstrategia {
     fn normalizar_mano_jugadas<T>(
         m: &'a [Mano],
         jugadas: &[Option<T>],
-    ) -> (Self, ManosNormalizadas<'a>) {
+    ) -> (Self, ManosNormalizadas) {
         let mut parejas = [Vec::new(), Vec::new()];
         jugadas.iter().enumerate().for_each(|(i, p)| {
             if p.is_some() {
@@ -122,22 +131,31 @@ impl<'a> TipoEstrategia {
             parejas.swap(0, 1);
         }
         if parejas[0].len() == 2 && parejas[1].len() == 2 {
-            let mn = [(&m[0], Some(&m[2])), (&m[1], Some(&m[3]))];
-            (TipoEstrategia::CuatroManos, ManosNormalizadas(mn))
+            let mn = [
+                (m[0].clone(), Some(m[2].clone())),
+                (m[1].clone(), Some(m[3].clone())),
+            ];
+            (HandConfiguration::CuatroManos, ManosNormalizadas(mn))
         } else if parejas[0].len() == 1 && parejas[1].len() == 1 {
-            let mn = [(parejas[0][0], None), (parejas[1][0], None)];
-            (TipoEstrategia::DosManos, ManosNormalizadas(mn))
+            let mn = [(parejas[0][0].clone(), None), (parejas[1][0].clone(), None)];
+            (HandConfiguration::DosManos, ManosNormalizadas(mn))
         } else if parejas[0].len() == 1 && parejas[1].len() == 2 {
             let tipo_estrategia = if jugadas[2].is_none() {
-                TipoEstrategia::TresManos1vs2
+                HandConfiguration::TresManos1vs2
             } else {
-                TipoEstrategia::TresManos1vs2Intermedio
+                HandConfiguration::TresManos1vs2Intermedio
             };
-            let mn = [(parejas[0][0], None), (parejas[1][0], Some(parejas[1][1]))];
+            let mn = [
+                (parejas[0][0].clone(), None),
+                (parejas[1][0].clone(), Some(parejas[1][1].clone())),
+            ];
             (tipo_estrategia, ManosNormalizadas(mn))
         } else {
-            let mn = [(parejas[0][0], Some(parejas[0][1])), (parejas[1][0], None)];
-            (TipoEstrategia::TresManos2vs1, ManosNormalizadas(mn))
+            let mn = [
+                (parejas[0][0].clone(), Some(parejas[0][1].clone())),
+                (parejas[1][0].clone(), None),
+            ];
+            (HandConfiguration::TresManos2vs1, ManosNormalizadas(mn))
         }
     }
 }
