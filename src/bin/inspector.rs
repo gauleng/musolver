@@ -7,10 +7,10 @@ use iced::{
     },
     mouse,
     widget::{
-        canvas::{self, Stroke},
-        column, pick_list, row, scrollable, Canvas, Column, Container, Row, Text,
+        canvas::{self, Stroke, Text},
+        column, pick_list, row, scrollable, Canvas, Column, Container, Row,
     },
-    Alignment, Color, Element,
+    Color, Element,
     Length::{self, Fill},
     Pixels, Point, Renderer, Size, Theme,
 };
@@ -84,11 +84,11 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
                 Size::new(width / 6., height),
                 region_colors[i],
             );
-            let mut text = iced::widget::canvas::Text {
+            let mut text = Text {
                 content: String::from(region_text[i]),
                 position: Point::new(region_x_position[i] + 10., height / 2.0),
                 color: theme.palette().text,
-                ..iced::widget::canvas::Text::default()
+                ..Text::default()
             };
             text.vertical_alignment = Vertical::Center;
             frame.fill_text(text);
@@ -98,7 +98,7 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct SquareData {
     pub paso: f64,
     pub quiero: f64,
@@ -108,6 +108,7 @@ pub struct SquareData {
     pub ordago: f64,
     pub resto: f64,
     pub mano: String,
+    pub cache: canvas::Cache,
 }
 
 impl SquareData {
@@ -148,59 +149,59 @@ impl<AppEvent> canvas::Program<AppEvent> for SquareData {
         bounds: iced::Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry<Renderer>> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let height = bounds.height;
-        let width = bounds.width;
-        let region_widths = [
-            width * self.paso as f32,
-            width * self.quiero as f32,
-            width * self.envido2 as f32,
-            width * self.envido5 as f32,
-            width * self.envido10 as f32,
-            width * self.ordago as f32,
-        ];
-        let region_colors = [
-            Color::parse("006E90").unwrap(),
-            Color::parse("2F9332").unwrap(),
-            Color::parse("FABC3F").unwrap(),
-            Color::parse("E85C0D").unwrap(),
-            Color::parse("C7253E").unwrap(),
-            Color::parse("821131").unwrap(),
-        ];
-        let region_x_position: Vec<f32> = region_widths
-            .iter()
-            .scan(0., |x_pos, width| {
-                let ret = Some(*x_pos);
-                *x_pos += width;
-                ret
-            })
-            .collect();
-
-        for i in 0..region_widths.len() {
-            let rect_quiero = canvas::Path::rectangle(
-                Point::new(region_x_position[i], 0.),
-                Size::new(region_widths[i], height),
+        let content = self.cache.draw(renderer, bounds.size(), |frame| {
+            let height = bounds.height;
+            let width = bounds.width;
+            let region_widths = [
+                width * self.paso as f32,
+                width * self.quiero as f32,
+                width * self.envido2 as f32,
+                width * self.envido5 as f32,
+                width * self.envido10 as f32,
+                width * self.ordago as f32,
+            ];
+            let region_colors = [
+                Color::parse("006E90").unwrap(),
+                Color::parse("2F9332").unwrap(),
+                Color::parse("FABC3F").unwrap(),
+                Color::parse("E85C0D").unwrap(),
+                Color::parse("C7253E").unwrap(),
+                Color::parse("821131").unwrap(),
+            ];
+            let region_x_position: Vec<f32> = region_widths
+                .iter()
+                .scan(0., |x_pos, width| {
+                    let ret = Some(*x_pos);
+                    *x_pos += width;
+                    ret
+                })
+                .collect();
+            for i in 0..region_widths.len() {
+                let rect_quiero = canvas::Path::rectangle(
+                    Point::new(region_x_position[i], 0.),
+                    Size::new(region_widths[i], height),
+                );
+                frame.fill(&rect_quiero, region_colors[i]);
+            }
+            frame.stroke_rectangle(
+                Point::ORIGIN,
+                Size::new(width, height),
+                Stroke::default().with_color(Color::BLACK).with_width(2.),
             );
-            frame.fill(&rect_quiero, region_colors[i]);
-        }
-        frame.stroke_rectangle(
-            Point::ORIGIN,
-            Size::new(width, height),
-            Stroke::default().with_color(Color::BLACK).with_width(2.),
-        );
-        let mut text = iced::widget::canvas::Text {
-            content: String::from(&self.mano),
-            position: Point::new(width / 2.0, height / 2.0),
-            color: theme.palette().text,
-            ..iced::widget::canvas::Text::default()
-        };
-        text.vertical_alignment = Vertical::Center;
-        text.horizontal_alignment = Horizontal::Center;
-        text.size = Pixels(10.);
-        frame.fill_text(text);
+            let mut text = iced::widget::canvas::Text {
+                content: String::from(&self.mano),
+                position: Point::new(width / 2.0, height / 2.0),
+                color: theme.palette().text,
+                ..iced::widget::canvas::Text::default()
+            };
+            text.vertical_alignment = Vertical::Center;
+            text.horizontal_alignment = Horizontal::Center;
+            text.size = Pixels(10.);
+            frame.fill_text(text);
+        });
 
         // Then, we produce the geometry
-        vec![frame.into_geometry()]
+        vec![content]
     }
 }
 
@@ -240,6 +241,22 @@ impl ActionPath {
         let strategy = Strategy::from_file(Path::new("output/2024-10-04 22:08/Juego.json"))
             .expect("Error cargando estrategia.");
         let one_hand_list = ActionPath::one_hand_list(&strategy);
+        let mut one_hand_squares = Vec::with_capacity(one_hand_list.len());
+        let mut two_hands_squares = Vec::with_capacity(one_hand_list.len());
+        for s in &one_hand_list {
+            one_hand_squares.push(SquareData {
+                mano: s.to_string(),
+                ..SquareData::default()
+            });
+            let mut row = Vec::with_capacity(one_hand_list.len());
+            for s2 in &one_hand_list {
+                row.push(SquareData {
+                    mano: format!("{},{}", s, s2),
+                    ..SquareData::default()
+                })
+            }
+            two_hands_squares.push(row);
+        }
         let strategies = match strategy.strategy_config.game_config.lance {
             Some(lance) => match lance {
                 Lance::Grande | Lance::Chica | Lance::Punto => vec![TipoEstrategia::CuatroManos],
@@ -254,11 +271,8 @@ impl ActionPath {
             None => todo!(),
         };
         let mut action_path = Self {
-            one_hand_squares: vec![SquareData::default(); one_hand_list.len()],
-            two_hands_squares: vec![
-                vec![SquareData::default(); one_hand_list.len()];
-                one_hand_list.len()
-            ],
+            one_hand_squares,
+            two_hands_squares,
             view_mode: ViewMode::TwoHands,
             one_hand_list,
             strategy: strategy.to_owned(),
