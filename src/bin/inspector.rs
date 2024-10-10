@@ -337,20 +337,23 @@ impl ActionPath {
         let lance = self.strategy.strategy_config.game_config.lance;
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
         let actions = self.selected_action_node().actions();
-        let mut info_set = InfoSet {
-            tipo_estrategia,
-            tantos: [
-                self.selected_tantos_mano.unwrap_or_default(),
-                self.selected_tantos_postre.unwrap_or_default(),
-            ],
-            manos: (Mano::default(), Some(Mano::default())),
-            history,
-            abstract_game: if abstract_game { lance } else { None },
-        };
+        let tantos = [
+            self.selected_tantos_mano.unwrap_or_default(),
+            self.selected_tantos_postre.unwrap_or_default(),
+        ];
+        let abstract_game = if abstract_game { lance } else { None };
+
         if self.view_mode == ViewMode::OneHand {
             for (hand, square) in zip(&self.one_hand_list, &mut self.one_hand_squares) {
-                info_set.manos = (hand.to_owned(), None);
-                let node = self.strategy.nodes.get(&info_set.to_string());
+                let info_set = InfoSet::str(
+                    &tipo_estrategia,
+                    &tantos,
+                    hand,
+                    None,
+                    &history,
+                    abstract_game,
+                );
+                let node = self.strategy.nodes.get(&info_set);
                 if let Some(probabilities) = node {
                     square.update_with_node(&actions, probabilities);
                     square.mano = hand.to_string();
@@ -362,8 +365,15 @@ impl ActionPath {
                     let square = &mut self.two_hands_squares[row][column];
                     let hand1 = &self.one_hand_list[row];
                     let hand2 = &self.one_hand_list[column];
-                    info_set.manos = (hand1.to_owned(), Some(hand2.to_owned()));
-                    let node = self.strategy.nodes.get(&info_set.to_string());
+                    let info_set = InfoSet::str(
+                        &tipo_estrategia,
+                        &tantos,
+                        hand1,
+                        Some(hand2),
+                        &history,
+                        abstract_game,
+                    );
+                    let node = self.strategy.nodes.get(&info_set);
                     if let Some(probabilities) = node {
                         square.update_with_node(&actions, probabilities);
                         square.mano = format!("{hand1},{hand2}");
