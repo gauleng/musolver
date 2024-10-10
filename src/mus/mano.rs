@@ -1,6 +1,10 @@
+use std::str::FromStr;
+
 use super::mus_error::MusError;
 use super::Carta;
 
+/// Representación de una mano de cartas, no específicamente de mus. Internamente es un vector de
+/// Carta.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Default)]
 pub struct Mano(Vec<Carta>);
 
@@ -31,6 +35,14 @@ impl TryFrom<&str> for Mano {
             cartas.push(carta);
         }
         Ok(Self::new(cartas))
+    }
+}
+
+impl FromStr for Mano {
+    type Err = MusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Mano::try_from(s)
     }
 }
 
