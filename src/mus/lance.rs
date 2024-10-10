@@ -9,6 +9,7 @@ use crate::mus::Mano;
 use std::cmp;
 use std::fmt::Display;
 
+/// Jugadas del lance juego.
 #[derive(Hash, Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Juego {
     Resto(u8),
@@ -26,6 +27,7 @@ impl Display for Juego {
     }
 }
 
+/// Jugadas del lance pares.
 #[derive(Hash, Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Pares {
     Pareja(u16),
@@ -49,6 +51,7 @@ impl Display for Pares {
     }
 }
 
+/// Lances de una partida de mus.
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 pub enum Lance {
     Grande,
@@ -163,6 +166,8 @@ impl RankingManos for Lance {
 }
 
 impl Lance {
+    /// Tantos asociados al valor de una mano. En los lances de pares y juego se corresponde con el
+    /// tanteo de las jugadas y en el resto de lances es cero.
     pub fn tantos_mano(&self, mano: &Mano) -> u8 {
         match self {
             Lance::Pares => match mano.pares() {
@@ -180,6 +185,8 @@ impl Lance {
         }
     }
 
+    /// Tantos apostados cuando todos los jugadores pasan. Es 1 para los lances de grande y chica y
+    /// 0 para el resto.
     pub fn apuesta_minima(&self) -> u8 {
         if let Lance::Grande | Lance::Chica = self {
             1
@@ -188,6 +195,7 @@ impl Lance {
         }
     }
 
+    /// Tantos extra recibidos por ganar el lance. Es 1 para el lance de punto y 0 para el resto.
     pub fn bonus(&self) -> u8 {
         if let Lance::Punto = self {
             1
@@ -220,6 +228,14 @@ impl Lance {
         manos.iter().map(f).collect()
     }
 
+    /// Indica qué pareja es la primera en actuar. Por lo general será la pareja del jugador mano,
+    /// pero en los lances de pares y juego puede darse la situación contraria en dos casos: que
+    /// solo tengan jugada el jugador a la derecha del mano y la pareja del mano, o que el único
+    /// sin jugada sea el jugador postre.
+    ///
+    /// En este último caso, el jugador de la pareja postre está intercalado entre los dos rivales.
+    /// Se asume que en esa configuración el jugador mano siempre va a pasar a la espera de lo que
+    /// decida su compañero, por lo que empezaría hablando el jugador que está solo.
     pub fn turno_inicial(&self, manos: &[Mano]) -> usize {
         match self {
             Lance::Grande | Lance::Chica | Lance::Punto => 0,
@@ -228,6 +244,9 @@ impl Lance {
         }
     }
 
+    /// Devuelve un bool indicando si el lance tiene lugar, independientemente de si hay lugar a
+    /// envites. En los lances de grande y chica siempre devuelve true, en pares y juego
+    /// si algún jugador con jugada, y en punto si no hay ningún jugador con juego.
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
@@ -237,6 +256,8 @@ impl Lance {
         }
     }
 
+    /// Devuelve un bool indicando si el lance tiene envites. Para ello es necesario que al menos
+    /// un jugador de cada pareja tenga jugada.
     pub fn se_juega(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
@@ -253,6 +274,7 @@ impl Lance {
     }
 }
 
+// Representa los tantos totales apostados en un lance.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Apuesta {
     Tantos(u8),
@@ -272,6 +294,8 @@ pub struct EstadoLance {
 }
 
 impl EstadoLance {
+    /// Crea un nuevo lance con las apuestas minima y máximas indicadas, la pareja que empieza
+    /// actuando y el jugador que tiene la mejor mano.
     pub fn new(
         apuesta_minima: u8,
         apuesta_maxima: u8,
@@ -354,6 +378,11 @@ impl EstadoLance {
         self.turno.is_none() && self.activos.iter().all(|b| *b)
     }
 
+    /// Devuelve los tantos totales apostados en el lance hasta el momento. Se considera apostada
+    /// cualquier cantidad que se quiso o que se ha aceptado tácitamente con un nuevo envite. En
+    /// caso de que rechace un envite sin que hubiera en ese momento tantos apostados, se asume que
+    /// se apuesta un tanto. Si el lance tiene apuesta mínima y todos los jugadores pasaron, se
+    /// asume que se apuesta esa cantidad. Esto último solo ocurre en grande y chica.
     pub fn tantos_apostados(&self) -> Apuesta {
         let mut apostado = if self.se_quieren() {
             self.bote[1]
@@ -384,6 +413,8 @@ impl EstadoLance {
         self.ganador
     }
 
+    /// Devuelve el turno de la pareja que le toca actuar. En caso de que el lance ya haya acabado
+    /// devuelve None.
     pub fn turno(&self) -> Option<usize> {
         self.turno
     }

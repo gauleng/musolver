@@ -12,6 +12,7 @@ use super::EstadoLance;
 use super::MusError;
 use super::RankingManos;
 
+/// Acciones posibles durante una partida de mus.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum Accion {
     Paso,
@@ -49,8 +50,12 @@ pub struct PartidaMus {
 impl PartidaMus {
     const MAX_TANTOS: u8 = 40;
 
-    /// Crea una partida de mus con las manos recibidas como parámetro. Recibe también los tantos
-    /// con los que comienzan la partida cada una de las parejas.
+    /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
+    /// array y se asume que la primera posición se corresponde con la mano del jugador mano y la
+    /// última con la del jugador postre.
+    ///
+    /// Recibe también los tantos con los que comienzan la partida
+    /// cada una de las parejas.
     pub fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
         let mut lances = Vec::with_capacity(4);
         lances.push((Lance::Grande, None));
@@ -226,12 +231,14 @@ impl PartidaMus {
         }
     }
 
+    /// Devuelve el lance en curso, o None si la partida ya ha acabado.
     pub fn lance_actual(&self) -> Option<Lance> {
         self.estado_lance
             .as_ref()
             .map(|_| self.lances[self.idx_lance].0)
     }
 
+    /// Devuelve las manos de los jugadores.
     pub fn manos(&self) -> &[Mano; 4] {
         &self.manos
     }
