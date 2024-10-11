@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use musolver::{
     mus::{Accion, Lance},
     solver::LanceGame,
-    ActionNode, Cfr, Game,
+    ActionNode, Cfr, CfrMethod,
 };
 
 fn bench_chance_sampling(c: &mut Criterion) {
@@ -19,9 +19,13 @@ fn bench_chance_sampling(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                game.new_random();
-                cfr.chance_sampling(&game, &action_tree, 0, 1., 1.);
-                cfr.chance_sampling(&game, &action_tree, 1, 1., 1.);
+                cfr.train(
+                    &mut game,
+                    &action_tree,
+                    CfrMethod::ChanceSampling,
+                    100,
+                    |_, _| {},
+                );
             },
             BatchSize::SmallInput,
         )
@@ -40,9 +44,13 @@ fn bench_external_sampling(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                game.new_random();
-                cfr.external_sampling(&game, &action_tree, 0);
-                cfr.external_sampling(&game, &action_tree, 1);
+                cfr.train(
+                    &mut game,
+                    &action_tree,
+                    CfrMethod::ExternalSampling,
+                    100,
+                    |_, _| {},
+                );
             },
             BatchSize::SmallInput,
         )

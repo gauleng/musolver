@@ -9,3 +9,6 @@ pub use self::action_tree::*;
 
 mod cfr;
 pub use self::cfr::*;
+
+mod game_error;
+pub use game_error::GameError;

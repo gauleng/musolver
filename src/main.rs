@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use chrono::Utc;
 use musolver::{
     mus::{Accion, Lance},
-    solver::{BancoEstrategias, CfrMethod, GameConfig, LanceGame, Trainer, TrainerConfig},
-    ActionNode,
+    solver::{BancoEstrategias, GameConfig, LanceGame, Trainer, TrainerConfig},
+    ActionNode, CfrMethod,
 };
 
 use clap::Parser;

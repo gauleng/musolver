@@ -1,9 +1,9 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
-use super::ActionNode;
+use super::{ActionNode, GameError};
 
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +91,28 @@ pub trait Game<P, A> {
         F: FnMut(&Self, f64);
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub enum CfrMethod {
+    Cfr,
+    CfrPlus,
+    ChanceSampling,
+    ExternalSampling,
+}
+
+impl FromStr for CfrMethod {
+    type Err = GameError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "cfr" => Ok(CfrMethod::Cfr),
+            "cfr-plus" => Ok(CfrMethod::CfrPlus),
+            "chance-sampling" => Ok(CfrMethod::ChanceSampling),
+            "external-sampling" => Ok(CfrMethod::ExternalSampling),
+            _ => Err(GameError::InvalidCfrMethod(s.to_owned())),
+        }
+    }
+}
+
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
 pub struct Cfr<A> {
@@ -109,18 +131,45 @@ where
         }
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node> {
-        &self.nodes
-    }
-
-    pub fn update_strategy(&mut self) {
-        self.nodes.values_mut().for_each(|n| {
-            n.update_strategy();
-        });
+    pub fn train<G, P, F>(
+        &mut self,
+        game: &mut G,
+        action_tree: &ActionNode<P, A>,
+        cfr_method: CfrMethod,
+        iterations: usize,
+        mut iteration_callback: F,
+    ) where
+        G: Game<P, A>,
+        P: Eq + Copy,
+        F: FnMut(&usize, &[f64]),
+    {
+        let mut util = vec![0.; game.num_players()];
+        for i in 0..iterations {
+            for (player_idx, u) in util.iter_mut().enumerate() {
+                let player_id = game.player_id(player_idx);
+                match cfr_method {
+                    CfrMethod::Cfr => {
+                        game.new_iter(|game, po| {
+                            *u += po * self.chance_sampling(game, action_tree, player_id, 1., po);
+                        });
+                    }
+                    CfrMethod::CfrPlus => todo!(),
+                    CfrMethod::ChanceSampling => {
+                        game.new_random();
+                        *u += self.chance_sampling(game, action_tree, player_id, 1., 1.);
+                    }
+                    CfrMethod::ExternalSampling => {
+                        game.new_random();
+                        *u += self.external_sampling(game, action_tree, player_id);
+                    }
+                }
+            }
+            iteration_callback(&i, &[util[0] / i as f64, util[1] / i as f64]);
+        }
     }
 
     /// Chance sampling CFR algorithm.
-    pub fn chance_sampling<G, P>(
+    fn chance_sampling<G, P>(
         &mut self,
         game: &G,
         n: &ActionNode<P, A>,
@@ -175,7 +224,7 @@ where
     }
 
     /// External sampling CFR algorithm.
-    pub fn external_sampling<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
+    fn external_sampling<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
     where
         G: Game<P, A>,
         P: Eq + Copy,
@@ -224,6 +273,16 @@ where
             }
             ActionNode::Terminal => game.utility(player, &self.history),
         }
+    }
+
+    pub fn nodes(&self) -> &HashMap<String, Node> {
+        &self.nodes
+    }
+
+    pub fn update_strategy(&mut self) {
+        self.nodes.values_mut().for_each(|n| {
+            n.update_strategy();
+        });
     }
 }
 
