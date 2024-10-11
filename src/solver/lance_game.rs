@@ -7,20 +7,22 @@ use crate::{
     Game,
 };
 
-/// Representa las configuraciones de manos posibles en un lance de mus. En los lances grande,
-/// chica y punto participan todos los jugadores, lo que se representa con la variante CuatroManos.
+/// Representa las configuraciones de manos posibles en un lance de mus.
+///
+/// En los lances grande, chica y punto participan todos los jugadores, lo que se representa con la
+/// variante CuatroManos.
 ///
 /// En pares y juego el número de participantes depende de quién tenga jugada, por lo que pueden
 /// darse las siguientes situaciones, en donde se numeran los jugadores participantes en un lance
 /// con números del 0 al 3. Por ejemplo, 0-2-3 se refiere a que participan tres jugadores, el
 /// jugador mano y su pareja, junto con el jugador postre.
 ///
-/// 0-1-2-3: CuatroManos.
-/// 0-1-2: TresManos1vs2Intermedio
-/// 1-2-3: TresManos1vs2Intermedio
-/// 0-2-3: TresManos2vs1
-/// 0-1-3: TresManos1vs2
-/// 0-1, 1-2, 2-3, 0-3: DosManos
+/// * 0-1-2-3: CuatroManos.
+/// * 0-1-2: TresManos1vs2Intermedio
+/// * 1-2-3: TresManos1vs2Intermedio
+/// * 0-2-3: TresManos2vs1
+/// * 0-1-3: TresManos1vs2
+/// * 0-1, 1-2, 2-3, 0-3: DosManos
 ///
 /// En los casos de tres manos la convención es la siguiente:
 /// * Si el jugador que está solo es el primero en hablar, es un caso 1vs2.
@@ -31,6 +33,9 @@ use crate::{
 ///
 /// Esta estructura también dispone de un método para normalizar las manos de una mesa de mus. Se
 /// puede usar como sigue:
+///
+///        use musolver::solver::HandConfiguration;
+///        use musolver::mus::{Mano, Lance};
 ///
 ///        let manos = [
 ///            Mano::try_from("RRRR").unwrap(),

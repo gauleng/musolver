@@ -19,7 +19,7 @@ pub enum MusAction {
     Payoff(usize, u8),
 }
 
-/// Simuates a mus game or a particular lance.
+/// Simulates a mus game or a particular lance.
 pub struct MusArena {
     pub agents: Vec<Box<dyn Agent>>,
     pub kibitzers: Vec<Box<dyn Kibitzer>>,

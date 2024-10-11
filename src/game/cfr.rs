@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::ActionNode;
 
+/// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     regret_sum: Vec<f64>,
@@ -64,17 +65,33 @@ impl Node {
     }
 }
 
+/// Trait implemented by games that can be trained with the CFR algorithm, for players identified
+/// with P and possible actions A.
 pub trait Game<P, A> {
+    /// Number of players of the game.
     fn num_players(&self) -> usize;
+
+    /// Identifier for the player in position idx.
     fn player_id(&self, idx: usize) -> P;
+
+    /// Utility function for the player P after the actions considered in the history slice.
     fn utility(&self, player: P, history: &[A]) -> f64;
+
+    /// Sring representation of the information set for player P after the actions considered in
+    /// the history slice.
     fn info_set_str(&self, player: P, history: &[A]) -> String;
+
+    /// Initializes the game with a random instance. This method is called by the external and
+    /// chance sampling methods.
     fn new_random(&mut self);
+
+    /// Iterates all the possible games.
     fn new_iter<F>(&mut self, f: F)
     where
         F: FnMut(&Self, f64);
 }
 
+/// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
 pub struct Cfr<A> {
     history: Vec<A>,
@@ -102,6 +119,7 @@ where
         });
     }
 
+    /// Chance sampling CFR algorithm.
     pub fn chance_sampling<G, P>(
         &mut self,
         game: &G,
@@ -156,6 +174,7 @@ where
         }
     }
 
+    /// External sampling CFR algorithm.
     pub fn external_sampling<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
     where
         G: Game<P, A>,

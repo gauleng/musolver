@@ -2,6 +2,37 @@ use std::{fs, path::Path};
 
 use serde::{Deserialize, Serialize};
 
+/// Represents an action node in an extensive form game.
+///
+/// There are two types of nodes, Termimal
+/// nodes with no further actions, and NonTerminal nodes with an identifier of the player P to
+/// play, and a list of possible actions A.
+///
+/// # Example
+///
+/// Let us consider a game for two players identified by integers 0 and 1 and three possible actions,
+/// Pass, Call and Bet. The first player to act is player 0. A possible action tree for this game is:
+///
+///     use musolver::ActionNode;
+///
+///     #[derive(PartialEq, Eq, Clone, Copy)]
+///     enum Action {
+///         Pass,
+///         Call,
+///         Bet,
+///     }
+///
+///     let mut root: ActionNode<u8, Action> = ActionNode::new(0);
+///
+///     let mut pass = root.add_non_terminal_action(Action::Pass, 1).unwrap();
+///     let mut pass_bet = pass.add_non_terminal_action(Action::Bet, 0).unwrap();
+///     pass_bet.add_terminal_action(Action::Pass);
+///     pass_bet.add_terminal_action(Action::Call);
+///     pass.add_terminal_action(Action::Pass);
+///
+///     let mut bet = root.add_non_terminal_action(Action::Bet, 1).unwrap();
+///     bet.add_terminal_action(Action::Pass);
+///     bet.add_terminal_action(Action::Call);
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ActionNode<P, A> {
     #[default]
@@ -11,9 +42,10 @@ pub enum ActionNode<P, A> {
 
 impl<P, A> ActionNode<P, A>
 where
-    P: for<'a> Deserialize<'a> + Copy,
-    A: Eq + Copy + for<'a> Deserialize<'a>,
+    P: Copy,
+    A: Eq + Copy,
 {
+    /// Create a new non-terminal action node for player P.
     pub fn new(p: P) -> Self {
         Self::NonTerminal(p, Vec::new())
     }
@@ -24,6 +56,11 @@ where
         }
     }
 
+    /// Adds a non terminal action to the node. It receives the action A that can be played at this
+    /// node, and the player P that should act after this action has taken place.
+    ///
+    /// If this node is terminal the action is not added
+    /// and None is returned. Otherwise, it returns a mutable reference to the created node.
     pub fn add_non_terminal_action(&mut self, a: A, p: P) -> Option<&mut Self> {
         if let ActionNode::NonTerminal(_, m) = self {
             let child = Self::new(p);
@@ -77,7 +114,11 @@ where
         }
     }
 
-    pub fn from_file(path: &Path) -> std::io::Result<Self> {
+    pub fn from_file(path: &Path) -> std::io::Result<Self>
+    where
+        A: for<'a> Deserialize<'a>,
+        P: for<'a> Deserialize<'a>,
+    {
         let contents = fs::read_to_string(path)?;
         let n: ActionNode<P, A> = serde_json::from_str(&contents).unwrap();
 

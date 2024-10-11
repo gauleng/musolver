@@ -1,3 +1,5 @@
+//! Funcionalidad básica del juego del mus. Contiene estructuras para representar cartas, manos,
+//! barajas, iteradores de manos, lances y partidas de mus.
 mod carta;
 pub use carta::*;
 
