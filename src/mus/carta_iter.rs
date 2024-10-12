@@ -111,7 +111,7 @@ pub struct DistribucionCartaIter<'a> {
 /// Iterador de manos de cartas de mus.
 impl<'a> DistribucionCartaIter<'a> {
     /// Crea un nuevo iterador a partir de una distribución de cartas y el número de cartas que se
-    /// desean tener ne lam ano. La distribución se indica con un vector de pares (Carta, u8),
+    /// desean tener ne la mano. La distribución se indica con un vector de pares (Carta, u8),
     /// donde el entero indica el número de cartas disponibles de ese valor.
     pub fn new(cartas: &'a [(Carta, u8)], num_cartas: usize) -> Self {
         let frequencies: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
