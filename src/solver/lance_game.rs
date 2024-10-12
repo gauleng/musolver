@@ -179,7 +179,8 @@ impl ManosNormalizadas {
     /// Devuelve un String con la representación abstracta de una mano de mus.
     pub fn mano_to_abstract_string(m: &Mano, l: &Lance) -> String {
         match l {
-            Lance::Grande | Lance::Chica => m.to_string(),
+            Lance::Grande => m.to_string()[0..=1].to_string(),
+            Lance::Chica => m.to_string()[2..=3].to_string(),
             Lance::Punto => m.valor_puntos().to_string(),
             Lance::Pares => m.pares().map_or_else(|| "".to_string(), |v| v.to_string()),
             Lance::Juego => m.juego().map_or_else(
