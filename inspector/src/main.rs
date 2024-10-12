@@ -427,6 +427,7 @@ impl ActionPath {
                             ViewMode::OneHand
                         }
                     }
+                    HandConfiguration::SinLance => ViewMode::OneHand,
                 };
                 self.selected_strategy = Some(strategy);
             }
