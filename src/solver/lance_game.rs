@@ -350,7 +350,8 @@ impl Game<usize, Accion> for LanceGame {
     {
         let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4);
         let mut frecuencia_baraja_2 = Baraja::FREC_BARAJA_MUS;
-        while let Some(mano_pareja1) = iter.next() {
+        while let Some((mano1_pareja1, mano2_pareja1, probabilidad_pareja1)) = iter.next() {
+            let manos_pareja1 = [Mano::new(mano1_pareja1), Mano::new(mano2_pareja1)];
             let frequencies2 = iter.current_frequencies();
             frecuencia_baraja_2
                 .iter_mut()
@@ -359,18 +360,18 @@ impl Game<usize, Accion> for LanceGame {
                     carta.1 = *f2 as u8;
                 });
             let iter2 = DistribucionDobleCartaIter::new(&frecuencia_baraja_2, 4);
-            for mano_pareja2 in iter2 {
+            for (mano1_pareja2, mano2_pareja2, probabilidad_pareja2) in iter2 {
                 let manos = [
-                    Mano::new(mano_pareja1.0.clone()),
-                    Mano::new(mano_pareja2.0.clone()),
-                    Mano::new(mano_pareja1.1.clone()),
-                    Mano::new(mano_pareja2.1.clone()),
+                    manos_pareja1[0].clone(),
+                    Mano::new(mano1_pareja2),
+                    manos_pareja1[1].clone(),
+                    Mano::new(mano2_pareja2),
                 ];
                 let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
                 if let Some(p) = intento_partida {
                     self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
                     self.partida = Some(p);
-                    f(self, mano_pareja1.2 * mano_pareja2.2);
+                    f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
         }
