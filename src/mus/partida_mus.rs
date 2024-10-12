@@ -89,20 +89,17 @@ impl PartidaMus {
     /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
     pub fn new_partida_lance(lance: Lance, manos: [Mano; 4], tantos: [u8; 2]) -> Option<Self> {
         let lances = vec![(lance, None)];
-        if lance.se_juega(&manos) {
-            let mut p = Self {
-                manos: Rc::new(manos),
-                lances,
-                idx_lance: 0,
-                tantos,
-                estado_lance: None,
-            };
-            let e = p.crear_estado_lance(lance);
-            p.estado_lance = Some(e);
-            Some(p)
-        } else {
-            None
-        }
+        let mut p = Self {
+            manos: Rc::new(manos),
+            lances,
+            idx_lance: 0,
+            tantos,
+            estado_lance: None,
+        };
+        let e = p.crear_estado_lance(lance);
+        e.turno()?;
+        p.estado_lance = Some(e);
+        Some(p)
     }
 
     fn crear_estado_lance(&self, l: Lance) -> EstadoLance {

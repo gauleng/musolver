@@ -208,19 +208,6 @@ impl Lance {
         manos.iter().any(|j| j.is_some())
     }
 
-    fn turno_inicial_jugadas<T>(&self, manos: &[Option<T>]) -> usize {
-        let pares_filt = manos.iter().filter(|p| p.is_some()).count();
-        if pares_filt == 2 || pares_filt == 3 {
-            if manos[1].is_some() && manos[2].is_some() && manos[3].is_none() {
-                1
-            } else {
-                0
-            }
-        } else {
-            0
-        }
-    }
-
     fn jugadas<T, F>(&self, manos: &[Mano], f: F) -> Vec<Option<T>>
     where
         F: Fn(&Mano) -> Option<T>,
@@ -239,8 +226,26 @@ impl Lance {
     pub fn turno_inicial(&self, manos: &[Mano]) -> usize {
         match self {
             Lance::Grande | Lance::Chica | Lance::Punto => 0,
-            Lance::Pares => self.turno_inicial_jugadas(&self.jugadas(manos, |m| m.pares())),
-            Lance::Juego => self.turno_inicial_jugadas(&self.jugadas(manos, |m| m.juego())),
+            Lance::Pares => {
+                if manos[3].pares().is_some() {
+                    return 0;
+                }
+                if manos[1].pares().is_some() && manos[2].pares().is_some() {
+                    1
+                } else {
+                    0
+                }
+            }
+            Lance::Juego => {
+                if manos[3].juego().is_some() {
+                    return 0;
+                }
+                if manos[1].juego().is_some() && manos[2].juego().is_some() {
+                    1
+                } else {
+                    0
+                }
+            }
         }
     }
 
