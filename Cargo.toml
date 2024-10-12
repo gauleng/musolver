@@ -40,3 +40,7 @@ harness = false
 [[bench]]
 name = "cfr"
 harness = false
+
+[[bench]]
+name = "info_set_str"
+harness = false

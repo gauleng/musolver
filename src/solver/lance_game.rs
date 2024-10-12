@@ -235,18 +235,23 @@ impl InfoSet {
         history: &[Accion],
         abstract_game: Option<Lance>,
     ) -> String {
-        format!(
-            "{}:{},{},{},{}",
-            tantos[0],
-            tantos[1],
-            hand_configuration,
-            if let Some(lance) = abstract_game {
-                ManosNormalizadas::par_manos_to_abstract_string(mano1, mano2, &lance)
-            } else {
-                ManosNormalizadas::par_manos_to_string(mano1, mano2)
-            },
-            history.iter().map(|accion| accion.to_string()).join(",")
-        )
+        let mut result = String::with_capacity(30);
+        let manos_str = if let Some(lance) = abstract_game {
+            ManosNormalizadas::par_manos_to_abstract_string(mano1, mano2, &lance)
+        } else {
+            ManosNormalizadas::par_manos_to_string(mano1, mano2)
+        };
+        let history_str = history.iter().map(|accion| accion.to_string()).join(",");
+        result.push_str(&tantos[0].to_string());
+        result.push(':');
+        result.push_str(&tantos[1].to_string());
+        result.push(',');
+        result.push_str(&hand_configuration.to_string());
+        result.push(',');
+        result.push_str(&manos_str);
+        result.push(',');
+        result.push_str(&history_str);
+        result
     }
 }
 
@@ -317,14 +322,14 @@ impl LanceGame {
         let (tipo_estrategia, manos_normalizadas) =
             HandConfiguration::normalizar_mano(partida_mus.manos(), &lance);
         let info_set_prefix: [String; 2] = core::array::from_fn(|i| {
-            InfoSet {
-                tantos: *partida_mus.tantos(),
-                tipo_estrategia,
-                manos: manos_normalizadas.manos(i).to_owned(),
-                history: vec![],
-                abstract_game: if abstracto { Some(lance) } else { None },
-            }
-            .to_string()
+            InfoSet::str(
+                &tipo_estrategia,
+                partida_mus.tantos(),
+                &manos_normalizadas.manos(i).0,
+                manos_normalizadas.manos(i).1.as_ref(),
+                &[],
+                if abstracto { Some(lance) } else { None },
+            )
         });
         Some(info_set_prefix)
     }
