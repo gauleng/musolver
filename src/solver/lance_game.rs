@@ -7,6 +7,39 @@ use crate::{
     Game,
 };
 
+/// Representación de las distintas configuraciones de las manos en un lance de mus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandConfiguration {
+    /// Cuatro manos en juego: todos los jugadores participane en el lance. Es la única
+    /// configuración posible en grande, chica y punto.
+    CuatroManos,
+    /// Tres manos en juego y el primero en hablar ese el jugador que no tiene pareja.
+    TresManos1vs2,
+    /// Tres manos en juego y el primero en hablar es el jugador que no tiene pareja, pero está
+    /// situado entre los dos jugadores de la pareja rival.
+    TresManos1vs2Intermedio,
+    /// Tres manso en juego y habla primero la pareja.
+    TresManos2vs1,
+    /// Dos manos en juego.
+    DosManos,
+    /// El lance no se juega. Se corresponde con los casos en los que solo una pareja tiene
+    /// jugadas.
+    SinLance,
+}
+
+impl Display for HandConfiguration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HandConfiguration::CuatroManos => write!(f, "2-2"),
+            HandConfiguration::TresManos1vs2 => write!(f, "1-2"),
+            HandConfiguration::TresManos1vs2Intermedio => write!(f, "1-1-1"),
+            HandConfiguration::TresManos2vs1 => write!(f, "2-1"),
+            HandConfiguration::DosManos => write!(f, "1-1"),
+            HandConfiguration::SinLance => write!(f, "-"),
+        }
+    }
+}
+
 /// Representa las configuraciones de manos posibles en un lance de mus.
 ///
 /// En los lances grande, chica y punto participan todos los jugadores, lo que se representa con la
@@ -34,7 +67,7 @@ use crate::{
 /// Esta estructura también dispone de un método para normalizar las manos de una mesa de mus. Se
 /// puede usar como sigue:
 ///
-///        use musolver::solver::HandConfiguration;
+///        use musolver::solver::{ManosNormalizadas, HandConfiguration};
 ///        use musolver::mus::{Mano, Lance};
 ///
 ///        let manos = [
@@ -43,10 +76,10 @@ use crate::{
 ///            Mano::try_from("RR11").unwrap(),
 ///            Mano::try_from("R111").unwrap(),
 ///        ];
-///        let (hand_config, manos_normalizadas) =
-///            HandConfiguration::normalizar_mano(&manos, &Lance::Juego);
+///        let manos_normalizadas =
+///            ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
 ///
-///        assert_eq!(hand_config, HandConfiguration::DosManos);
+///        assert_eq!(manos_normalizadas.hand_configuration(), HandConfiguration::DosManos);
 ///
 ///        assert_eq!(manos_normalizadas.manos(0).0.to_string(), "RRRR");
 ///        assert!(manos_normalizadas.manos(0).1.is_none());
@@ -54,28 +87,41 @@ use crate::{
 ///        assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRR1");
 ///        assert!(manos_normalizadas.manos(1).1.is_none());
 ///
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HandConfiguration {
-    CuatroManos,
-    TresManos1vs2,
-    TresManos1vs2Intermedio,
-    TresManos2vs1,
-    DosManos,
-    SinLance,
+/// Dispone de métododos para convertir a String los pares de manos de cada jugador. Esta conversión
+/// puede ser directa, es decir, las manos representadas por sus propias cartas, o puede ser
+/// abstracta. En último caso, las manos se representan por sus jugadas. Por ejemplo, la mano RRR1
+/// en el lance de juego se representa con "31F3".
+///
+/// Las abstracciones consideradas son las siguientes.
+/// * Grande: Las dos mayores cartas de la mano. Por ejemplo, RRR1 pasa a ser RR.
+/// * Chica: Las dos menores cartas de la mano. Por ejepmlo, RRR1 pasaa ser R1.
+/// * Pares: Se utiliza las letras P, M, D para representar parejas, medias y duples
+///   respectivamente. A continuación se indica el valor de las cartas que representan la jugada.
+///   En el caso de duples, las dos parejas se denotan separadas por dos puntos. Por ejemplo, RRR1
+///   pasa a ser M12, y RR11 pasa a ser D12:1.
+/// * Juego: Se utiliza el valor de la mano, y en los casos en los que sea relevante, se indica el
+///   número de figuras de la mano con una F. Por ejemplo, RRR1 pasa a ser 31F3, y R777 es 31F1.
+/// * Punto: Se utiliza el valor de la mano.
+pub struct ManosNormalizadas {
+    hand_configuration: HandConfiguration,
+    manos_normalizadas: [(Mano, Option<Mano>); 2],
 }
 
-impl<'a> HandConfiguration {
+impl ManosNormalizadas {
     /// Permite normalizar las manos de una mesa de mus. Devuelve una configuración de manos de la
     /// partida junto con un array que contiene las manos agrupadas por parejas. Este array solo
     /// contiene las manos relevantes para el lance.
-    pub fn normalizar_mano(m: &'a [Mano], l: &Lance) -> (Self, ManosNormalizadas) {
+    pub fn normalizar_mano(m: &[Mano], l: &Lance) -> Self {
         match l {
             Lance::Grande | Lance::Chica | Lance::Punto => {
-                let mn = [
+                let manos = [
                     (m[0].clone(), Some(m[2].clone())),
                     (m[1].clone(), Some(m[3].clone())),
                 ];
-                (HandConfiguration::CuatroManos, ManosNormalizadas(mn))
+                Self {
+                    hand_configuration: HandConfiguration::CuatroManos,
+                    manos_normalizadas: manos,
+                }
             }
             Lance::Pares => {
                 let jugadas: Vec<Option<Pares>> = m.iter().map(|m| m.pares()).collect();
@@ -88,10 +134,7 @@ impl<'a> HandConfiguration {
         }
     }
 
-    fn normalizar_mano_jugadas<T>(
-        manos: &'a [Mano],
-        jugadas: &[Option<T>],
-    ) -> (Self, ManosNormalizadas) {
+    fn normalizar_mano_jugadas<T>(manos: &[Mano], jugadas: &[Option<T>]) -> Self {
         let (mut pareja_mano, mut pareja_postre): (Vec<_>, Vec<_>) =
             zip(manos.iter(), jugadas.iter())
                 .enumerate()
@@ -114,7 +157,7 @@ impl<'a> HandConfiguration {
             }
             _ => HandConfiguration::SinLance,
         };
-        let manos_normalizadas = ManosNormalizadas([
+        let manos_normalizadas = [
             (
                 pareja_mano[0].1.to_owned(),
                 pareja_mano.get(1).map(|v| v.1.to_owned()),
@@ -123,54 +166,13 @@ impl<'a> HandConfiguration {
                 pareja_postre[0].1.to_owned(),
                 pareja_postre.get(1).map(|v| v.1.to_owned()),
             ),
-        ]);
+        ];
 
-        (hand_configuration, manos_normalizadas)
-    }
-}
-
-impl Display for HandConfiguration {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HandConfiguration::CuatroManos => write!(f, "2-2"),
-            HandConfiguration::TresManos1vs2 => write!(f, "1-2"),
-            HandConfiguration::TresManos1vs2Intermedio => write!(f, "1-1-1"),
-            HandConfiguration::TresManos2vs1 => write!(f, "2-1"),
-            HandConfiguration::DosManos => write!(f, "1-1"),
-            HandConfiguration::SinLance => write!(f, "-"),
+        Self {
+            hand_configuration,
+            manos_normalizadas,
         }
     }
-}
-
-/// Estructura para almacenar las manos normalizadas de una mesa de mus.
-///
-/// La representación es mediante un array de dos posiciones cuyas casillas son de tipo
-/// (Mano, Option<Mano>). La primera casilla contiene las manos de la pareja mano y la segunda
-/// casilla las de la pareja postre.
-///
-/// Dispone de métododos para convertir a String los pares de manos de cada jugador. Esta conversión
-/// puede ser directa, es decir, las manos representadas por sus propias cartas, o puede ser
-/// abstracta. En último caso, las manos se representan por sus jugadas. Por ejemplo, la mano RRR1
-/// en el lance de juego se representa con "31F3".
-///
-/// Las abstracciones consideradas son las siguientes.
-/// * Grande: Las dos mayores cartas de la mano. Por ejemplo, RRR1 pasa a ser RR.
-/// * Chica: Las dos menores cartas de la mano. Por ejepmlo, RRR1 pasaa ser R1.
-/// * Pares: Se utiliza las letras P, M, D para representar parejas, medias y duples
-///   respectivamente. A continuación se indica el valor de las cartas que representan la jugada.
-///   En el caso de duples, las dos parejas se denotan separadas por dos puntos. Por ejemplo, RRR1
-///   pasa a ser M12, y RR11 pasa a ser D12:1.
-/// * Juego: Se utiliza el valor de la mano, y en los casos en los que sea relevante, se indica el
-///   número de figuras de la mano con una F. Por ejemplo, RRR1 pasa a ser 31F3, y R777 es 31F1.
-/// * Punto: Se utiliza el valor de la mano.
-pub struct ManosNormalizadas([(Mano, Option<Mano>); 2]);
-
-impl ManosNormalizadas {
-    /// Manos de la pareja mano o postre según el parámetro recibido.
-    pub fn manos(&self, p: usize) -> &(Mano, Option<Mano>) {
-        &self.0[p]
-    }
-
     /// Devuelve un String con la representación de las dos manos separadas por una coma.
     pub fn par_manos_to_string(mano1: &Mano, mano2: Option<&Mano>) -> String {
         mano1.to_string() + "," + &mano2.map_or_else(|| "".to_owned(), |m| m.to_string())
@@ -218,6 +220,15 @@ impl ManosNormalizadas {
             Self::par_manos_to_abstract_string(&self.manos(0).0, self.manos(0).1.as_ref(), l),
             Self::par_manos_to_abstract_string(&self.manos(1).0, self.manos(1).1.as_ref(), l),
         ]
+    }
+
+    /// Manos de la pareja mano o postre según el parámetro recibido.
+    pub fn manos(&self, p: usize) -> &(Mano, Option<Mano>) {
+        &self.manos_normalizadas[p]
+    }
+
+    pub fn hand_configuration(&self) -> HandConfiguration {
+        self.hand_configuration
     }
 }
 
@@ -324,11 +335,10 @@ impl LanceGame {
 
     fn info_set_prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 2]> {
         let lance = partida_mus.lance_actual()?;
-        let (tipo_estrategia, manos_normalizadas) =
-            HandConfiguration::normalizar_mano(partida_mus.manos(), &lance);
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(partida_mus.manos(), &lance);
         let info_set_prefix: [String; 2] = core::array::from_fn(|i| {
             InfoSet::str(
-                &tipo_estrategia,
+                &manos_normalizadas.hand_configuration(),
                 partida_mus.tantos(),
                 &manos_normalizadas.manos(i).0,
                 manos_normalizadas.manos(i).1.as_ref(),
@@ -434,9 +444,11 @@ mod tests {
             Mano::try_from("RR11").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let (hand_config, manos_normalizadas) =
-            HandConfiguration::normalizar_mano(&manos, &Lance::Juego);
-        assert_eq!(hand_config, HandConfiguration::DosManos);
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(
+            manos_normalizadas.hand_configuration(),
+            HandConfiguration::DosManos
+        );
         assert_eq!(manos_normalizadas.manos(0).0.to_string(), "RRRR");
         assert!(manos_normalizadas.manos(0).1.is_none());
         assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRR1");
@@ -448,9 +460,11 @@ mod tests {
             Mano::try_from("RRR1").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let (hand_config, manos_normalizadas) =
-            HandConfiguration::normalizar_mano(&manos, &Lance::Juego);
-        assert_eq!(hand_config, HandConfiguration::TresManos1vs2Intermedio);
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(
+            manos_normalizadas.hand_configuration(),
+            HandConfiguration::TresManos1vs2Intermedio
+        );
         assert_eq!(manos_normalizadas.manos(0).0.to_string(), "RRR1");
         assert!(manos_normalizadas.manos(0).1.is_none());
         assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRRR");
@@ -462,9 +476,11 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("RRR1").unwrap(),
         ];
-        let (hand_config, manos_normalizadas) =
-            HandConfiguration::normalizar_mano(&manos, &Lance::Juego);
-        assert_eq!(hand_config, HandConfiguration::TresManos1vs2);
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(
+            manos_normalizadas.hand_configuration(),
+            HandConfiguration::TresManos1vs2
+        );
         assert_eq!(manos_normalizadas.manos(0).0.to_string(), "RRRR");
         assert!(manos_normalizadas.manos(0).1.is_none());
         assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRR1");
@@ -476,9 +492,11 @@ mod tests {
             Mano::try_from("RRR1").unwrap(),
             Mano::try_from("RRR1").unwrap(),
         ];
-        let (hand_config, manos_normalizadas) =
-            HandConfiguration::normalizar_mano(&manos, &Lance::Juego);
-        assert_eq!(hand_config, HandConfiguration::TresManos2vs1);
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(
+            manos_normalizadas.hand_configuration(),
+            HandConfiguration::TresManos2vs1
+        );
         assert_eq!(manos_normalizadas.manos(0).0.to_string(), "RRRR");
         assert!(manos_normalizadas.manos(0).1.is_some());
         assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRR1");
