@@ -1,3 +1,4 @@
+use core::panic;
 use std::path::PathBuf;
 
 use clap::{command, Parser, ValueEnum};
@@ -5,7 +6,7 @@ use musolver::{
     mus::arena::{
         ActionRecorder, AgenteAleatorio, AgenteCli, AgenteMusolver, KibitzerCli, MusArena,
     },
-    solver::Strategy,
+    solver::{SolverError, Strategy},
 };
 
 fn show_strategy_data(strategy: &Strategy) {
@@ -51,8 +52,15 @@ fn main() {
     let args = Args::parse();
 
     let estrategia_path = PathBuf::from(args.strategy_path);
-    let strategy =
-        Strategy::from_file(estrategia_path.as_path()).expect("Error cargando estrategia");
+    let strategy = match Strategy::from_file(estrategia_path.as_path()) {
+        Ok(s) => s,
+        Err(SolverError::InvalidStrategyPath(err, path)) => {
+            panic!("Cannot open strategy file: {}. ({})", path, err)
+        }
+        Err(SolverError::StrategyParseError(err)) => {
+            panic!("Cannot parse strategy file: {}", err)
+        }
+    };
     show_strategy_data(&strategy);
 
     let mut arena = MusArena::new(strategy.strategy_config.game_config.lance);

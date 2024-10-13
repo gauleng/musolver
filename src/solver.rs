@@ -13,3 +13,6 @@ pub use trainer::*;
 
 mod strategy;
 pub use strategy::*;
+
+mod solver_error;
+pub use solver_error::SolverError;

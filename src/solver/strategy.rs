@@ -12,7 +12,7 @@ use crate::{
     ActionNode, Cfr, Game,
 };
 
-use super::{LanceGame, TrainerConfig};
+use super::{LanceGame, SolverError, TrainerConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameConfig {
@@ -152,9 +152,10 @@ impl Strategy {
         Ok(())
     }
 
-    pub fn from_file(path: &Path) -> std::io::Result<Self> {
-        let contents = fs::read_to_string(path)?;
-        let n: Self = serde_json::from_str(&contents).unwrap();
+    pub fn from_file(path: &Path) -> Result<Self, SolverError> {
+        let contents = fs::read_to_string(path)
+            .map_err(|err| SolverError::InvalidStrategyPath(err, path.display().to_string()))?;
+        let n: Self = serde_json::from_str(&contents).map_err(SolverError::StrategyParseError)?;
         Ok(n)
     }
 
