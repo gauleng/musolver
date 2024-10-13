@@ -146,16 +146,18 @@ impl Strategy {
         }
     }
 
-    pub fn to_file(&self, path: &Path) -> std::io::Result<()> {
-        let contents = serde_json::to_string(self)?;
-        fs::write(path, contents)?;
+    pub fn to_file(&self, path: &Path) -> Result<(), SolverError> {
+        let contents = serde_json::to_string(self).map_err(SolverError::StrategyParseJsonError)?;
+        fs::write(path, contents)
+            .map_err(|err| SolverError::InvalidStrategyPath(err, path.display().to_string()))?;
         Ok(())
     }
 
     pub fn from_file(path: &Path) -> Result<Self, SolverError> {
         let contents = fs::read_to_string(path)
             .map_err(|err| SolverError::InvalidStrategyPath(err, path.display().to_string()))?;
-        let n: Self = serde_json::from_str(&contents).map_err(SolverError::StrategyParseError)?;
+        let n: Self =
+            serde_json::from_str(&contents).map_err(SolverError::StrategyParseJsonError)?;
         Ok(n)
     }
 

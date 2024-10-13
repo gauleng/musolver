@@ -70,8 +70,10 @@ impl BancoEstrategias {
         l: Lance,
         trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
-    ) -> std::io::Result<()> {
-        fs::create_dir_all(path)?;
+    ) -> Result<(), SolverError> {
+        fs::create_dir_all(path).map_err(|err| {
+            SolverError::NoCreateFolderPermission(err, path.display().to_string())
+        })?;
         let mut estrategia_path = PathBuf::from(path);
         estrategia_path.push(format!("{:?}", l));
         estrategia_path.set_extension("json");
@@ -85,7 +87,7 @@ impl BancoEstrategias {
         path: &Path,
         trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), SolverError> {
         self.export_estrategia(path, Lance::Grande, trainer_config, game_config)?;
         self.export_estrategia(path, Lance::Chica, trainer_config, game_config)?;
         self.export_estrategia(path, Lance::Punto, trainer_config, game_config)?;

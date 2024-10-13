@@ -57,8 +57,11 @@ fn main() {
         Err(SolverError::InvalidStrategyPath(err, path)) => {
             panic!("Cannot open strategy file: {}. ({})", path, err)
         }
-        Err(SolverError::StrategyParseError(err)) => {
+        Err(SolverError::StrategyParseJsonError(err)) => {
             panic!("Cannot parse strategy file: {}", err)
+        }
+        Err(SolverError::NoCreateFolderPermission(err, _)) => {
+            panic!("Cannot create folder {}", err)
         }
     };
     show_strategy_data(&strategy);
