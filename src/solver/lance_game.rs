@@ -3,7 +3,9 @@ use std::{fmt::Display, iter::zip};
 use itertools::Itertools;
 
 use crate::{
-    mus::{Accion, Baraja, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus},
+    mus::{
+        Accion, Baraja, Carta, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus,
+    },
     Game,
 };
 
@@ -181,7 +183,18 @@ impl ManosNormalizadas {
     /// Devuelve un String con la representación abstracta de una mano de mus.
     pub fn mano_to_abstract_string(m: &Mano, l: &Lance) -> String {
         match l {
-            Lance::Grande => m.to_string()[0..=1].to_string(),
+            Lance::Grande => {
+                let cartas = m.cartas();
+                if cartas[2] == Carta::Rey {
+                    m.to_string()
+                } else if cartas[1] == Carta::Rey {
+                    m.to_string()[0..=2].to_string()
+                } else if cartas[0] == Carta::Rey {
+                    m.to_string()[0..=1].to_string()
+                } else {
+                    m.to_string()[0..1].to_string()
+                }
+            }
             Lance::Chica => m.to_string()[2..=3].to_string(),
             Lance::Punto => m.valor_puntos().to_string(),
             Lance::Pares => m.pares().map_or_else(|| "".to_string(), |v| v.to_string()),

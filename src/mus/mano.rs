@@ -23,6 +23,10 @@ impl Mano {
     pub fn insertar(&mut self, carta: Carta) {
         self.0.push(carta);
     }
+
+    pub fn num_figuras(&self) -> u8 {
+        self.0.iter().filter(|carta| carta.valor() >= 10).count() as u8
+    }
 }
 
 impl TryFrom<&str> for Mano {
