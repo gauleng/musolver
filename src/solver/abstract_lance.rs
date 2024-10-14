@@ -141,6 +141,7 @@ impl Display for AbstractPares {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum AbstractJuego {
     Treintaytres,
     Treintaycuatro2F,
@@ -216,6 +217,7 @@ impl Display for AbstractJuego {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum AbstractPunto {
     Punto(u8),
 }
@@ -231,5 +233,59 @@ impl Display for AbstractPunto {
         match self {
             Self::Punto(valor) => write!(f, "{valor}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_abstract_grande() {
+        assert_eq!(
+            AbstractGrande::abstract_hand(&"C411".try_into().unwrap()),
+            AbstractGrande::NoCerdos(Carta::Caballo)
+        );
+    }
+
+    #[test]
+    fn test_abstract_chica() {
+        assert_eq!(
+            AbstractChica::abstract_hand(&"C111".try_into().unwrap()),
+            AbstractChica::TresPitos(Carta::Caballo)
+        );
+    }
+
+    #[test]
+    fn test_abstract_pares() {
+        assert_eq!(
+            AbstractPares::abstract_hand(&"CCCC".try_into().unwrap()),
+            Some(AbstractPares::Duples(Carta::Caballo, Carta::Caballo))
+        );
+        assert_eq!(
+            AbstractPares::abstract_hand(&"RR11".try_into().unwrap()),
+            Some(AbstractPares::Duples(Carta::Rey, Carta::As))
+        );
+    }
+
+    #[test]
+    fn test_abstract_juego() {
+        assert_eq!(
+            AbstractJuego::abstract_hand(&"CCCC".try_into().unwrap()),
+            Some(AbstractJuego::Cuarenta)
+        );
+        assert_eq!(
+            AbstractJuego::abstract_hand(&"RC74".try_into().unwrap()),
+            Some(AbstractJuego::Treintayuna2F74)
+        );
+    }
+
+    #[test]
+    fn test_abstract_punto() {
+        assert_eq!(
+            AbstractPunto::abstract_hand(&"C111".try_into().unwrap()),
+            AbstractPunto::Punto(13)
+        );
     }
 }
