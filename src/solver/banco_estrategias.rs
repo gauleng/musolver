@@ -1,15 +1,19 @@
 use std::{
     cell::{Ref, RefCell},
+    cmp::Ordering,
     fs::{self},
     path::{Path, PathBuf},
 };
+
+use serde::Deserialize;
+use walkdir::WalkDir;
 
 use crate::{
     mus::{Accion, Lance},
     Cfr,
 };
 
-use super::{GameConfig, SolverError, Strategy, TrainerConfig};
+use super::{GameConfig, SolverError, Strategy, StrategyConfig, TrainerConfig};
 
 #[derive(Debug)]
 pub struct BancoEstrategias {
@@ -48,6 +52,43 @@ impl BancoEstrategias {
             Lance::Punto => &self.punto,
             Lance::Juego => &self.juego,
         }
+    }
+
+    pub fn find(path: &Path) -> Vec<(String, StrategyConfig)> {
+        let walker = WalkDir::new(path)
+            .sort_by(|a, b| match (a.metadata(), b.metadata()) {
+                (Ok(metadata_a), Ok(metadata_b)) => {
+                    match (metadata_a.modified(), metadata_b.modified()) {
+                        (Ok(modified_a), Ok(modified_b)) => modified_a.cmp(&modified_b),
+                        _ => Ordering::Less,
+                    }
+                }
+                _ => Ordering::Less,
+            })
+            .into_iter();
+        let mut result = Vec::new();
+        for entry in walker.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext != "json" {
+                    continue;
+                }
+                let contents = match fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                #[derive(Debug, Deserialize)]
+                struct MockStrategy {
+                    strategy_config: StrategyConfig,
+                }
+                let mock_strategy: MockStrategy = match serde_json::from_str(&contents) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                result.push((path.display().to_string(), mock_strategy.strategy_config));
+            }
+        }
+        result
     }
 
     pub fn load_estrategia(&self, path: &Path, l: Lance) -> Result<Strategy, SolverError> {
