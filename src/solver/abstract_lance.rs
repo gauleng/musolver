@@ -152,7 +152,8 @@ pub enum AbstractJuego {
     Treintaydos66,
     Treintaydos75,
     Treintayuna1F,
-    Treintayuna2F,
+    Treintayuna2F74,
+    Treintayuna2F65,
     Treintayuna3F,
 }
 
@@ -180,7 +181,13 @@ impl AbstractJuego {
             }
             Juego::Treintayuna => match m.num_figuras() {
                 1 => Self::Treintayuna1F,
-                2 => Self::Treintayuna2F,
+                2 => {
+                    if m.cartas()[3] == Carta::Cuatro {
+                        Self::Treintayuna2F74
+                    } else {
+                        Self::Treintayuna2F65
+                    }
+                }
                 3 => Self::Treintayuna3F,
                 _ => panic!("No existen 31 que no sean de 1, 2 o 3 figuras."),
             },
@@ -193,17 +200,18 @@ impl Display for AbstractJuego {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Treintaytres => write!(f, "33"),
-            Self::Treintaycuatro2F => write!(f, "34F2"),
-            Self::Treintaycuatro3F => write!(f, "34F2"),
+            Self::Treintaycuatro2F => write!(f, "34XX77"),
+            Self::Treintaycuatro3F => write!(f, "34XXX4"),
             Self::Treintaycinco => write!(f, "35"),
             Self::Treintayseis => write!(f, "36"),
             Self::Treintaysiete => write!(f, "37"),
             Self::Cuarenta => write!(f, "40"),
-            Self::Treintaydos66 => write!(f, "32C66"),
-            Self::Treintaydos75 => write!(f, "32C75"),
-            Self::Treintayuna1F => write!(f, "31F1"),
-            Self::Treintayuna2F => write!(f, "31F2"),
-            Self::Treintayuna3F => write!(f, "31F3"),
+            Self::Treintaydos66 => write!(f, "32XX66"),
+            Self::Treintaydos75 => write!(f, "32XX75"),
+            Self::Treintayuna1F => write!(f, "31X777"),
+            Self::Treintayuna2F65 => write!(f, "31XX65"),
+            Self::Treintayuna2F74 => write!(f, "31XX74"),
+            Self::Treintayuna3F => write!(f, "31XXX1"),
         }
     }
 }
