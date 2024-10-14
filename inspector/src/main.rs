@@ -44,6 +44,19 @@ impl Display for OptionalAction {
 #[derive(Default, Debug)]
 pub struct Legend {}
 
+impl Legend {
+    pub fn legend_palette() -> [Color; 6] {
+        [
+            Color::parse("006E90").unwrap(),
+            Color::parse("2F9332").unwrap(),
+            Color::parse("FABC3F").unwrap(),
+            Color::parse("E85C0D").unwrap(),
+            Color::parse("C7253E").unwrap(),
+            Color::parse("821131").unwrap(),
+        ]
+    }
+}
+
 impl<AppEvent> canvas::Program<AppEvent> for Legend {
     type State = ();
 
@@ -61,14 +74,7 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
 
         let region_widths = [width / 6.; 6];
         let region_x_position: Vec<f32> = (0..6).map(|v| width * v as f32 / 6.).collect();
-        let region_colors = [
-            Color::parse("006E90").unwrap(),
-            Color::parse("2F9332").unwrap(),
-            Color::parse("FABC3F").unwrap(),
-            Color::parse("E85C0D").unwrap(),
-            Color::parse("C7253E").unwrap(),
-            Color::parse("821131").unwrap(),
-        ];
+        let region_colors = Self::legend_palette();
         let region_text = [
             "Paso",
             "Quiero",
@@ -160,14 +166,7 @@ impl<AppEvent> canvas::Program<AppEvent> for SquareData {
                 width * self.envido10 as f32,
                 width * self.ordago as f32,
             ];
-            let region_colors = [
-                Color::parse("006E90").unwrap(),
-                Color::parse("2F9332").unwrap(),
-                Color::parse("FABC3F").unwrap(),
-                Color::parse("E85C0D").unwrap(),
-                Color::parse("C7253E").unwrap(),
-                Color::parse("821131").unwrap(),
-            ];
+            let region_colors = Legend::legend_palette();
             let region_x_position: Vec<f32> = region_widths
                 .iter()
                 .scan(0., |x_pos, width| {
