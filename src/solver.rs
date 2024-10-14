@@ -14,5 +14,8 @@ pub use trainer::*;
 mod strategy;
 pub use strategy::*;
 
+mod abstract_lance;
+pub use abstract_lance::*;
+
 mod solver_error;
 pub use solver_error::SolverError;
