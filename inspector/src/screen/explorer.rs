@@ -18,7 +18,7 @@ use itertools::Itertools;
 use musolver::{
     mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
     solver::{
-        AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto,
+        AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, Strategy,
     },
     ActionNode,
@@ -217,6 +217,8 @@ pub enum ViewMode {
 pub struct ActionPath {
     pub one_hand_list: Vec<Mano>,
     pub strategy: Strategy,
+    pub buckets: HashMap<AbstractJugada, Vec<Mano>>,
+    pub jugadas: Vec<AbstractJugada>,
 
     pub selected_tantos_mano: Option<u8>,
     pub tantos_mano: Vec<u8>,
@@ -245,18 +247,20 @@ impl ActionPath {
                     Lance::Punto => AbstractPunto::abstract_hand(hand),
                 };
                 let entry = buckets.entry(jugada).or_insert(vec![]);
-                buckets.insert(jugada, hand.to_owned());
+                entry.push(hand.to_owned());
             }
         }
-        let mut one_hand_squares = Vec::with_capacity(one_hand_list.len());
-        let mut two_hands_squares = Vec::with_capacity(one_hand_list.len());
-        for s in &one_hand_list {
+        let mut jugadas: Vec<_> = buckets.keys().cloned().collect();
+        jugadas.sort();
+        let mut one_hand_squares = Vec::with_capacity(jugadas.len());
+        let mut two_hands_squares = Vec::with_capacity(jugadas.len());
+        for s in &jugadas {
             one_hand_squares.push(SquareData {
                 mano: s.to_string(),
                 ..SquareData::default()
             });
             let mut row = Vec::with_capacity(one_hand_list.len());
-            for s2 in &one_hand_list {
+            for s2 in &jugadas {
                 row.push(SquareData {
                     mano: format!("{},{}", s, s2),
                     ..SquareData::default()
@@ -280,6 +284,8 @@ impl ActionPath {
         let mut action_path = Self {
             one_hand_squares,
             two_hands_squares,
+            buckets,
+            jugadas,
             view_mode: ViewMode::TwoHands,
             one_hand_list,
             strategy: strategy.to_owned(),
@@ -351,39 +357,62 @@ impl ActionPath {
         let abstract_game = if abstract_game { lance } else { None };
 
         if self.view_mode == ViewMode::OneHand {
-            for (hand, square) in zip(&self.one_hand_list, &mut self.one_hand_squares) {
-                let info_set = InfoSet::str(
-                    &tipo_estrategia,
-                    &tantos,
-                    hand,
-                    None,
-                    &history,
-                    abstract_game,
-                );
-                let node = self.strategy.nodes.get(&info_set);
-                if let Some(probabilities) = node {
-                    square.update_with_node(&actions, probabilities);
-                    square.mano = hand.to_string();
+            for (jugada, square) in zip(&self.jugadas, &mut self.one_hand_squares) {
+                if let Some(manos) = self.buckets.get(jugada) {
+                    let probabilities: Vec<_> = manos
+                        .iter()
+                        .filter_map(|mano| {
+                            let info_set = InfoSet::str(
+                                &tipo_estrategia,
+                                &tantos,
+                                mano,
+                                None,
+                                &history,
+                                abstract_game,
+                            );
+                            self.strategy.nodes.get(&info_set).cloned()
+                        })
+                        .collect();
+                    let n = probabilities.len();
+                    let avg_probability = probabilities
+                        .into_iter()
+                        .reduce(|avg, v| zip(avg, v).map(|(a, v)| a + v / n as f64).collect())
+                        .unwrap();
+                    square.update_with_node(&actions, &avg_probability);
+                    square.mano = jugada.to_string();
                 }
             }
         } else {
-            for column in 0..self.one_hand_list.len() {
-                for row in 0..self.one_hand_list.len() {
+            for column in 0..self.jugadas.len() {
+                for row in 0..self.jugadas.len() {
                     let square = &mut self.two_hands_squares[row][column];
-                    let hand1 = &self.one_hand_list[row];
-                    let hand2 = &self.one_hand_list[column];
-                    let info_set = InfoSet::str(
-                        &tipo_estrategia,
-                        &tantos,
-                        hand1,
-                        Some(hand2),
-                        &history,
-                        abstract_game,
-                    );
-                    let node = self.strategy.nodes.get(&info_set);
-                    if let Some(probabilities) = node {
-                        square.update_with_node(&actions, probabilities);
-                        square.mano = format!("{hand1},{hand2}");
+                    let jugada1 = &self.jugadas[row];
+                    let jugada2 = &self.jugadas[column];
+                    let manos = self.buckets.get(jugada1).zip(self.buckets.get(jugada2));
+                    if let Some((manos1, manos2)) = manos {
+                        let probabilities: Vec<_> = manos1
+                            .iter()
+                            .cartesian_product(manos2.iter())
+                            .filter_map(|(hand1, hand2)| {
+                                let info_set = InfoSet::str(
+                                    &tipo_estrategia,
+                                    &tantos,
+                                    hand1,
+                                    Some(hand2),
+                                    &history,
+                                    abstract_game,
+                                );
+                                self.strategy.nodes.get(&info_set).cloned()
+                            })
+                            .collect();
+                        let n = probabilities.len();
+                        let avg_probability = probabilities
+                            .into_iter()
+                            .reduce(|avg, v| zip(avg, v).map(|(a, v)| a + v / n as f64).collect());
+                        if let Some(probabilities) = avg_probability {
+                            square.update_with_node(&actions, &probabilities);
+                            square.mano = format!("{jugada1},{jugada2}");
+                        }
                     }
                 }
             }

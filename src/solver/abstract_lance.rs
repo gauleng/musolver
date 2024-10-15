@@ -2,7 +2,7 @@ use std::fmt::{Display, Write};
 
 use crate::mus::{Carta, Juego, Mano, Pares};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub enum AbstractJugada {
     AbstractGrande(AbstractGrande),
     AbstractChica(AbstractChica),
