@@ -227,18 +227,8 @@ pub struct ActionPath {
     pub two_hands_squares: Vec<Vec<SquareData>>,
 }
 
-// impl Default for ActionPath {
-//     fn default() -> Self {
-//         ActionPath::new()
-//     }
-// }
-
 impl ActionPath {
     pub fn new(strategy: Strategy) -> Self {
-        // // let strategy = Strategy::from_file(Path::new("output/2024-10-05 14:13/Punto.json"))
-        //
-        // let strategy = Strategy::from_file(Path::new("output/2024-10-10 16:42/Juego.json"))
-        //     .expect("Error cargando estrategia.");
         let one_hand_list = ActionPath::one_hand_list(&strategy);
         let mut one_hand_squares = Vec::with_capacity(one_hand_list.len());
         let mut two_hands_squares = Vec::with_capacity(one_hand_list.len());

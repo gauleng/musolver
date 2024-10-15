@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use iced::{
     widget::{button, column, container, row, scrollable, text, text_input},
     Element,
-    Length::Fill,
+    Length::{Fill, Shrink},
 };
 use musolver::solver::{BancoEstrategias, Strategy, StrategyConfig};
 
@@ -35,23 +35,43 @@ impl Loader {
         let search = text_input("Search strategy", &self.search).on_input(LoaderEvent::SearchText);
 
         let strategy_list: Element<_> = {
-            let entries = column(self.strategies.iter().map(|(path, strategy_config)| {
-                container(row![
-                    column![
-                        text(path),
-                        text("-"),
-                        text!("{:?}", strategy_config.trainer_config.method)
-                    ],
-                    button("Load").on_press(LoaderEvent::LoadStrategy(path.to_owned()))
-                ])
-                .width(Fill)
-                .padding(20)
-                .into()
-            }));
-            scrollable(entries).height(Fill).into()
+            let entries = column(
+                self.strategies
+                    .iter()
+                    .filter(|(path, _)| {
+                        self.search.is_empty() || path.to_lowercase().contains(&self.search)
+                    })
+                    .map(|(path, strategy_config)| {
+                        container(row![
+                            column![
+                                text(path),
+                                text("-"),
+                                text!(
+                                    "{:?} - {} iterations - {:?}",
+                                    strategy_config.trainer_config.method,
+                                    strategy_config.trainer_config.iterations,
+                                    strategy_config.game_config.lance
+                                )
+                            ]
+                            .width(Fill),
+                            container(
+                                button("Load").on_press(LoaderEvent::LoadStrategy(path.to_owned()))
+                            )
+                            .center_y(Shrink)
+                        ])
+                        .style(container::rounded_box)
+                        .width(Fill)
+                        .padding(20)
+                        .into()
+                    }),
+            )
+            .spacing(10);
+            scrollable(entries).height(Fill).spacing(10).into()
         };
 
-        container(column![search, strategy_list]).into()
+        container(column![search, strategy_list].spacing(10))
+            .padding(10)
+            .into()
     }
 
     pub fn update(&mut self, message: LoaderEvent) -> Option<LoaderAction> {
