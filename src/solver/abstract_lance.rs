@@ -2,7 +2,28 @@ use std::fmt::{Display, Write};
 
 use crate::mus::{Carta, Juego, Mano, Pares};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum AbstractJugada {
+    AbstractGrande(AbstractGrande),
+    AbstractChica(AbstractChica),
+    AbstractPares(AbstractPares),
+    AbstractJuego(AbstractJuego),
+    AbstractPunto(AbstractPunto),
+}
+
+impl Display for AbstractJugada {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AbstractJugada::AbstractGrande(grande) => grande.fmt(f),
+            AbstractJugada::AbstractChica(chica) => chica.fmt(f),
+            AbstractJugada::AbstractPares(pares) => pares.fmt(f),
+            AbstractJugada::AbstractJuego(juego) => juego.fmt(f),
+            AbstractJugada::AbstractPunto(punto) => punto.fmt(f),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractGrande {
     NoCerdos(Carta),
     UnCerdo(Carta),
@@ -11,16 +32,16 @@ pub enum AbstractGrande {
 }
 
 impl AbstractGrande {
-    pub fn abstract_hand(m: &Mano) -> Self {
+    pub fn abstract_hand(m: &Mano) -> AbstractJugada {
         let cartas = m.cartas();
         if cartas[2] == Carta::Rey {
-            Self::TresCerdos(cartas[3])
+            AbstractJugada::AbstractGrande(Self::TresCerdos(cartas[3]))
         } else if cartas[1] == Carta::Rey {
-            Self::DosCerdos(cartas[2])
+            AbstractJugada::AbstractGrande(Self::DosCerdos(cartas[2]))
         } else if cartas[0] == Carta::Rey {
-            Self::UnCerdo(cartas[1])
+            AbstractJugada::AbstractGrande(Self::UnCerdo(cartas[1]))
         } else {
-            Self::NoCerdos(cartas[0])
+            AbstractJugada::AbstractGrande(Self::NoCerdos(cartas[0]))
         }
     }
 }
@@ -45,7 +66,7 @@ impl Display for AbstractGrande {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractChica {
     NoPitos(Carta),
     UnPito(Carta),
@@ -54,16 +75,16 @@ pub enum AbstractChica {
 }
 
 impl AbstractChica {
-    pub fn abstract_hand(m: &Mano) -> Self {
+    pub fn abstract_hand(m: &Mano) -> AbstractJugada {
         let cartas = m.cartas();
         if cartas[1] == Carta::As {
-            Self::TresPitos(cartas[0])
+            AbstractJugada::AbstractChica(Self::TresPitos(cartas[0]))
         } else if cartas[2] == Carta::As {
-            Self::DosPitos(cartas[1])
+            AbstractJugada::AbstractChica(Self::DosPitos(cartas[1]))
         } else if cartas[3] == Carta::As {
-            Self::UnPito(cartas[1])
+            AbstractJugada::AbstractChica(Self::UnPito(cartas[1]))
         } else {
-            Self::NoPitos(cartas[0])
+            AbstractJugada::AbstractChica(Self::NoPitos(cartas[0]))
         }
     }
 }
@@ -87,7 +108,7 @@ impl Display for AbstractChica {
         }
     }
 }
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractPares {
     Pareja(Carta),
     Medias(Carta),
@@ -95,15 +116,15 @@ pub enum AbstractPares {
 }
 
 impl AbstractPares {
-    pub fn abstract_hand(m: &Mano) -> Option<Self> {
+    pub fn abstract_hand(m: &Mano) -> Option<AbstractJugada> {
         m.pares().map(|p| match p {
             Pares::Pareja(v) => {
                 let zeros = v.trailing_zeros() as u8;
-                Self::Pareja(zeros.try_into().unwrap())
+                AbstractJugada::AbstractPares(Self::Pareja(zeros.try_into().unwrap()))
             }
             Pares::Medias(v) => {
                 let zeros = v.trailing_zeros() as u8;
-                Self::Medias(zeros.try_into().unwrap())
+                AbstractJugada::AbstractPares(Self::Medias(zeros.try_into().unwrap()))
             }
             Pares::Duples(v) => {
                 let (carta1, carta2) = if v.count_ones() == 2 {
@@ -114,7 +135,10 @@ impl AbstractPares {
                         (v.trailing_zeros() - 1) as u8,
                     )
                 };
-                Self::Duples(carta1.try_into().unwrap(), carta2.try_into().unwrap())
+                AbstractJugada::AbstractPares(Self::Duples(
+                    carta1.try_into().unwrap(),
+                    carta2.try_into().unwrap(),
+                ))
             }
         })
     }
@@ -141,7 +165,7 @@ impl Display for AbstractPares {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractJuego {
     Treintaytres,
     Treintaycuatro2F,
@@ -159,37 +183,37 @@ pub enum AbstractJuego {
 }
 
 impl AbstractJuego {
-    pub fn abstract_hand(m: &Mano) -> Option<Self> {
+    pub fn abstract_hand(m: &Mano) -> Option<AbstractJugada> {
         m.juego().map(|j| match j {
-            Juego::Resto(33) => Self::Treintaytres,
+            Juego::Resto(33) => AbstractJugada::AbstractJuego(Self::Treintaytres),
             Juego::Resto(34) => {
                 if m.num_figuras() == 2 {
-                    Self::Treintaycuatro2F
+                    AbstractJugada::AbstractJuego(Self::Treintaycuatro2F)
                 } else {
-                    Self::Treintaycuatro3F
+                    AbstractJugada::AbstractJuego(Self::Treintaycuatro3F)
                 }
             }
-            Juego::Resto(35) => Self::Treintaycinco,
-            Juego::Resto(36) => Self::Treintayseis,
-            Juego::Resto(37) => Self::Treintaysiete,
-            Juego::Resto(40) => Self::Cuarenta,
+            Juego::Resto(35) => AbstractJugada::AbstractJuego(Self::Treintaycinco),
+            Juego::Resto(36) => AbstractJugada::AbstractJuego(Self::Treintayseis),
+            Juego::Resto(37) => AbstractJugada::AbstractJuego(Self::Treintaysiete),
+            Juego::Resto(40) => AbstractJugada::AbstractJuego(Self::Cuarenta),
             Juego::Treintaydos => {
                 if m.cartas()[3] == Carta::Cinco {
-                    Self::Treintaydos75
+                    AbstractJugada::AbstractJuego(Self::Treintaydos75)
                 } else {
-                    Self::Treintaydos66
+                    AbstractJugada::AbstractJuego(Self::Treintaydos66)
                 }
             }
             Juego::Treintayuna => match m.num_figuras() {
-                1 => Self::Treintayuna1F,
+                1 => AbstractJugada::AbstractJuego(Self::Treintayuna1F),
                 2 => {
                     if m.cartas()[3] == Carta::Cuatro {
-                        Self::Treintayuna2F74
+                        AbstractJugada::AbstractJuego(Self::Treintayuna2F74)
                     } else {
-                        Self::Treintayuna2F65
+                        AbstractJugada::AbstractJuego(Self::Treintayuna2F65)
                     }
                 }
-                3 => Self::Treintayuna3F,
+                3 => AbstractJugada::AbstractJuego(Self::Treintayuna3F),
                 _ => panic!("No existen 31 que no sean de 1, 2 o 3 figuras."),
             },
             _ => panic!("Valor de juego incorrecto"),
@@ -217,14 +241,14 @@ impl Display for AbstractJuego {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractPunto {
     Punto(u8),
 }
 
 impl AbstractPunto {
-    pub fn abstract_hand(m: &Mano) -> Self {
-        Self::Punto(m.valor_puntos())
+    pub fn abstract_hand(m: &Mano) -> AbstractJugada {
+        AbstractJugada::AbstractPunto(Self::Punto(m.valor_puntos()))
     }
 }
 
@@ -245,7 +269,7 @@ mod tests {
     fn test_abstract_grande() {
         assert_eq!(
             AbstractGrande::abstract_hand(&"C411".try_into().unwrap()),
-            AbstractGrande::NoCerdos(Carta::Caballo)
+            AbstractJugada::AbstractGrande(AbstractGrande::NoCerdos(Carta::Caballo))
         );
     }
 
@@ -253,7 +277,7 @@ mod tests {
     fn test_abstract_chica() {
         assert_eq!(
             AbstractChica::abstract_hand(&"C111".try_into().unwrap()),
-            AbstractChica::TresPitos(Carta::Caballo)
+            AbstractJugada::AbstractChica(AbstractChica::TresPitos(Carta::Caballo))
         );
     }
 
@@ -261,11 +285,17 @@ mod tests {
     fn test_abstract_pares() {
         assert_eq!(
             AbstractPares::abstract_hand(&"CCCC".try_into().unwrap()),
-            Some(AbstractPares::Duples(Carta::Caballo, Carta::Caballo))
+            Some(AbstractJugada::AbstractPares(AbstractPares::Duples(
+                Carta::Caballo,
+                Carta::Caballo
+            )))
         );
         assert_eq!(
             AbstractPares::abstract_hand(&"RR11".try_into().unwrap()),
-            Some(AbstractPares::Duples(Carta::Rey, Carta::As))
+            Some(AbstractJugada::AbstractPares(AbstractPares::Duples(
+                Carta::Rey,
+                Carta::As
+            )))
         );
     }
 
@@ -273,11 +303,13 @@ mod tests {
     fn test_abstract_juego() {
         assert_eq!(
             AbstractJuego::abstract_hand(&"CCCC".try_into().unwrap()),
-            Some(AbstractJuego::Cuarenta)
+            Some(AbstractJugada::AbstractJuego(AbstractJuego::Cuarenta))
         );
         assert_eq!(
             AbstractJuego::abstract_hand(&"RC74".try_into().unwrap()),
-            Some(AbstractJuego::Treintayuna2F74)
+            Some(AbstractJugada::AbstractJuego(
+                AbstractJuego::Treintayuna2F74
+            ))
         );
     }
 
@@ -285,7 +317,7 @@ mod tests {
     fn test_abstract_punto() {
         assert_eq!(
             AbstractPunto::abstract_hand(&"C111".try_into().unwrap()),
-            AbstractPunto::Punto(13)
+            AbstractJugada::AbstractPunto(AbstractPunto::Punto(13))
         );
     }
 }

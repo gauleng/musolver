@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::zip, path::Path};
+use std::{collections::HashMap, fmt::Display, iter::zip};
 
 use iced::{
     alignment::{
@@ -17,7 +17,10 @@ use iced::{
 use itertools::Itertools;
 use musolver::{
     mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
-    solver::{HandConfiguration, InfoSet, Strategy},
+    solver::{
+        AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto,
+        HandConfiguration, InfoSet, Strategy,
+    },
     ActionNode,
 };
 
@@ -212,7 +215,9 @@ pub enum ViewMode {
 
 #[derive(Debug)]
 pub struct ActionPath {
+    pub one_hand_list: Vec<Mano>,
     pub strategy: Strategy,
+
     pub selected_tantos_mano: Option<u8>,
     pub tantos_mano: Vec<u8>,
     pub selected_tantos_postre: Option<u8>,
@@ -221,7 +226,6 @@ pub struct ActionPath {
     pub strategies: Vec<HandConfiguration>,
     pub selected_actions: Vec<Option<OptionalAction>>,
     pub actions: Vec<Vec<OptionalAction>>,
-    pub one_hand_list: Vec<Mano>,
     pub view_mode: ViewMode,
     pub one_hand_squares: Vec<SquareData>,
     pub two_hands_squares: Vec<Vec<SquareData>>,
@@ -230,6 +234,20 @@ pub struct ActionPath {
 impl ActionPath {
     pub fn new(strategy: Strategy) -> Self {
         let one_hand_list = ActionPath::one_hand_list(&strategy);
+        let mut buckets = HashMap::new();
+        for hand in &one_hand_list {
+            if let Some(lance) = strategy.strategy_config.game_config.lance {
+                let jugada = match lance {
+                    Lance::Grande => AbstractGrande::abstract_hand(hand),
+                    Lance::Chica => AbstractChica::abstract_hand(hand),
+                    Lance::Pares => AbstractPares::abstract_hand(hand).unwrap(),
+                    Lance::Juego => AbstractJuego::abstract_hand(hand).unwrap(),
+                    Lance::Punto => AbstractPunto::abstract_hand(hand),
+                };
+                let entry = buckets.entry(jugada).or_insert(vec![]);
+                buckets.insert(jugada, hand.to_owned());
+            }
+        }
         let mut one_hand_squares = Vec::with_capacity(one_hand_list.len());
         let mut two_hands_squares = Vec::with_capacity(one_hand_list.len());
         for s in &one_hand_list {
