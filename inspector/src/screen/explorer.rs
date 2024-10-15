@@ -518,13 +518,13 @@ impl ActionPath {
         let mut matrix = Column::new();
         if self.view_mode == ViewMode::OneHand {
             for square in &self.one_hand_squares {
-                matrix = matrix.push(row![Canvas::new(square).width(60).height(60)])
+                matrix = matrix.push(row![Canvas::new(square).width(50).height(50)])
             }
         } else {
             for square_column in &self.two_hands_squares {
                 let mut row = Row::new();
                 for square_row in square_column {
-                    row = row.push(Canvas::new(square_row).width(60).height(60));
+                    row = row.push(Canvas::new(square_row).width(50).height(50));
                 }
                 matrix = matrix.push(row);
             }
