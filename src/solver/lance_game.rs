@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::zip};
+use std::fmt::Display;
 
 use itertools::Itertools;
 
@@ -104,25 +104,24 @@ impl Display for HandConfiguration {
 /// * Juego: Se utiliza el valor de la mano, y en los casos en los que sea relevante, se indica el
 ///   número de figuras de la mano con una F. Por ejemplo, RRR1 pasa a ser 31F3, y R777 es 31F1.
 /// * Punto: Se utiliza el valor de la mano.
-pub struct ManosNormalizadas {
+pub struct ManosNormalizadas<'a> {
     hand_configuration: HandConfiguration,
-    manos_normalizadas: [(Mano, Option<Mano>); 2],
+    idx_hands: [(usize, Option<usize>); 2],
+    hands: &'a [Mano; 4],
 }
 
-impl ManosNormalizadas {
+impl<'a> ManosNormalizadas<'a> {
     /// Permite normalizar las manos de una mesa de mus. Devuelve una configuración de manos de la
     /// partida junto con un array que contiene las manos agrupadas por parejas. Este array solo
     /// contiene las manos relevantes para el lance.
-    pub fn normalizar_mano(m: &[Mano], l: &Lance) -> Self {
+    pub fn normalizar_mano(m: &'a [Mano; 4], l: &Lance) -> Self {
         match l {
             Lance::Grande | Lance::Chica | Lance::Punto => {
-                let manos = [
-                    (m[0].clone(), Some(m[2].clone())),
-                    (m[1].clone(), Some(m[3].clone())),
-                ];
+                let idx_hands = [(0, Some(2)), (1, Some(3))];
                 Self {
                     hand_configuration: HandConfiguration::CuatroManos,
-                    manos_normalizadas: manos,
+                    idx_hands,
+                    hands: m,
                 }
             }
             Lance::Pares => {
@@ -136,12 +135,12 @@ impl ManosNormalizadas {
         }
     }
 
-    fn normalizar_mano_jugadas<T>(manos: &[Mano], jugadas: &[Option<T>]) -> Self {
-        let (mut pareja_mano, mut pareja_postre): (Vec<_>, Vec<_>) =
-            zip(manos.iter(), jugadas.iter())
-                .enumerate()
-                .filter_map(|(i, (mano, jugada))| jugada.as_ref().map(|_| (i, mano)))
-                .partition(|(i, _)| i % 2 == 0);
+    fn normalizar_mano_jugadas<T>(manos: &'a [Mano; 4], jugadas: &[Option<T>]) -> Self {
+        let (mut pareja_mano, mut pareja_postre): (Vec<_>, Vec<_>) = jugadas
+            .iter()
+            .enumerate()
+            .filter_map(|(i, jugada)| jugada.as_ref().map(|_| i))
+            .partition(|i| i % 2 == 0);
         if jugadas[1].is_some() && jugadas[2].is_some() && jugadas[3].is_none() {
             std::mem::swap(&mut pareja_mano, &mut pareja_postre);
         }
@@ -159,20 +158,15 @@ impl ManosNormalizadas {
             }
             _ => HandConfiguration::SinLance,
         };
-        let manos_normalizadas = [
-            (
-                pareja_mano[0].1.to_owned(),
-                pareja_mano.get(1).map(|v| v.1.to_owned()),
-            ),
-            (
-                pareja_postre[0].1.to_owned(),
-                pareja_postre.get(1).map(|v| v.1.to_owned()),
-            ),
+        let idx_hands = [
+            (pareja_mano[0], pareja_mano.get(1).cloned()),
+            (pareja_postre[0], pareja_postre.get(1).cloned()),
         ];
 
         Self {
             hand_configuration,
-            manos_normalizadas,
+            idx_hands,
+            hands: manos,
         }
     }
     /// Devuelve un String con la representación de las dos manos separadas por una coma.
@@ -203,21 +197,25 @@ impl ManosNormalizadas {
 
     pub fn to_string_array(&self) -> [String; 2] {
         [
-            Self::par_manos_to_string(&self.manos(0).0, self.manos(0).1.as_ref()),
-            Self::par_manos_to_string(&self.manos(1).0, self.manos(1).1.as_ref()),
+            Self::par_manos_to_string(self.manos(0).0, self.manos(0).1),
+            Self::par_manos_to_string(self.manos(1).0, self.manos(1).1),
         ]
     }
 
     pub fn to_abstract_string_array(&self, l: &Lance) -> [String; 2] {
         [
-            Self::par_manos_to_abstract_string(&self.manos(0).0, self.manos(0).1.as_ref(), l),
-            Self::par_manos_to_abstract_string(&self.manos(1).0, self.manos(1).1.as_ref(), l),
+            Self::par_manos_to_abstract_string(self.manos(0).0, self.manos(0).1, l),
+            Self::par_manos_to_abstract_string(self.manos(1).0, self.manos(1).1, l),
         ]
     }
 
     /// Manos de la pareja mano o postre según el parámetro recibido.
-    pub fn manos(&self, p: usize) -> &(Mano, Option<Mano>) {
-        &self.manos_normalizadas[p]
+    pub fn manos(&self, p: usize) -> (&Mano, Option<&Mano>) {
+        let idx_player = self.idx_hands[p];
+        (
+            &self.hands[idx_player.0],
+            idx_player.1.map(|idx| &self.hands[idx]),
+        )
     }
 
     pub fn hand_configuration(&self) -> HandConfiguration {
@@ -227,15 +225,15 @@ impl ManosNormalizadas {
 
 /// Estructura para generar las claves que representan los information sets durante el
 /// entrenamiento.
-pub struct InfoSet {
+pub struct InfoSet<'a> {
     pub tipo_estrategia: HandConfiguration,
     pub tantos: [u8; 2],
-    pub manos: (Mano, Option<Mano>),
+    pub manos: (&'a Mano, Option<&'a Mano>),
     pub history: Vec<Accion>,
     pub abstract_game: Option<Lance>,
 }
 
-impl InfoSet {
+impl<'a> InfoSet<'a> {
     pub fn str(
         hand_configuration: &HandConfiguration,
         tantos: &[u8; 2],
@@ -264,7 +262,7 @@ impl InfoSet {
     }
 }
 
-impl Display for InfoSet {
+impl<'a> Display for InfoSet<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -273,13 +271,9 @@ impl Display for InfoSet {
             self.tantos[1],
             self.tipo_estrategia,
             if let Some(lance) = self.abstract_game {
-                ManosNormalizadas::par_manos_to_abstract_string(
-                    &self.manos.0,
-                    self.manos.1.as_ref(),
-                    &lance,
-                )
+                ManosNormalizadas::par_manos_to_abstract_string(self.manos.0, self.manos.1, &lance)
             } else {
-                ManosNormalizadas::par_manos_to_string(&self.manos.0, self.manos.1.as_ref())
+                ManosNormalizadas::par_manos_to_string(self.manos.0, self.manos.1)
             },
             self.history
                 .iter()
@@ -333,8 +327,8 @@ impl LanceGame {
             InfoSet::str(
                 &manos_normalizadas.hand_configuration(),
                 partida_mus.tantos(),
-                &manos_normalizadas.manos(i).0,
-                manos_normalizadas.manos(i).1.as_ref(),
+                manos_normalizadas.manos(i).0,
+                manos_normalizadas.manos(i).1,
                 &[],
                 if abstracto { Some(lance) } else { None },
             )

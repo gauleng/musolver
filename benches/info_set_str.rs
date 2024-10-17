@@ -19,7 +19,7 @@ fn bench_info_set_prefix(c: &mut Criterion) {
                     InfoSet {
                         tantos: [0, 0],
                         tipo_estrategia: manos_normalizadas.hand_configuration(),
-                        manos: manos_normalizadas.manos(0).to_owned(),
+                        manos: manos_normalizadas.manos(0),
                         history: vec![],
                         abstract_game: None,
                     }
@@ -36,8 +36,8 @@ fn bench_info_set_prefix(c: &mut Criterion) {
                     InfoSet::str(
                         &manos_normalizadas.hand_configuration(),
                         &[0, 0],
-                        &manos_normalizadas.manos(0).0,
-                        manos_normalizadas.manos(0).1.as_ref(),
+                        manos_normalizadas.manos(0).0,
+                        manos_normalizadas.manos(0).1,
                         &[],
                         None,
                     )

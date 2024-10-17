@@ -25,10 +25,11 @@ impl<'a> MusGame<'a> {
         let manos_normalizadas =
             ManosNormalizadas::normalizar_mano(partida.manos(), &Lance::Grande);
         let manos_normalizadas_str = manos_normalizadas.to_string_array();
+        let tipo_estrategia = manos_normalizadas.hand_configuration();
         Self {
             partida,
             manos_normalizadas: manos_normalizadas_str,
-            tipo_estrategia: manos_normalizadas.hand_configuration(),
+            tipo_estrategia,
             banco_estrategias: None,
             action_tree: None,
             switched: false,
@@ -45,10 +46,11 @@ impl<'a> MusGame<'a> {
         let mut info_set = [prefijo.clone(), prefijo.clone()];
         info_set[0].push_str(&manos_normalizadas_str[0]);
         info_set[1].push_str(&manos_normalizadas_str[1]);
+        let tipo_estrategia = manos_normalizadas.hand_configuration();
         Self {
             partida,
             manos_normalizadas: info_set,
-            tipo_estrategia: manos_normalizadas.hand_configuration(),
+            tipo_estrategia,
             banco_estrategias: None,
             action_tree: None,
             switched: false,
