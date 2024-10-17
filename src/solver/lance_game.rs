@@ -221,6 +221,14 @@ impl<'a> ManosNormalizadas<'a> {
     pub fn hand_configuration(&self) -> HandConfiguration {
         self.hand_configuration
     }
+
+    pub fn pareja_mano(&self) -> usize {
+        if self.idx_hands[0].0 % 2 == 0 {
+            0
+        } else {
+            1
+        }
+    }
 }
 
 /// Estructura para generar las claves que representan los information sets durante el
