@@ -256,7 +256,7 @@ impl<'a> InfoSet<'a> {
         } else {
             ManosNormalizadas::par_manos_to_string(mano1, mano2)
         };
-        let history_str = history.iter().map(|accion| accion.to_string()).join(",");
+        let history_str = history.iter().map(|accion| accion.to_string()).join("");
         result.push_str(&tantos[0].to_string());
         result.push(':');
         result.push_str(&tantos[1].to_string());

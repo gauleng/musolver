@@ -66,7 +66,7 @@ impl Display for AbstractGrande {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum AbstractChica {
     NoPitos(Carta),
     UnPito(Carta),
@@ -82,9 +82,18 @@ impl AbstractChica {
         } else if cartas[2] == Carta::As {
             AbstractJugada::AbstractChica(Self::DosPitos(cartas[1]))
         } else if cartas[3] == Carta::As {
-            AbstractJugada::AbstractChica(Self::UnPito(cartas[1]))
+            AbstractJugada::AbstractChica(Self::UnPito(cartas[2]))
         } else {
-            AbstractJugada::AbstractChica(Self::NoPitos(cartas[0]))
+            AbstractJugada::AbstractChica(Self::NoPitos(cartas[3]))
+        }
+    }
+
+    fn value(&self) -> u8 {
+        match self {
+            AbstractChica::NoPitos(carta) => 48 + carta.valor(),
+            AbstractChica::UnPito(carta) => 32 + carta.valor(),
+            AbstractChica::DosPitos(carta) => 16 + carta.valor(),
+            AbstractChica::TresPitos(carta) => carta.valor(),
         }
     }
 }
@@ -108,6 +117,19 @@ impl Display for AbstractChica {
         }
     }
 }
+
+impl Ord for AbstractChica {
+    fn cmp(&self, other: &AbstractChica) -> std::cmp::Ordering {
+        other.value().cmp(&self.value())
+    }
+}
+
+impl PartialOrd for AbstractChica {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum AbstractPares {
     Pareja(Carta),
@@ -268,6 +290,18 @@ mod tests {
     #[test]
     fn test_abstract_grande() {
         assert_eq!(
+            AbstractGrande::abstract_hand(&"RRR1".try_into().unwrap()),
+            AbstractJugada::AbstractGrande(AbstractGrande::TresCerdos(Carta::As))
+        );
+        assert_eq!(
+            AbstractGrande::abstract_hand(&"RR11".try_into().unwrap()),
+            AbstractJugada::AbstractGrande(AbstractGrande::DosCerdos(Carta::As))
+        );
+        assert_eq!(
+            AbstractGrande::abstract_hand(&"R111".try_into().unwrap()),
+            AbstractJugada::AbstractGrande(AbstractGrande::UnCerdo(Carta::As))
+        );
+        assert_eq!(
             AbstractGrande::abstract_hand(&"C411".try_into().unwrap()),
             AbstractJugada::AbstractGrande(AbstractGrande::NoCerdos(Carta::Caballo))
         );
@@ -278,6 +312,18 @@ mod tests {
         assert_eq!(
             AbstractChica::abstract_hand(&"C111".try_into().unwrap()),
             AbstractJugada::AbstractChica(AbstractChica::TresPitos(Carta::Caballo))
+        );
+        assert_eq!(
+            AbstractChica::abstract_hand(&"CC11".try_into().unwrap()),
+            AbstractJugada::AbstractChica(AbstractChica::DosPitos(Carta::Caballo))
+        );
+        assert_eq!(
+            AbstractChica::abstract_hand(&"CCC1".try_into().unwrap()),
+            AbstractJugada::AbstractChica(AbstractChica::UnPito(Carta::Caballo))
+        );
+        assert_eq!(
+            AbstractChica::abstract_hand(&"CCCC".try_into().unwrap()),
+            AbstractJugada::AbstractChica(AbstractChica::NoPitos(Carta::Caballo))
         );
     }
 
