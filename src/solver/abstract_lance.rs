@@ -66,7 +66,7 @@ impl Display for AbstractGrande {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Ord, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum AbstractChica {
     NoPitos(Carta),
     UnPito(Carta),
@@ -118,9 +118,15 @@ impl Display for AbstractChica {
     }
 }
 
+impl Ord for AbstractChica {
+    fn cmp(&self, other: &AbstractChica) -> std::cmp::Ordering {
+        other.value().cmp(&self.value())
+    }
+}
+
 impl PartialOrd for AbstractChica {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.value().cmp(&self.value()))
+        Some(self.cmp(other))
     }
 }
 
