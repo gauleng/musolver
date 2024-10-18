@@ -484,13 +484,16 @@ impl ActionPath {
         .placeholder("Select a strategy");
         top_row = top_row.push(pick_strategy);
 
-        let pick_tantos_mano =
-            pick_list(&self.tantos_mano[..], Some(0), ExplorerEvent::SetTantosMano);
+        let pick_tantos_mano = pick_list(
+            &self.tantos_mano[..],
+            self.selected_tantos_mano,
+            ExplorerEvent::SetTantosMano,
+        );
         top_row = top_row.push(pick_tantos_mano);
 
         let pick_tantos_postre = pick_list(
             &self.tantos_postre[..],
-            Some(0),
+            self.selected_tantos_postre,
             ExplorerEvent::SetTantosPostre,
         );
         top_row = top_row.push(pick_tantos_postre);
