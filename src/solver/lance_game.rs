@@ -346,7 +346,11 @@ impl Game<usize, Accion> for LanceGame {
         loop {
             self.baraja.barajar();
             let manos = self.baraja.repartir_manos();
-            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
+            let mut tantos = self.tantos;
+            if self.lance.turno_inicial(&manos) == 1 {
+                tantos.swap(0, 1);
+            }
+            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
             if let Some(p) = intento_partida {
                 self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
                 self.partida = Some(p);
@@ -378,7 +382,11 @@ impl Game<usize, Accion> for LanceGame {
                     manos_pareja1[1].clone(),
                     Mano::new(mano2_pareja2),
                 ];
-                let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, self.tantos);
+                let mut tantos = self.tantos;
+                if self.lance.turno_inicial(&manos) == 1 {
+                    tantos.swap(0, 1);
+                }
+                let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
                 if let Some(p) = intento_partida {
                     self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
                     self.partida = Some(p);
