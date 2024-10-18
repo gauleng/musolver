@@ -497,4 +497,34 @@ mod tests {
         assert_eq!(manos_normalizadas.manos(1).0.to_string(), "RRR1");
         assert!(manos_normalizadas.manos(1).1.is_none());
     }
+
+    #[test]
+    fn test_pareja_mano() {
+        let manos = [
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+        ];
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(manos_normalizadas.pareja_mano(), 0);
+
+        let manos = [
+            Mano::try_from("RRRR").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("R111").unwrap(),
+        ];
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(manos_normalizadas.pareja_mano(), 1);
+
+        let manos = [
+            Mano::try_from("R111").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("R111").unwrap(),
+        ];
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
+        assert_eq!(manos_normalizadas.pareja_mano(), 1);
+    }
 }
