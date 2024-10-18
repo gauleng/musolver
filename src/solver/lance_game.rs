@@ -274,19 +274,15 @@ impl<'a> Display for InfoSet<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}:{},{},{},{}",
-            self.tantos[0],
-            self.tantos[1],
-            self.tipo_estrategia,
-            if let Some(lance) = self.abstract_game {
-                ManosNormalizadas::par_manos_to_abstract_string(self.manos.0, self.manos.1, &lance)
-            } else {
-                ManosNormalizadas::par_manos_to_string(self.manos.0, self.manos.1)
-            },
-            self.history
-                .iter()
-                .map(|accion| accion.to_string())
-                .join("")
+            "{}",
+            Self::str(
+                &self.tipo_estrategia,
+                &self.tantos,
+                self.manos.0,
+                self.manos.1,
+                &self.history,
+                self.abstract_game
+            )
         )
     }
 }
