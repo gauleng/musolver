@@ -287,7 +287,7 @@ pub enum Apuesta {
 }
 
 #[derive(Debug, Clone)]
-pub struct EstadoLance {
+pub struct EstadoLanceParejas {
     bote: [Apuesta; 2],
     activos: [bool; 2],
     turno: Option<usize>,
@@ -298,7 +298,7 @@ pub struct EstadoLance {
     jugador_mejor_mano: usize,
 }
 
-impl EstadoLance {
+impl EstadoLanceParejas {
     /// Crea un nuevo lance con las apuestas minima y máximas indicadas, la pareja que empieza
     /// actuando y el jugador que tiene la mejor mano.
     pub fn new(
@@ -307,7 +307,7 @@ impl EstadoLance {
         turno_inicial: usize,
         jugador_mejor_mano: usize,
     ) -> Self {
-        EstadoLance {
+        EstadoLanceParejas {
             bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
             activos: [true, true],
             turno: Some(turno_inicial),
@@ -431,12 +431,12 @@ mod tests {
 
     #[test]
     fn test_turno() {
-        let mut partida = EstadoLance::new(0, 40, 0, 0);
+        let mut partida = EstadoLanceParejas::new(0, 40, 0, 0);
         assert_eq!(partida.turno(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
 
-        let mut partida = EstadoLance::new(0, 40, 1, 0);
+        let mut partida = EstadoLanceParejas::new(0, 40, 1, 0);
         assert_eq!(partida.turno(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), Some(0));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_turno2() {
-        let mut partida = EstadoLance::new(0, 40, 0, 0);
+        let mut partida = EstadoLanceParejas::new(0, 40, 0, 0);
         assert_eq!(partida.actuar(Accion::Envido(2)).unwrap(), Some(1));
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
@@ -457,7 +457,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -469,7 +469,7 @@ mod tests {
             Mano::try_from("RRR1").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -481,7 +481,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("RRRR").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -493,7 +493,7 @@ mod tests {
             Mano::try_from("1111").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -505,7 +505,7 @@ mod tests {
             Mano::try_from("RRRR").unwrap(),
             Mano::try_from("1111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -517,7 +517,7 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -529,7 +529,7 @@ mod tests {
             Mano::try_from("R111").unwrap(),
             Mano::try_from("RR11").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -541,7 +541,7 @@ mod tests {
             Mano::try_from("RR11").unwrap(),
             Mano::try_from("R111").unwrap(),
         ];
-        let mut partida = EstadoLance::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
+        let mut partida = EstadoLanceParejas::new(1, 40, 0, Lance::Grande.mejor_mano(&manos));
         let _ = partida.actuar(Accion::Paso);
         let _ = partida.actuar(Accion::Paso);
         partida.resolver_lance();
@@ -618,38 +618,38 @@ mod tests {
 
     #[test]
     fn test_tanteo() {
-        let mut e = EstadoLance::new(0, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), None);
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(0));
 
-        let mut e = EstadoLance::new(1, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), None);
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(0, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(0));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(1, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(0));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(0, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);
         assert_eq!(e.ganador(), Some(1));
         assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
 
-        let mut e = EstadoLance::new(1, 40, 0, 0);
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
         let _ = e.actuar(Accion::Paso);
         let _ = e.actuar(Accion::Envido(2));
         let _ = e.actuar(Accion::Paso);

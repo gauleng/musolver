@@ -8,7 +8,7 @@ use crate::mus::Lance;
 use crate::mus::Mano;
 
 use super::Apuesta;
-use super::EstadoLance;
+use super::EstadoLanceParejas;
 use super::MusError;
 use super::RankingManos;
 
@@ -44,7 +44,7 @@ pub struct PartidaMus {
     lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
     idx_lance: usize,
-    estado_lance: Option<EstadoLance>,
+    estado_lance: Option<EstadoLanceParejas>,
 }
 
 impl PartidaMus {
@@ -102,13 +102,13 @@ impl PartidaMus {
         Some(p)
     }
 
-    fn crear_estado_lance(&self, l: Lance) -> EstadoLance {
+    fn crear_estado_lance(&self, l: Lance) -> EstadoLanceParejas {
         let tantos_restantes = [
             Self::MAX_TANTOS - self.tantos[0],
             Self::MAX_TANTOS - self.tantos[1],
         ];
         let pareja_mejor_mano = l.mejor_mano(&*self.manos);
-        let mut e = EstadoLance::new(
+        let mut e = EstadoLanceParejas::new(
             l.apuesta_minima(),
             tantos_restantes[0].max(tantos_restantes[1]),
             l.turno_inicial(&*self.manos),
@@ -166,7 +166,7 @@ impl PartidaMus {
         }
     }
 
-    fn siguiente_lance(&mut self) -> Option<&EstadoLance> {
+    fn siguiente_lance(&mut self) -> Option<&EstadoLanceParejas> {
         self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
             self.idx_lance += 1;
