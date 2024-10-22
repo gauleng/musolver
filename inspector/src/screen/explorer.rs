@@ -444,32 +444,32 @@ impl ActionPath {
                 }
             }
             ExplorerEvent::SetStrategy(strategy) => {
-                let turn = self.selected_action_node().to_play();
-                self.view_mode = match strategy {
-                    HandConfiguration::DosManos => ViewMode::OneHand,
-                    HandConfiguration::CuatroManos => ViewMode::TwoHands,
-                    HandConfiguration::TresManos1vs2
-                    | HandConfiguration::TresManos1vs2Intermedio => {
-                        if turn.unwrap() == 0 {
-                            ViewMode::OneHand
-                        } else {
-                            ViewMode::TwoHands
-                        }
-                    }
-                    HandConfiguration::TresManos2vs1 => {
-                        if turn.unwrap() == 0 {
-                            ViewMode::TwoHands
-                        } else {
-                            ViewMode::OneHand
-                        }
-                    }
-                    HandConfiguration::SinLance => ViewMode::OneHand,
-                };
                 self.selected_strategy = Some(strategy);
             }
             ExplorerEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
             ExplorerEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
         }
+        let turn = self.selected_action_node().to_play();
+        self.view_mode = match self.selected_strategy {
+            Some(HandConfiguration::DosManos) => ViewMode::OneHand,
+            Some(HandConfiguration::CuatroManos) => ViewMode::TwoHands,
+            Some(HandConfiguration::TresManos1vs2)
+            | Some(HandConfiguration::TresManos1vs2Intermedio) => {
+                if turn.unwrap() == 0 {
+                    ViewMode::OneHand
+                } else {
+                    ViewMode::TwoHands
+                }
+            }
+            Some(HandConfiguration::TresManos2vs1) => {
+                if turn.unwrap() == 0 {
+                    ViewMode::TwoHands
+                } else {
+                    ViewMode::OneHand
+                }
+            }
+            Some(HandConfiguration::SinLance) | None => ViewMode::OneHand,
+        };
         self.update_squares();
     }
 
