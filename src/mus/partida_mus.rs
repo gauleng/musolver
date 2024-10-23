@@ -13,11 +13,11 @@ use super::MusError;
 use super::RankingManos;
 
 /// Acciones posibles durante una partida de mus.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Accion {
     Paso,
-    Envido(u8),
     Quiero,
+    Envido(u8),
     Ordago,
 }
 

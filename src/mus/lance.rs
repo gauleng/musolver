@@ -51,6 +51,11 @@ impl Display for Pares {
     }
 }
 
+pub enum Jugada {
+    Pares(Pares),
+    Juego(Juego),
+}
+
 /// Lances de una partida de mus.
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 pub enum Lance {
@@ -443,27 +448,174 @@ pub enum Turno {
     /// El entero representa el identificador de jugador que tiene que actuar, que puede
     /// tomar valores de 0 a 3, siendo 0 el jugador mano y 3 el jugador postre. La diferencia
     /// respecto al turno de jugador es que el turno de pareja implica siempre que se solicitará la
-    /// acción de los dos jugadores de la pareja.
+    /// acción de los dos jugadores de la pareja. Solo se tomará en consideración la acción mayor
+    /// de las dos.
     Pareja(u8),
 }
 
-struct EstadoLance {}
+pub struct EstadoLance {
+    bote: [Apuesta; 2],
+    turno: Option<Turno>,
+    ultimo_envite: u8,
+    apuesta_maxima: u8,
+    apuesta_minima: u8,
+    ganador: Option<u8>,
+    jugador_mejor_mano: u8,
+
+    idx_activos: Vec<u8>,
+    idx_turno: u8,
+    idx_parejas: [Vec<u8>; 2],
+    idx_pareja: u8,
+    acciones_pareja: [Option<Accion>; 2],
+}
+
 impl EstadoLance {
     pub fn new(lance: &Lance, manos: &[Mano; 4], apuesta_maxima: u8) -> Self {
-        Self {}
+        let idx_activos: Vec<_> = match lance {
+            Lance::Pares => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| mano.pares().map(|_| idx as u8))
+                .collect(),
+
+            Lance::Juego => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| mano.juego().map(|_| idx as u8))
+                .collect(),
+            _ => vec![0, 1, 2, 3],
+        };
+        let (pareja_mano, pareja_postre): (Vec<u8>, Vec<u8>) =
+            idx_activos.iter().partition(|&idx| *idx % 2 == 0);
+        let turno = if pareja_mano.is_empty() || pareja_postre.is_empty() {
+            None
+        } else {
+            Some(Turno::Jugador(idx_activos[0]))
+        };
+        Self {
+            bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
+            turno,
+            ultimo_envite: 0,
+            apuesta_maxima,
+            apuesta_minima: lance.apuesta_minima(),
+            ganador: None,
+            jugador_mejor_mano: lance.mejor_mano(manos) as u8,
+            idx_activos,
+            idx_turno: 0,
+            idx_parejas: [pareja_mano, pareja_postre],
+            idx_pareja: 0,
+            acciones_pareja: [None, None],
+        }
     }
 
     /// Efectúa la acción para el jugador del turno actual.
     /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
     /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
     pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
-        todo!();
+        let turno = self.turno().ok_or(MusError::AccionNoValida)?;
+        match turno {
+            Turno::Jugador(id) => match a {
+                Accion::Paso => {
+                    self.idx_turno += 1;
+                    self.turno = if self.idx_turno as usize == self.idx_activos.len() {
+                        None
+                    } else {
+                        Some(Turno::Jugador(self.idx_activos[self.idx_turno as usize]))
+                    };
+                }
+                Accion::Envido(n) => {
+                    if n < self.apuesta_maxima {
+                        self.bote[1] = Apuesta::Tantos(n.max(2).min(self.apuesta_maxima));
+                        self.ultimo_envite = id % 2;
+                        self.idx_turno = 1 - self.ultimo_envite;
+                        self.turno =
+                            Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][0]));
+                    }
+                }
+                Accion::Ordago => {
+                    self.bote[1] = Apuesta::Ordago;
+                    self.ultimo_envite = id % 2;
+                    self.idx_turno = 1 - self.ultimo_envite;
+                    self.turno = Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][0]));
+                }
+                Accion::Quiero => return Err(MusError::AccionNoValida),
+            },
+            Turno::Pareja(_) => {
+                self.acciones_pareja[self.idx_pareja as usize] = Some(a);
+                self.idx_pareja += 1;
+                if self.idx_pareja as usize == self.idx_parejas.len() {
+                    let apuesta_maxima = self.acciones_pareja[0]
+                        .max(self.acciones_pareja[1])
+                        .unwrap();
+                    match apuesta_maxima {
+                        Accion::Paso => {
+                            self.ganador = Some(self.idx_turno);
+                            self.turno = None;
+                        }
+                        Accion::Quiero => {
+                            self.bote[0] = self.bote[1];
+                            self.turno = None
+                        }
+                        Accion::Envido(n) => {
+                            if let Apuesta::Tantos(t) = self.bote[1] {
+                                let nuevo_bote =
+                                    Apuesta::Tantos((t + n.max(2)).min(self.apuesta_maxima));
+                                self.bote[0] = self.bote[1];
+                                self.bote[1] = nuevo_bote;
+                                self.ultimo_envite = self.idx_turno;
+                                self.idx_turno = 1 - self.idx_turno;
+                                self.idx_pareja = 0;
+                                self.turno = Some(Turno::Pareja(
+                                    self.idx_parejas[self.idx_turno as usize][0],
+                                ));
+                            }
+                        }
+                        Accion::Ordago => {
+                            self.bote[0] = self.bote[1];
+                            self.bote[1] = Apuesta::Ordago;
+                            self.ultimo_envite = self.idx_turno;
+                            self.idx_turno = 1 - self.idx_turno;
+                            self.idx_pareja = 0;
+                            self.turno =
+                                Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][0]));
+                        }
+                    }
+                    self.acciones_pareja = [None, None];
+                } else {
+                    self.turno = Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][1]));
+                }
+            }
+        }
+        Ok(self.turno)
+    }
+
+    fn se_quieren(&self) -> bool {
+        self.turno.is_none() && self.bote[0] == self.bote[1]
+    }
+
+    /// Devuelve los tantos totales apostados en el lance hasta el momento. Se considera apostada
+    /// cualquier cantidad que se quiso o que se ha aceptado tácitamente con un nuevo envite. En
+    /// caso de que rechace un envite sin que hubiera en ese momento tantos apostados, se asume que
+    /// se apuesta un tanto. Si el lance tiene apuesta mínima y todos los jugadores pasaron, se
+    /// asume que se apuesta esa cantidad. Esto último solo ocurre en grande y chica.
+    pub fn tantos_apostados(&self) -> Apuesta {
+        let mut apostado = if self.se_quieren() {
+            self.bote[1]
+        } else if self.bote[0] == Apuesta::Tantos(0) && self.bote[1] > Apuesta::Tantos(0) {
+            Apuesta::Tantos(1)
+        } else {
+            self.bote[0]
+        };
+        if apostado == Apuesta::Tantos(0) {
+            apostado = Apuesta::Tantos(self.apuesta_minima);
+        }
+        apostado
     }
 
     /// Devuelve el turno de la pareja que le toca actuar. En caso de que el lance ya haya acabado
     /// devuelve None.
     pub fn turno(&self) -> Option<Turno> {
-        todo!();
+        self.turno
     }
 }
 
@@ -472,7 +624,7 @@ mod tests_estado_lance {
     use super::*;
 
     #[test]
-    fn test_turno() {
+    fn test_turno_paso() {
         let manos: [Mano; 4] = [
             "R111".parse().unwrap(),
             "RRR1".parse().unwrap(),
@@ -495,14 +647,82 @@ mod tests_estado_lance {
         );
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
 
+        // Hay lance pero no se juega.
+        let manos: [Mano; 4] = [
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RR11".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+        ];
+        let partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        assert_eq!(partida.turno(), None);
+
+        // Juegan 1 y 2.
+        let manos: [Mano; 4] = [
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "R111".parse().unwrap(),
+        ];
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(2))
+        );
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+
+        // Juegan 0 y 3.
+        let manos: [Mano; 4] = [
+            "RRR1".parse().unwrap(),
+            "R111".parse().unwrap(),
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+        ];
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(3))
+        );
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+    }
+
+    #[test]
+    fn test_turno_envido() {
         let manos: [Mano; 4] = [
             "R111".parse().unwrap(),
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let partida = EstadoLance::new(&Lance::Juego, &manos, 40);
-        assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
+        assert_eq!(
+            partida.actuar(Accion::Envido(2)).unwrap(),
+            Some(Turno::Pareja(1))
+        );
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Pareja(3))
+        );
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(1))
+        );
+        assert_eq!(
+            partida.actuar(Accion::Envido(2)).unwrap(),
+            Some(Turno::Pareja(0))
+        );
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Pareja(2))
+        );
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
     }
 }
 
