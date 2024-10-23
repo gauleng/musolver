@@ -286,6 +286,7 @@ pub enum Apuesta {
     Ordago,
 }
 
+/// Simula la secuencia de envites de un lance suponiendo que los jugadores juegan por parejas.
 #[derive(Debug, Clone)]
 pub struct EstadoLanceParejas {
     bote: [Apuesta; 2],
@@ -301,6 +302,10 @@ pub struct EstadoLanceParejas {
 impl EstadoLanceParejas {
     /// Crea un nuevo lance con las apuestas minima y máximas indicadas, la pareja que empieza
     /// actuando y el jugador que tiene la mejor mano.
+    ///
+    /// El turno_inicial debe ser 0 si empieza la pareja del jugador mano y 1 si empieza la pareja
+    /// del jugador postre. El parámero jugador_mejor_mano debe ser un número entre 0 y 3, donde 0
+    /// denota al jugador mano y 3 al jugador postre.
     pub fn new(
         apuesta_minima: u8,
         apuesta_maxima: u8,
@@ -425,8 +430,84 @@ impl EstadoLanceParejas {
     }
 }
 
+/// Representa el turno, bien de un jugador individual o de una pareja.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Turno {
+    /// Turno de un jugador individual.
+    ///
+    /// El entero representa el identificador de jugador, que puede
+    /// tomar valores de 0 a 3, siendo 0 el jugador mano y 3 el jugador postre.
+    Jugador(u8),
+    /// Turno de una pareja.
+    ///
+    /// El entero representa el identificador de jugador que tiene que actuar, que puede
+    /// tomar valores de 0 a 3, siendo 0 el jugador mano y 3 el jugador postre. La diferencia
+    /// respecto al turno de jugador es que el turno de pareja implica siempre que se solicitará la
+    /// acción de los dos jugadores de la pareja.
+    Pareja(u8),
+}
+
+struct EstadoLance {}
+impl EstadoLance {
+    pub fn new(lance: &Lance, manos: &[Mano; 4], apuesta_maxima: u8) -> Self {
+        Self {}
+    }
+
+    /// Efectúa la acción para el jugador del turno actual.
+    /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
+    /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
+    pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
+        todo!();
+    }
+
+    /// Devuelve el turno de la pareja que le toca actuar. En caso de que el lance ya haya acabado
+    /// devuelve None.
+    pub fn turno(&self) -> Option<Turno> {
+        todo!();
+    }
+}
+
 #[cfg(test)]
-mod tests {
+mod tests_estado_lance {
+    use super::*;
+
+    #[test]
+    fn test_turno() {
+        let manos: [Mano; 4] = [
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+        ];
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(1))
+        );
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(2))
+        );
+        assert_eq!(
+            partida.actuar(Accion::Paso).unwrap(),
+            Some(Turno::Jugador(3))
+        );
+        assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
+
+        let manos: [Mano; 4] = [
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+        ];
+        let partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
+    }
+}
+
+#[cfg(test)]
+mod tests_estado_lance_parejas {
     use super::*;
 
     #[test]
@@ -549,6 +630,52 @@ mod tests {
     }
 
     #[test]
+    fn test_tanteo() {
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), None);
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(0));
+
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), None);
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(0));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(0));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(1));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+
+        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
+        let _ = e.actuar(Accion::Paso);
+        let _ = e.actuar(Accion::Envido(2));
+        let _ = e.actuar(Accion::Paso);
+        assert_eq!(e.ganador(), Some(1));
+        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
+    }
+}
+
+#[cfg(test)]
+mod tests_lance {
+    use super::*;
+
+    #[test]
     fn hay_lance() {
         let manos = vec![
             Mano::try_from("R111").unwrap(),
@@ -616,46 +743,6 @@ mod tests {
         assert_eq!(Lance::Juego.turno_inicial(&manos), 0);
     }
 
-    #[test]
-    fn test_tanteo() {
-        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
-        let _ = e.actuar(Accion::Paso);
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), None);
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(0));
-
-        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
-        let _ = e.actuar(Accion::Paso);
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), None);
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
-
-        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
-        let _ = e.actuar(Accion::Envido(2));
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), Some(0));
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
-
-        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
-        let _ = e.actuar(Accion::Envido(2));
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), Some(0));
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
-
-        let mut e = EstadoLanceParejas::new(0, 40, 0, 0);
-        let _ = e.actuar(Accion::Paso);
-        let _ = e.actuar(Accion::Envido(2));
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), Some(1));
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
-
-        let mut e = EstadoLanceParejas::new(1, 40, 0, 0);
-        let _ = e.actuar(Accion::Paso);
-        let _ = e.actuar(Accion::Envido(2));
-        let _ = e.actuar(Accion::Paso);
-        assert_eq!(e.ganador(), Some(1));
-        assert_eq!(e.tantos_apostados(), Apuesta::Tantos(1));
-    }
     use std::cmp::Ordering::*;
 
     #[test]
