@@ -466,7 +466,7 @@ pub struct EstadoLance {
     idx_turno: u8,
     idx_parejas: [Vec<u8>; 2],
     idx_pareja: u8,
-    accion_pareja: [Option<Accion>; 2],
+    accion_pareja: Option<Accion>,
 }
 
 impl EstadoLance {
@@ -504,7 +504,7 @@ impl EstadoLance {
             idx_turno: 0,
             idx_parejas: [pareja_mano, pareja_postre],
             idx_pareja: 0,
-            accion_pareja: [None, None],
+            accion_pareja: None,
         }
     }
 
@@ -527,13 +527,14 @@ impl EstadoLance {
                 _ => self.procesar_envite(id, a)?,
             },
             Turno::Pareja(id) => {
-                self.accion_pareja[self.idx_pareja as usize] = Some(a);
+                let idx_pareja_activa = &self.idx_parejas[self.idx_turno as usize];
                 self.idx_pareja += 1;
-                if (self.idx_pareja as usize) < self.idx_parejas[self.idx_turno as usize].len() {
-                    self.turno = Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][1]));
+                if (self.idx_pareja as usize) < idx_pareja_activa.len() {
+                    self.accion_pareja = Some(a);
+                    self.turno = Some(Turno::Pareja(idx_pareja_activa[1]));
                     return Ok(self.turno);
                 }
-                let apuesta_maxima = self.accion_pareja[0].max(self.accion_pareja[1]).unwrap();
+                let apuesta_maxima = Some(a).max(self.accion_pareja).unwrap();
                 match apuesta_maxima {
                     Accion::Paso => {
                         self.ganador = Some(1 - self.idx_turno);
@@ -548,7 +549,7 @@ impl EstadoLance {
                     }
                 }
                 self.idx_pareja = 0;
-                self.accion_pareja = [None, None];
+                self.accion_pareja = None;
             }
         }
         Ok(self.turno)
@@ -568,9 +569,13 @@ impl EstadoLance {
         };
         self.bote[0] = self.bote[1];
         self.bote[1] = nuevo_bote;
-        self.ultimo_envite = id % 2;
-        self.idx_turno = 1 - self.ultimo_envite;
-        self.turno = Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][0]));
+        if self.bote[0] == self.bote[1] {
+            self.turno = None;
+        } else {
+            self.ultimo_envite = id % 2;
+            self.idx_turno = 1 - self.ultimo_envite;
+            self.turno = Some(Turno::Pareja(self.idx_parejas[self.idx_turno as usize][0]));
+        }
         Ok(())
     }
 
