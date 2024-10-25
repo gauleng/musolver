@@ -138,14 +138,11 @@ impl<'a> ManosNormalizadas<'a> {
     }
 
     fn normalizar_mano_jugadas<T>(manos: &'a [Mano; 4], jugadas: &[Option<T>]) -> Self {
-        let (mut pareja_mano, mut pareja_postre): (Vec<_>, Vec<_>) = jugadas
+        let (pareja_mano, pareja_postre): (Vec<_>, Vec<_>) = jugadas
             .iter()
             .enumerate()
             .filter_map(|(i, jugada)| jugada.as_ref().map(|_| i))
             .partition(|i| i % 2 == 0);
-        if jugadas[1].is_some() && jugadas[2].is_some() && jugadas[3].is_none() {
-            std::mem::swap(&mut pareja_mano, &mut pareja_postre);
-        }
 
         let hand_configuration = match (pareja_mano.len(), pareja_postre.len()) {
             (2, 2) => HandConfiguration::CuatroManos,
@@ -296,22 +293,23 @@ impl<'a> Display for InfoSet<'a> {
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
-    partida: Option<PartidaMus>,
-    baraja: Baraja,
+    partida: Vec<PartidaMus>,
+    idx_partida: usize,
     info_set_prefix: Option<[String; 2]>,
     abstract_game: bool,
+    history: Vec<Accion>,
 }
 
 impl LanceGame {
     pub fn new(lance: Lance, tantos: [u8; 2], abstract_game: bool) -> Self {
-        let baraja = Baraja::baraja_mus();
         Self {
             lance,
             tantos,
-            baraja,
             abstract_game,
-            partida: None,
+            partida: vec![],
+            idx_partida: 0,
             info_set_prefix: None,
+            history: Vec::with_capacity(6),
         }
     }
 
@@ -319,10 +317,11 @@ impl LanceGame {
         Some(Self {
             lance: partida_mus.lance_actual()?,
             tantos: *partida_mus.tantos(),
-            baraja: Baraja::baraja_mus(),
             abstract_game,
-            partida: Some(partida_mus.clone()),
+            partida: vec![partida_mus.clone()],
+            idx_partida: 0,
             info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
+            history: Vec::with_capacity(6),
         })
     }
 
@@ -345,9 +344,10 @@ impl LanceGame {
 
 impl Game<usize, Accion> for LanceGame {
     fn new_random(&mut self) {
+        let mut baraja = Baraja::baraja_mus();
         loop {
-            self.baraja.barajar();
-            let manos = self.baraja.repartir_manos();
+            baraja.barajar();
+            let manos = baraja.repartir_manos();
             let mut tantos = self.tantos;
             if self.lance.turno_inicial(&manos) == 1 {
                 tantos.swap(0, 1);
@@ -355,7 +355,9 @@ impl Game<usize, Accion> for LanceGame {
             let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
             if let Some(p) = intento_partida {
                 self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
-                self.partida = Some(p);
+                self.partida = Vec::with_capacity(6);
+                self.partida.push(p);
+                self.idx_partida = 0;
                 break;
             }
         }
@@ -363,7 +365,7 @@ impl Game<usize, Accion> for LanceGame {
 
     fn new_iter<F>(&mut self, mut f: F)
     where
-        F: FnMut(&Self, f64),
+        F: FnMut(&mut Self, f64),
     {
         let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4);
         let mut frecuencia_baraja_2 = Baraja::FREC_BARAJA_MUS;
@@ -391,7 +393,9 @@ impl Game<usize, Accion> for LanceGame {
                 let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
                 if let Some(p) = intento_partida {
                     self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
-                    self.partida = Some(p);
+                    self.partida = Vec::with_capacity(6);
+                    self.partida.push(p);
+                    self.idx_partida = 0;
                     f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
@@ -399,20 +403,24 @@ impl Game<usize, Accion> for LanceGame {
     }
 
     fn utility(&self, player: usize, _history: &[Accion]) -> f64 {
-        if let Some(partida) = &self.partida {
-            let tantos = partida.tantos();
-            let payoff = [
-                tantos[0] as i8 - tantos[1] as i8,
-                tantos[1] as i8 - tantos[0] as i8,
-            ];
-            payoff[player] as f64
-        } else {
-            0.
-        }
+        let partida = &self.partida[self.idx_partida];
+        let tantos = partida.tantos();
+        let payoff = [
+            tantos[0] as i8 - tantos[1] as i8,
+            tantos[1] as i8 - tantos[0] as i8,
+        ];
+        payoff[player] as f64
     }
 
     fn info_set_str(&self, player: usize, _history: &[Accion]) -> String {
-        self.info_set_prefix.as_ref().unwrap()[player].clone()
+        let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
+        let mut output = String::with_capacity(15 + self.history.len() + 1);
+        output.push_str(info_set_prefix);
+        output.push(',');
+        for i in self.history.iter() {
+            output.push_str(&i.to_string());
+        }
+        output
     }
 
     fn player_id(&self, idx: usize) -> usize {
@@ -424,57 +432,62 @@ impl Game<usize, Accion> for LanceGame {
     }
 
     fn actions(&self) -> Vec<Accion> {
-        self.partida.as_ref().map_or_else(Vec::new, |partida| {
-            if partida.hay_envites() {
-                let ultimo_envite: Apuesta = partida.ultima_apuesta();
-                match ultimo_envite {
-                    Apuesta::Tantos(2) => vec![
-                        Accion::Paso,
-                        Accion::Quiero,
-                        Accion::Envido(2),
-                        Accion::Envido(5),
-                        Accion::Envido(10),
-                        Accion::Ordago,
-                    ],
-                    Apuesta::Tantos(4..=5) => vec![
-                        Accion::Paso,
-                        Accion::Quiero,
-                        Accion::Envido(10),
-                        Accion::Ordago,
-                    ],
-                    Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-                    _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
-                }
-            } else {
-                vec![
+        let partida = &self.partida[self.idx_partida];
+        if partida.hay_envites() {
+            let ultimo_envite: Apuesta = partida.ultima_apuesta();
+            match ultimo_envite {
+                Apuesta::Tantos(2) => vec![
                     Accion::Paso,
+                    Accion::Quiero,
                     Accion::Envido(2),
                     Accion::Envido(5),
                     Accion::Envido(10),
                     Accion::Ordago,
-                ]
+                ],
+                Apuesta::Tantos(4..=5) => vec![
+                    Accion::Paso,
+                    Accion::Quiero,
+                    Accion::Envido(10),
+                    Accion::Ordago,
+                ],
+                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
             }
-        })
+        } else {
+            vec![
+                Accion::Paso,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ]
+        }
     }
 
     fn is_terminal(&self) -> bool {
-        self.partida
-            .as_ref()
-            .map_or_else(|| true, |p| p.turno().is_none())
+        self.partida[self.idx_partida].turno().is_none()
     }
 
     fn current_player(&self) -> Option<usize> {
-        self.partida.as_ref().and_then(|p| p.turno())
+        self.partida[self.idx_partida].turno()
     }
 
     fn act(&mut self, a: Accion) {
-        if let Some(prefix) = &mut self.info_set_prefix {
-            prefix[0].push_str(&a.to_string());
-            prefix[1].push_str(&a.to_string());
+        self.history.push(a);
+        self.idx_partida += 1;
+        if self.idx_partida < self.partida.len() {
+            let (partidas, last) = self.partida.split_at_mut(self.idx_partida);
+            last[0].clone_from(&partidas[self.idx_partida - 1]);
+        } else {
+            self.partida
+                .push(self.partida[self.idx_partida - 1].clone());
         }
-        if let Some(partida) = &mut self.partida {
-            let _ = partida.actuar(a);
-        }
+        let _ = self.partida[self.idx_partida].actuar(a);
+    }
+
+    fn takeback(&mut self) {
+        self.idx_partida -= 1;
+        self.history.pop();
     }
 }
 

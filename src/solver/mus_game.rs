@@ -168,7 +168,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
 
     fn new_iter<F>(&mut self, _f: F)
     where
-        F: FnMut(&Self, f64),
+        F: FnMut(&mut Self, f64),
     {
         todo!()
     }
@@ -194,6 +194,10 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
     }
 
     fn act(&mut self, _a: Accion) {
+        todo!()
+    }
+
+    fn takeback(&mut self) {
         todo!()
     }
 }

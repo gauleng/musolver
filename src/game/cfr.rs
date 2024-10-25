@@ -89,6 +89,8 @@ pub trait Game<P, A> {
 
     fn act(&mut self, a: A);
 
+    fn takeback(&mut self);
+
     /// Initializes the game with a random instance. This method is called by the external and
     /// chance sampling methods.
     fn new_random(&mut self);
@@ -96,7 +98,7 @@ pub trait Game<P, A> {
     /// Iterates all the possible games.
     fn new_iter<F>(&mut self, f: F)
     where
-        F: FnMut(&Self, f64);
+        F: FnMut(&mut Self, f64);
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -177,7 +179,7 @@ where
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling<G, P>(&mut self, game: &G, player: P, pi: f64, po: f64) -> f64
+    fn chance_sampling<G, P>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
     where
         G: Game<P, A> + Clone,
         P: Eq + Copy,
@@ -198,13 +200,14 @@ where
             .iter()
             .zip(strategy.iter())
             .map(|(a, s)| {
-                let mut game_cloned = game.clone();
-                game_cloned.act(*a);
-                if current_player == player {
-                    self.chance_sampling(&game_cloned, player, pi * s, po)
+                game.act(*a);
+                let u = if current_player == player {
+                    self.chance_sampling(game, player, pi * s, po)
                 } else {
-                    self.chance_sampling(&game_cloned, player, pi, po * s)
-                }
+                    self.chance_sampling(game, player, pi, po * s)
+                };
+                game.takeback();
+                u
             })
             .collect();
         let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
