@@ -433,6 +433,10 @@ impl EstadoLanceParejas {
     pub fn turno(&self) -> Option<usize> {
         self.turno
     }
+
+    pub fn ultima_apuesta(&self) -> Apuesta {
+        self.bote[1]
+    }
 }
 
 /// Representa el turno, bien de un jugador individual o de una pareja.

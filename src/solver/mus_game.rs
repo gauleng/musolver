@@ -180,4 +180,20 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
     fn player_id(&self, idx: usize) -> usize {
         idx
     }
+
+    fn actions(&self) -> Vec<Accion> {
+        todo!()
+    }
+
+    fn is_terminal(&self) -> bool {
+        todo!()
+    }
+
+    fn current_player(&self) -> Option<usize> {
+        todo!()
+    }
+
+    fn act(&mut self, _a: Accion) {
+        todo!()
+    }
 }

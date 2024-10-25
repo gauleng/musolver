@@ -3,7 +3,9 @@ use std::fmt::Display;
 use itertools::Itertools;
 
 use crate::{
-    mus::{Accion, Baraja, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus},
+    mus::{
+        Accion, Apuesta, Baraja, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus,
+    },
     Game,
 };
 
@@ -290,7 +292,7 @@ impl<'a> Display for InfoSet<'a> {
 /// Implementación del trait Game para un lance del mus. Permite configurar el lance a jugar, los
 /// tantos con los que empieza el marcador y si se va a considerar un lance abstracto (ver
 /// HandConfiguration).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
@@ -396,30 +398,21 @@ impl Game<usize, Accion> for LanceGame {
         }
     }
 
-    fn utility(&self, player: usize, history: &[Accion]) -> f64 {
-        let mut partida = self.partida.as_ref().unwrap().clone();
-        let turno_inicial = partida.turno().unwrap();
-        history.iter().for_each(|&a| {
-            let _ = partida.actuar(a);
-        });
-        let mut tantos = *partida.tantos();
-        if turno_inicial == 1 {
-            tantos.swap(0, 1);
+    fn utility(&self, player: usize, _history: &[Accion]) -> f64 {
+        if let Some(partida) = &self.partida {
+            let tantos = partida.tantos();
+            let payoff = [
+                tantos[0] as i8 - tantos[1] as i8,
+                tantos[1] as i8 - tantos[0] as i8,
+            ];
+            payoff[player] as f64
+        } else {
+            0.
         }
-        let payoff = [
-            tantos[0] as i8 - tantos[1] as i8,
-            tantos[1] as i8 - tantos[0] as i8,
-        ];
-        payoff[player] as f64
     }
 
-    fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
-        let mut output = String::with_capacity(9 + history.len() + 1);
-        output.push_str(&self.info_set_prefix.as_ref().unwrap()[player]);
-        for i in history.iter() {
-            output.push_str(&i.to_string());
-        }
-        output
+    fn info_set_str(&self, player: usize, _history: &[Accion]) -> String {
+        self.info_set_prefix.as_ref().unwrap()[player].clone()
     }
 
     fn player_id(&self, idx: usize) -> usize {
@@ -428,6 +421,60 @@ impl Game<usize, Accion> for LanceGame {
 
     fn num_players(&self) -> usize {
         2
+    }
+
+    fn actions(&self) -> Vec<Accion> {
+        self.partida.as_ref().map_or_else(Vec::new, |partida| {
+            if partida.hay_envites() {
+                let ultimo_envite: Apuesta = partida.ultima_apuesta();
+                match ultimo_envite {
+                    Apuesta::Tantos(2) => vec![
+                        Accion::Paso,
+                        Accion::Quiero,
+                        Accion::Envido(2),
+                        Accion::Envido(5),
+                        Accion::Envido(10),
+                        Accion::Ordago,
+                    ],
+                    Apuesta::Tantos(4..=5) => vec![
+                        Accion::Paso,
+                        Accion::Quiero,
+                        Accion::Envido(10),
+                        Accion::Ordago,
+                    ],
+                    Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+                    _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+                }
+            } else {
+                vec![
+                    Accion::Paso,
+                    Accion::Envido(2),
+                    Accion::Envido(5),
+                    Accion::Envido(10),
+                    Accion::Ordago,
+                ]
+            }
+        })
+    }
+
+    fn is_terminal(&self) -> bool {
+        self.partida
+            .as_ref()
+            .map_or_else(|| true, |p| p.turno().is_none())
+    }
+
+    fn current_player(&self) -> Option<usize> {
+        self.partida.as_ref().and_then(|p| p.turno())
+    }
+
+    fn act(&mut self, a: Accion) {
+        if let Some(prefix) = &mut self.info_set_prefix {
+            prefix[0].push_str(&a.to_string());
+            prefix[1].push_str(&a.to_string());
+        }
+        if let Some(partida) = &mut self.partida {
+            let _ = partida.actuar(a);
+        }
     }
 }
 

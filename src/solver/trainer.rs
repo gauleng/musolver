@@ -20,7 +20,7 @@ pub struct TrainerConfig<P, A> {
 impl Trainer {
     pub fn train<G, P, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<P, A>)
     where
-        G: Game<P, A> + Debug,
+        G: Game<P, A> + Debug + Clone,
         A: Eq + Copy,
         P: Eq + Copy,
     {

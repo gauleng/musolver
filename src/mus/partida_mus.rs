@@ -239,6 +239,20 @@ impl PartidaMus {
     pub fn manos(&self) -> &[Mano; 4] {
         &self.manos
     }
+
+    pub fn hay_envites(&self) -> bool {
+        self.estado_lance.as_ref().map_or_else(
+            || false,
+            |estado_lance| estado_lance.ultima_apuesta() > Apuesta::Tantos(0),
+        )
+    }
+
+    pub fn ultima_apuesta(&self) -> Apuesta {
+        self.estado_lance.as_ref().map_or_else(
+            || Apuesta::Tantos(0),
+            |estado_lance| estado_lance.ultima_apuesta(),
+        )
+    }
 }
 
 #[cfg(test)]
