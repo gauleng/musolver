@@ -138,12 +138,14 @@ impl<'a> ManosNormalizadas<'a> {
     }
 
     fn normalizar_mano_jugadas<T>(manos: &'a [Mano; 4], jugadas: &[Option<T>]) -> Self {
-        let (pareja_mano, pareja_postre): (Vec<_>, Vec<_>) = jugadas
+        let (mut pareja_mano, mut pareja_postre): (Vec<_>, Vec<_>) = jugadas
             .iter()
             .enumerate()
             .filter_map(|(i, jugada)| jugada.as_ref().map(|_| i))
             .partition(|i| i % 2 == 0);
-
+        if jugadas[1].is_some() && jugadas[2].is_some() && jugadas[3].is_none() {
+            std::mem::swap(&mut pareja_mano, &mut pareja_postre);
+        }
         let hand_configuration = match (pareja_mano.len(), pareja_postre.len()) {
             (2, 2) => HandConfiguration::CuatroManos,
             (1, 1) => HandConfiguration::DosManos,
@@ -286,7 +288,10 @@ impl<'a> Display for InfoSet<'a> {
     }
 }
 
-/// Implementación del trait Game para un lance del mus. Permite configurar el lance a jugar, los
+/// Implementación del trait Game para un lance del mus en el que hay dos jugadores que cada uno
+/// conoce las dos manos de una pareja.
+///
+/// Permite configurar el lance a jugar, los
 /// tantos con los que empieza el marcador y si se va a considerar un lance abstracto (ver
 /// HandConfiguration).
 #[derive(Debug, Clone)]
@@ -296,6 +301,7 @@ pub struct LanceGame {
     partida: Vec<PartidaMus>,
     idx_partida: usize,
     info_set_prefix: Option<[String; 2]>,
+    pareja_mano: usize,
     abstract_game: bool,
     history: Vec<Accion>,
 }
@@ -310,6 +316,7 @@ impl LanceGame {
             idx_partida: 0,
             info_set_prefix: None,
             history: Vec::with_capacity(6),
+            pareja_mano: 0,
         }
     }
 
@@ -322,6 +329,7 @@ impl LanceGame {
             idx_partida: 0,
             info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
             history: Vec::with_capacity(6),
+            pareja_mano: 0,
         })
     }
 
@@ -349,7 +357,8 @@ impl Game<usize, Accion> for LanceGame {
             baraja.barajar();
             let manos = baraja.repartir_manos();
             let mut tantos = self.tantos;
-            if self.lance.turno_inicial(&manos) == 1 {
+            let turno_inicial = self.lance.turno_inicial(&manos);
+            if turno_inicial == 1 {
                 tantos.swap(0, 1);
             }
             let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
@@ -358,6 +367,7 @@ impl Game<usize, Accion> for LanceGame {
                 self.partida = Vec::with_capacity(6);
                 self.partida.push(p);
                 self.idx_partida = 0;
+                self.pareja_mano = turno_inicial;
                 break;
             }
         }
@@ -387,7 +397,8 @@ impl Game<usize, Accion> for LanceGame {
                     Mano::new(mano2_pareja2),
                 ];
                 let mut tantos = self.tantos;
-                if self.lance.turno_inicial(&manos) == 1 {
+                let turno_inicial = self.lance.turno_inicial(&manos);
+                if turno_inicial == 1 {
                     tantos.swap(0, 1);
                 }
                 let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
@@ -396,6 +407,7 @@ impl Game<usize, Accion> for LanceGame {
                     self.partida = Vec::with_capacity(6);
                     self.partida.push(p);
                     self.idx_partida = 0;
+                    self.pareja_mano = turno_inicial;
                     f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
@@ -404,7 +416,10 @@ impl Game<usize, Accion> for LanceGame {
 
     fn utility(&self, player: usize, _history: &[Accion]) -> f64 {
         let partida = &self.partida[self.idx_partida];
-        let tantos = partida.tantos();
+        let mut tantos = *partida.tantos();
+        if self.pareja_mano == 1 {
+            tantos.swap(0, 1);
+        }
         let payoff = [
             tantos[0] as i8 - tantos[1] as i8,
             tantos[1] as i8 - tantos[0] as i8,
@@ -469,7 +484,9 @@ impl Game<usize, Accion> for LanceGame {
     }
 
     fn current_player(&self) -> Option<usize> {
-        self.partida[self.idx_partida].turno()
+        self.partida[self.idx_partida]
+            .turno()
+            .map(|v| if self.pareja_mano == 0 { v } else { 1 - v })
     }
 
     fn act(&mut self, a: Accion) {
