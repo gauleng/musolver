@@ -3,7 +3,7 @@ use std::path::Path;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use musolver::{
     mus::{Accion, Lance},
-    solver::LanceGame,
+    solver::LanceGameDosManos,
     ActionNode, Cfr, CfrMethod,
 };
 
@@ -11,7 +11,7 @@ fn bench_chance_sampling_grande(c: &mut Criterion) {
     c.bench_function("chance_sampling grande", |b| {
         b.iter_batched(
             || {
-                let game = LanceGame::new(Lance::Grande, [0, 0], false);
+                let game = LanceGameDosManos::new(Lance::Grande, [0, 0], false);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
@@ -19,13 +19,7 @@ fn bench_chance_sampling_grande(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                cfr.train(
-                    &mut game,
-                    &action_tree,
-                    CfrMethod::ChanceSampling,
-                    100,
-                    |_, _| {},
-                );
+                cfr.train(&mut game, CfrMethod::ChanceSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -36,7 +30,7 @@ fn bench_chance_sampling_juego(c: &mut Criterion) {
     c.bench_function("chance_sampling juego", |b| {
         b.iter_batched(
             || {
-                let game = LanceGame::new(Lance::Juego, [0, 0], false);
+                let game = LanceGameDosManos::new(Lance::Juego, [0, 0], false);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
@@ -44,13 +38,7 @@ fn bench_chance_sampling_juego(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                cfr.train(
-                    &mut game,
-                    &action_tree,
-                    CfrMethod::ChanceSampling,
-                    100,
-                    |_, _| {},
-                );
+                cfr.train(&mut game, CfrMethod::ChanceSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -60,7 +48,7 @@ fn bench_external_sampling_grande(c: &mut Criterion) {
     c.bench_function("external_sampling grande", |b| {
         b.iter_batched(
             || {
-                let game = LanceGame::new(Lance::Grande, [0, 0], false);
+                let game = LanceGameDosManos::new(Lance::Grande, [0, 0], false);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
@@ -68,13 +56,7 @@ fn bench_external_sampling_grande(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                cfr.train(
-                    &mut game,
-                    &action_tree,
-                    CfrMethod::ExternalSampling,
-                    100,
-                    |_, _| {},
-                );
+                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -85,7 +67,7 @@ fn bench_external_sampling_juego(c: &mut Criterion) {
     c.bench_function("external_sampling juego", |b| {
         b.iter_batched(
             || {
-                let game = LanceGame::new(Lance::Juego, [0, 0], false);
+                let game = LanceGameDosManos::new(Lance::Juego, [0, 0], false);
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
@@ -93,13 +75,7 @@ fn bench_external_sampling_juego(c: &mut Criterion) {
                 (cfr, game, action_tree)
             },
             |(mut cfr, mut game, action_tree)| {
-                cfr.train(
-                    &mut game,
-                    &action_tree,
-                    CfrMethod::ExternalSampling,
-                    100,
-                    |_, _| {},
-                );
+                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )

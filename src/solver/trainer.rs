@@ -18,7 +18,7 @@ pub struct TrainerConfig<P, A> {
 }
 
 impl Trainer {
-    pub fn train<G, P, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig<P, A>)
+    pub fn train<G, P, A>(&self, cfr: &mut Cfr, game: &mut G, config: &TrainerConfig<P, A>)
     where
         G: Game<P, A> + Debug + Clone,
         A: Eq + Copy,
@@ -34,18 +34,12 @@ impl Trainer {
                 .progress_chars("##-"),
         );
 
-        cfr.train(
-            game,
-            &config.action_tree,
-            config.method,
-            config.iterations,
-            |i, util| {
-                pb.inc(1);
-                if i % 1000 == 0 {
-                    pb.set_message(format!("Utility: {:.5} {:.5}", util[0], util[1],));
-                }
-            },
-        );
+        cfr.train(game, config.method, config.iterations, |i, util| {
+            pb.inc(1);
+            if i % 1000 == 0 {
+                pb.set_message(format!("Utility: {:.5} {:.5}", util[0], util[1],));
+            }
+        });
 
         // if i % 100000000 == 0 {
         //     banco

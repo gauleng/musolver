@@ -3,7 +3,7 @@ use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
-use super::{ActionNode, GameError};
+use super::GameError;
 
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,11 +75,11 @@ pub trait Game<P, A> {
     fn player_id(&self, idx: usize) -> P;
 
     /// Utility function for the player P after the actions considered in the history slice.
-    fn utility(&self, player: P, history: &[A]) -> f64;
+    fn utility(&self, player: P) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.
-    fn info_set_str(&self, player: P, history: &[A]) -> String;
+    fn info_set_str(&self, player: P) -> String;
 
     fn actions(&self) -> Vec<A>;
 
@@ -125,32 +125,27 @@ impl FromStr for CfrMethod {
 
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
-pub struct Cfr<A> {
-    history: Vec<A>,
+pub struct Cfr {
     nodes: HashMap<String, Node>,
 }
 
-impl<A> Cfr<A>
-where
-    A: Eq + Copy,
-{
+impl Cfr {
     pub fn new() -> Self {
         Self {
-            history: Vec::new(),
             nodes: HashMap::new(),
         }
     }
 
-    pub fn train<G, P, F>(
+    pub fn train<G, P, A, F>(
         &mut self,
         game: &mut G,
-        action_tree: &ActionNode<P, A>,
         cfr_method: CfrMethod,
         iterations: usize,
         mut iteration_callback: F,
     ) where
         G: Game<P, A> + Clone,
         P: Eq + Copy,
+        A: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
         let mut util = vec![0.; game.num_players()];
@@ -170,7 +165,7 @@ where
                     }
                     CfrMethod::ExternalSampling => {
                         game.new_random();
-                        *u += self.external_sampling(game, action_tree, player_id);
+                        *u += self.external_sampling(game, player_id);
                     }
                 }
             }
@@ -179,17 +174,18 @@ where
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling<G, P>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
+    fn chance_sampling<G, P, A>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
     where
         G: Game<P, A> + Clone,
         P: Eq + Copy,
+        A: Eq + Copy,
     {
         if game.is_terminal() {
-            return game.utility(player, &self.history);
+            return game.utility(player);
         }
         let current_player = game.current_player().unwrap();
         let actions: Vec<A> = game.actions();
-        let info_set_str = game.info_set_str(current_player, &self.history);
+        let info_set_str = game.info_set_str(current_player);
         let node = self
             .nodes
             .entry(info_set_str.clone())
@@ -227,54 +223,55 @@ where
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling<G, P>(&mut self, game: &G, n: &ActionNode<P, A>, player: P) -> f64
+    fn external_sampling<G, P, A>(&mut self, game: &mut G, player: P) -> f64
     where
         G: Game<P, A>,
         P: Eq + Copy,
+        A: Eq + Copy,
     {
-        match n {
-            ActionNode::NonTerminal(p, children) => {
-                let info_set_str = game.info_set_str(*p, &self.history);
-                if *p == player {
-                    let util: Vec<f64> = children
-                        .iter()
-                        .map(|(a, child)| {
-                            self.history.push(*a);
-                            let u = self.external_sampling(game, child, player);
-                            self.history.pop();
-                            u
-                        })
-                        .collect();
-                    let node = self
-                        .nodes
-                        .entry(info_set_str.clone())
-                        .or_insert_with(|| Node::new(children.len()));
-                    let strategy = node.update_strategy();
+        if game.is_terminal() {
+            return game.utility(player);
+        }
+        let current_player = game.current_player().unwrap();
+        let info_set_str = game.info_set_str(current_player);
+        let actions: Vec<A> = game.actions();
+        if current_player == player {
+            let util: Vec<f64> = actions
+                .iter()
+                .map(|accion| {
+                    game.act(*accion);
+                    let u = self.external_sampling(game, player);
+                    game.takeback();
+                    u
+                })
+                .collect();
+            let node = self
+                .nodes
+                .entry(info_set_str.clone())
+                .or_insert_with(|| Node::new(actions.len()));
+            let strategy = node.update_strategy();
 
-                    let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
-                    node.regret_sum
-                        .iter_mut()
-                        .zip(util.iter())
-                        .for_each(|(r, u)| *r += u - node_util);
-                    node_util
-                } else {
-                    let node = self
-                        .nodes
-                        .entry(info_set_str.clone())
-                        .or_insert_with(|| Node::new(children.len()));
+            let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
+            node.regret_sum
+                .iter_mut()
+                .zip(util.iter())
+                .for_each(|(r, u)| *r += u - node_util);
+            node_util
+        } else {
+            let node = self
+                .nodes
+                .entry(info_set_str.clone())
+                .or_insert_with(|| Node::new(actions.len()));
 
-                    node.update_strategy();
-                    node.update_strategy_sum(1.);
-                    let s = node.get_random_action();
-                    let accion = children.get(s).unwrap();
+            node.update_strategy();
+            node.update_strategy_sum(1.);
+            let s = node.get_random_action();
+            let accion = actions.get(s).unwrap();
 
-                    self.history.push(accion.0);
-                    let util = self.external_sampling(game, &accion.1, player);
-                    self.history.pop();
-                    util
-                }
-            }
-            ActionNode::Terminal => game.utility(player, &self.history),
+            game.act(*accion);
+            let util = self.external_sampling(game, player);
+            game.takeback();
+            util
         }
     }
 
@@ -289,10 +286,7 @@ where
     }
 }
 
-impl<A> Default for Cfr<A>
-where
-    A: Eq + Copy,
-{
+impl Default for Cfr {
     fn default() -> Self {
         Self::new()
     }

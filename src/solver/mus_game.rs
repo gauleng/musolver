@@ -15,6 +15,7 @@ pub struct MusGame<'a> {
     banco_estrategias: Option<RefCell<BancoEstrategias>>,
     action_tree: Option<&'a ActionNode<usize, Accion>>,
     switched: bool,
+    history: Vec<Accion>,
 }
 
 impl<'a> MusGame<'a> {
@@ -33,6 +34,7 @@ impl<'a> MusGame<'a> {
             banco_estrategias: None,
             action_tree: None,
             switched: false,
+            history: vec![],
         }
     }
 
@@ -54,6 +56,7 @@ impl<'a> MusGame<'a> {
             banco_estrategias: None,
             action_tree: None,
             switched: false,
+            history: vec![],
         }
     }
 
@@ -98,9 +101,9 @@ impl<'a> MusGame<'a> {
 }
 
 impl<'a> Game<usize, Accion> for MusGame<'a> {
-    fn utility(&self, player: usize, history: &[Accion]) -> f64 {
+    fn utility(&self, player: usize) -> f64 {
         let mut partida = self.partida.clone();
-        history.iter().for_each(|&a| {
+        self.history.iter().for_each(|&a| {
             let _ = partida.actuar(a);
         });
 
@@ -152,11 +155,11 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
         }
     }
 
-    fn info_set_str(&self, player: usize, history: &[Accion]) -> String {
-        let mut output = String::with_capacity(15 + history.len() + 1);
+    fn info_set_str(&self, player: usize) -> String {
+        let mut output = String::with_capacity(15 + self.history.len() + 1);
         output.push_str(&self.manos_normalizadas[player]);
         output.push(',');
-        for i in history.iter() {
+        for i in self.history.iter() {
             output.push_str(&i.to_string());
         }
         output

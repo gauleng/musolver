@@ -295,7 +295,7 @@ impl<'a> Display for InfoSet<'a> {
 /// tantos con los que empieza el marcador y si se va a considerar un lance abstracto (ver
 /// HandConfiguration).
 #[derive(Debug, Clone)]
-pub struct LanceGame {
+pub struct LanceGameDosManos {
     lance: Lance,
     tantos: [u8; 2],
     partida: Vec<PartidaMus>,
@@ -306,7 +306,7 @@ pub struct LanceGame {
     history: Vec<Accion>,
 }
 
-impl LanceGame {
+impl LanceGameDosManos {
     pub fn new(lance: Lance, tantos: [u8; 2], abstract_game: bool) -> Self {
         Self {
             lance,
@@ -327,7 +327,7 @@ impl LanceGame {
             abstract_game,
             partida: vec![partida_mus.clone()],
             idx_partida: 0,
-            info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
+            info_set_prefix: LanceGameDosManos::info_set_prefix(partida_mus, abstract_game),
             history: Vec::with_capacity(6),
             pareja_mano: 0,
         })
@@ -350,7 +350,7 @@ impl LanceGame {
     }
 }
 
-impl Game<usize, Accion> for LanceGame {
+impl Game<usize, Accion> for LanceGameDosManos {
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
         loop {
@@ -363,7 +363,7 @@ impl Game<usize, Accion> for LanceGame {
             }
             let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
             if let Some(p) = intento_partida {
-                self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
+                self.info_set_prefix = LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
                 self.partida = Vec::with_capacity(6);
                 self.partida.push(p);
                 self.idx_partida = 0;
@@ -403,7 +403,8 @@ impl Game<usize, Accion> for LanceGame {
                 }
                 let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
                 if let Some(p) = intento_partida {
-                    self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
+                    self.info_set_prefix =
+                        LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
                     self.partida = Vec::with_capacity(6);
                     self.partida.push(p);
                     self.idx_partida = 0;
@@ -414,7 +415,7 @@ impl Game<usize, Accion> for LanceGame {
         }
     }
 
-    fn utility(&self, player: usize, _history: &[Accion]) -> f64 {
+    fn utility(&self, player: usize) -> f64 {
         let partida = &self.partida[self.idx_partida];
         let mut tantos = *partida.tantos();
         if self.pareja_mano == 1 {
@@ -427,7 +428,7 @@ impl Game<usize, Accion> for LanceGame {
         payoff[player] as f64
     }
 
-    fn info_set_str(&self, player: usize, _history: &[Accion]) -> String {
+    fn info_set_str(&self, player: usize) -> String {
         let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
         let mut output = String::with_capacity(15 + self.history.len() + 1);
         output.push_str(info_set_prefix);

@@ -17,11 +17,11 @@ use super::{GameConfig, SolverError, Strategy, StrategyConfig, TrainerConfig};
 
 #[derive(Debug)]
 pub struct BancoEstrategias {
-    grande: RefCell<Cfr<Accion>>,
-    chica: RefCell<Cfr<Accion>>,
-    pares: RefCell<Cfr<Accion>>,
-    juego: RefCell<Cfr<Accion>>,
-    punto: RefCell<Cfr<Accion>>,
+    grande: RefCell<Cfr>,
+    chica: RefCell<Cfr>,
+    pares: RefCell<Cfr>,
+    juego: RefCell<Cfr>,
+    punto: RefCell<Cfr>,
 }
 
 impl BancoEstrategias {
@@ -35,7 +35,7 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr<Accion>> {
+    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr> {
         match l {
             Lance::Grande => self.grande.borrow(),
             Lance::Chica => self.chica.borrow(),
@@ -44,7 +44,7 @@ impl BancoEstrategias {
             Lance::Juego => self.juego.borrow(),
         }
     }
-    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr<Accion>> {
+    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr> {
         match l {
             Lance::Grande => &self.grande,
             Lance::Chica => &self.chica,

@@ -4,7 +4,7 @@ use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 use crate::{
     mus::{Accion, PartidaMus},
-    solver::{LanceGame, Strategy},
+    solver::{LanceGameDosManos, Strategy},
     ActionNode, Game, Node,
 };
 
@@ -118,12 +118,12 @@ impl AgenteMusolver {
         if turno_inicial == 1 {
             turno = 1 - turno;
         }
-        let info_set = LanceGame::from_partida_mus(
+        let info_set = LanceGameDosManos::from_partida_mus(
             partida_mus,
             self.strategy.strategy_config.game_config.abstract_game,
         )
         .unwrap()
-        .info_set_str(turno, &self.history.borrow());
+        .info_set_str(turno);
         let probabilities = match self.strategy.nodes.get(&info_set) {
             None => {
                 println!("ERROR: InfoSet no encontrado: {info_set}");

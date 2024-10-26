@@ -12,7 +12,7 @@ use crate::{
     ActionNode, Cfr, Game,
 };
 
-use super::{LanceGame, SolverError, TrainerConfig};
+use super::{LanceGameDosManos, SolverError, TrainerConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameConfig {
@@ -34,7 +34,7 @@ pub struct Strategy {
 
 impl Strategy {
     pub fn new(
-        cfr: &Cfr<Accion>,
+        cfr: &Cfr,
         trainer_config: &TrainerConfig<usize, Accion>,
         game_config: &GameConfig,
     ) -> Self {
@@ -73,7 +73,7 @@ impl Strategy {
                         hand2.clone(),
                         opponent_hand2.clone(),
                     ];
-                    let lance_game = LanceGame::from_partida_mus(
+                    let lance_game = LanceGameDosManos::from_partida_mus(
                         &PartidaMus::new_partida_lance(
                             self.strategy_config.game_config.lance.unwrap(),
                             hands,
@@ -83,7 +83,7 @@ impl Strategy {
                         false,
                     );
                     if let Some(l) = lance_game {
-                        expected_payoff += opponent_dist * l.utility(player, history);
+                        expected_payoff += opponent_dist * l.utility(player);
                     }
                 }
                 expected_payoff
@@ -104,7 +104,7 @@ impl Strategy {
                                 hand2.clone(),
                                 opponent_hand2.clone(),
                             ];
-                            let lance_game = LanceGame::from_partida_mus(
+                            let lance_game = LanceGameDosManos::from_partida_mus(
                                 &PartidaMus::new_partida_lance(
                                     self.strategy_config.game_config.lance.unwrap(),
                                     hands,
@@ -114,7 +114,7 @@ impl Strategy {
                                 self.strategy_config.game_config.abstract_game,
                             )
                             .unwrap();
-                            let info_set_str = lance_game.info_set_str(*acting_player, history);
+                            let info_set_str = lance_game.info_set_str(*acting_player);
                             let strategy = self.nodes.get(&info_set_str).unwrap();
                             new_opponent_hands[idx_hands].2 = prob * strategy[idx_action];
                             weights[idx_action] += new_opponent_hands[idx_hands].2;
