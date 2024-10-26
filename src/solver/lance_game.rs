@@ -348,6 +348,14 @@ impl LanceGameDosManos {
         });
         Some(info_set_prefix)
     }
+
+    fn initialize_game(&mut self, p: PartidaMus, turno_inicial: usize) {
+        self.info_set_prefix = LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
+        self.partida = Vec::with_capacity(6);
+        self.partida.push(p);
+        self.idx_partida = 0;
+        self.pareja_mano = turno_inicial;
+    }
 }
 
 impl Game<usize, Accion> for LanceGameDosManos {
@@ -363,11 +371,7 @@ impl Game<usize, Accion> for LanceGameDosManos {
             }
             let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
             if let Some(p) = intento_partida {
-                self.info_set_prefix = LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
-                self.partida = Vec::with_capacity(6);
-                self.partida.push(p);
-                self.idx_partida = 0;
-                self.pareja_mano = turno_inicial;
+                self.initialize_game(p, turno_inicial);
                 break;
             }
         }
@@ -403,12 +407,7 @@ impl Game<usize, Accion> for LanceGameDosManos {
                 }
                 let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
                 if let Some(p) = intento_partida {
-                    self.info_set_prefix =
-                        LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
-                    self.partida = Vec::with_capacity(6);
-                    self.partida.push(p);
-                    self.idx_partida = 0;
-                    self.pareja_mano = turno_inicial;
+                    self.initialize_game(p, turno_inicial);
                     f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
