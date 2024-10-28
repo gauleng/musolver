@@ -81,14 +81,19 @@ pub trait Game<P, A> {
     /// the history slice.
     fn info_set_str(&self, player: P) -> String;
 
+    /// Actions available in the current state of the game.
     fn actions(&self) -> Vec<A>;
 
+    /// Indicates if the current state of the game is terminal.
     fn is_terminal(&self) -> bool;
 
+    /// Player to play in the current state of the game.
     fn current_player(&self) -> Option<P>;
 
+    /// Advance the state with the given action for the current player.
     fn act(&mut self, a: A);
 
+    /// Takeback the last action and return to the previous state of the game.
     fn takeback(&mut self);
 
     /// Initializes the game with a random instance. This method is called by the external and
