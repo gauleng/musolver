@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use musolver::{
-    mus::{Accion, Lance},
+    mus::Lance,
     solver::{BancoEstrategias, GameConfig, LanceGameDosManos, Trainer, TrainerConfig},
-    ActionNode, CfrMethod,
+    CfrMethod,
 };
 
 use clap::Parser;
@@ -67,10 +67,6 @@ fn main() {
     let trainer = args
         .lance
         .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
-    let action_tree_path = PathBuf::from(
-        args.action_tree
-            .unwrap_or_else(|| "config/action_tree.json".to_string()),
-    );
     let method = args.method.unwrap_or(CfrMethod::ChanceSampling);
     let mut output_path = PathBuf::from(args.output.unwrap_or_else(|| "output/".to_string()));
 
@@ -83,14 +79,8 @@ fn main() {
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
-    let action_tree: ActionNode<usize, Accion> =
-        match ActionNode::from_file(action_tree_path.as_path()) {
-            Ok(v) => v,
-            Err(_) => todo!(),
-        };
     let trainer_config = TrainerConfig {
         iterations: args.iter,
-        action_tree,
         method,
     };
     let game_config = GameConfig {

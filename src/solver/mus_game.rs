@@ -184,7 +184,7 @@ impl<'a> Game<usize, Accion> for MusGame<'a> {
         idx
     }
 
-    fn actions(&self) -> Vec<Accion> {
+    fn actions(&self) -> Option<Vec<Accion>> {
         todo!()
     }
 

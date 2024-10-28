@@ -446,36 +446,37 @@ impl Game<usize, Accion> for LanceGameDosManos {
         2
     }
 
-    fn actions(&self) -> Vec<Accion> {
+    fn actions(&self) -> Option<Vec<Accion>> {
         let partida = &self.partida[self.idx_partida];
+        partida.turno()?;
         if partida.hay_envites() {
             let ultimo_envite: Apuesta = partida.ultima_apuesta();
             match ultimo_envite {
-                Apuesta::Tantos(2) => vec![
+                Apuesta::Tantos(2) => Some(vec![
                     Accion::Paso,
                     Accion::Quiero,
                     Accion::Envido(2),
                     Accion::Envido(5),
                     Accion::Envido(10),
                     Accion::Ordago,
-                ],
-                Apuesta::Tantos(4..=5) => vec![
+                ]),
+                Apuesta::Tantos(4..=5) => Some(vec![
                     Accion::Paso,
                     Accion::Quiero,
                     Accion::Envido(10),
                     Accion::Ordago,
-                ],
-                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+                ]),
+                Apuesta::Ordago => Some(vec![Accion::Paso, Accion::Quiero]),
+                _ => Some(vec![Accion::Paso, Accion::Quiero, Accion::Ordago]),
             }
         } else {
-            vec![
+            Some(vec![
                 Accion::Paso,
                 Accion::Envido(2),
                 Accion::Envido(5),
                 Accion::Envido(10),
                 Accion::Ordago,
-            ]
+            ])
         }
     }
 

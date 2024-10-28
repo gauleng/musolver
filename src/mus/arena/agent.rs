@@ -5,7 +5,7 @@ use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 use crate::{
     mus::{Accion, PartidaMus},
     solver::{LanceGameDosManos, Strategy},
-    ActionNode, Game, Node,
+    Game, Node,
 };
 
 pub trait Agent {
@@ -15,25 +15,23 @@ pub trait Agent {
 #[derive(Debug, Clone)]
 pub struct AgenteCli {
     history: Rc<RefCell<Vec<Accion>>>,
-    action_tree: ActionNode<usize, Accion>,
 }
 
 impl AgenteCli {
-    pub fn new(action_tree: ActionNode<usize, Accion>, history: Rc<RefCell<Vec<Accion>>>) -> Self {
-        Self {
-            history,
-            action_tree,
-        }
+    pub fn new(history: Rc<RefCell<Vec<Accion>>>) -> Self {
+        Self { history }
     }
 }
 
 impl Agent for AgenteCli {
-    fn actuar(&mut self, _partida_mus: &PartidaMus) -> Accion {
+    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
+        let mut lance_game = LanceGameDosManos::from_partida_mus(partida_mus, true).unwrap();
+        for action in self.history.borrow().iter() {
+            lance_game.act(*action);
+        }
         println!("Elija una acción:");
-        let node = self.action_tree.search_action_node(&self.history.borrow());
-        if let ActionNode::NonTerminal(_, next_actions) = node {
-            let acciones: Vec<Accion> = next_actions.iter().map(|c| c.0).collect();
-            acciones
+        if let Some(next_actions) = lance_game.actions() {
+            next_actions
                 .iter()
                 .enumerate()
                 .for_each(|(i, a)| println!("{i}: {:?}", a));
@@ -45,8 +43,8 @@ impl Agent for AgenteCli {
                 let num = input.trim().parse::<usize>();
                 match num {
                     Ok(n) => {
-                        if n < acciones.len() {
-                            return acciones[n];
+                        if n < next_actions.len() {
+                            return next_actions[n];
                         } else {
                             println!("Opción no válida.");
                         }
@@ -65,25 +63,21 @@ impl Agent for AgenteCli {
 #[derive(Debug, Clone)]
 pub struct AgenteAleatorio {
     history: Rc<RefCell<Vec<Accion>>>,
-    action_tree: ActionNode<usize, Accion>,
 }
 
 impl AgenteAleatorio {
-    pub fn new(action_tree: ActionNode<usize, Accion>, history: Rc<RefCell<Vec<Accion>>>) -> Self {
-        Self {
-            history,
-            action_tree,
-        }
+    pub fn new(history: Rc<RefCell<Vec<Accion>>>) -> Self {
+        Self { history }
     }
 }
 
 impl Agent for AgenteAleatorio {
-    fn actuar(&mut self, _partida_mus: &PartidaMus) -> Accion {
-        let next_actions = self
-            .action_tree
-            .search_action_node(&self.history.borrow())
-            .children();
-        match next_actions {
+    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
+        let mut lance_game = LanceGameDosManos::from_partida_mus(partida_mus, true).unwrap();
+        for action in self.history.borrow().iter() {
+            lance_game.act(*action);
+        }
+        match lance_game.actions() {
             None => {
                 println!(
                     "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
@@ -94,7 +88,7 @@ impl Agent for AgenteAleatorio {
             Some(c) => {
                 let mut rng = rand::thread_rng();
                 let idx = rng.gen_range(0..c.len());
-                c[idx].0
+                c[idx]
             }
         }
     }
@@ -127,9 +121,9 @@ impl AgenteMusolver {
         let probabilities = match self.strategy.nodes.get(&info_set) {
             None => {
                 println!("ERROR: InfoSet no encontrado: {info_set}");
-                &Node::new(acciones.len()).strategy().clone()
+                &Node::new(acciones.clone()).strategy().to_owned()
             }
-            Some(n) => n,
+            Some(n) => &n.iter().map(|(_, p)| *p).collect(),
         };
 
         let dist = WeightedIndex::new(probabilities).unwrap();
@@ -140,13 +134,15 @@ impl AgenteMusolver {
 
 impl Agent for AgenteMusolver {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let next_actions = self
-            .strategy
-            .strategy_config
-            .trainer_config
-            .action_tree
-            .search_action_node(&self.history.borrow())
-            .children();
+        let mut lance_game = LanceGameDosManos::from_partida_mus(
+            partida_mus,
+            self.strategy.strategy_config.game_config.abstract_game,
+        )
+        .unwrap();
+        for action in self.history.borrow().iter() {
+            lance_game.act(*action);
+        }
+        let next_actions = lance_game.actions();
         match next_actions {
             None => {
                 println!(
@@ -155,10 +151,7 @@ impl Agent for AgenteMusolver {
                 );
                 Accion::Paso
             }
-            Some(c) => {
-                let acciones: Vec<Accion> = c.iter().map(|a| a.0).collect();
-                self.accion_aleatoria(partida_mus, acciones)
-            }
+            Some(c) => self.accion_aleatoria(partida_mus, c),
         }
     }
 }

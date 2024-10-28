@@ -17,11 +17,11 @@ use super::{GameConfig, SolverError, Strategy, StrategyConfig, TrainerConfig};
 
 #[derive(Debug)]
 pub struct BancoEstrategias {
-    grande: RefCell<Cfr>,
-    chica: RefCell<Cfr>,
-    pares: RefCell<Cfr>,
-    juego: RefCell<Cfr>,
-    punto: RefCell<Cfr>,
+    grande: RefCell<Cfr<Accion>>,
+    chica: RefCell<Cfr<Accion>>,
+    pares: RefCell<Cfr<Accion>>,
+    juego: RefCell<Cfr<Accion>>,
+    punto: RefCell<Cfr<Accion>>,
 }
 
 impl BancoEstrategias {
@@ -35,7 +35,7 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr> {
+    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr<Accion>> {
         match l {
             Lance::Grande => self.grande.borrow(),
             Lance::Chica => self.chica.borrow(),
@@ -44,7 +44,7 @@ impl BancoEstrategias {
             Lance::Juego => self.juego.borrow(),
         }
     }
-    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr> {
+    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr<Accion>> {
         match l {
             Lance::Grande => &self.grande,
             Lance::Chica => &self.chica,
@@ -109,7 +109,7 @@ impl BancoEstrategias {
         &self,
         path: &Path,
         l: Lance,
-        trainer_config: &TrainerConfig<usize, Accion>,
+        trainer_config: &TrainerConfig,
         game_config: &GameConfig,
     ) -> Result<(), SolverError> {
         fs::create_dir_all(path).map_err(|err| {
@@ -126,7 +126,7 @@ impl BancoEstrategias {
     pub fn export(
         &self,
         path: &Path,
-        trainer_config: &TrainerConfig<usize, Accion>,
+        trainer_config: &TrainerConfig,
         game_config: &GameConfig,
     ) -> Result<(), SolverError> {
         self.export_estrategia(path, Lance::Grande, trainer_config, game_config)?;

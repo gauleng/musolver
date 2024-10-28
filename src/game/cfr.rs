@@ -7,18 +7,21 @@ use super::GameError;
 
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
+pub struct Node<A> {
     regret_sum: Vec<f64>,
     strategy: Vec<f64>,
     strategy_sum: Vec<f64>,
+    actions: Vec<A>,
 }
 
-impl Node {
-    pub fn new(num_actions: usize) -> Self {
+impl<A> Node<A> {
+    pub fn new(actions: Vec<A>) -> Self {
+        let num_actions = actions.len();
         Self {
             regret_sum: vec![0.; num_actions],
             strategy: vec![1. / num_actions as f64; num_actions],
             strategy_sum: vec![0.; num_actions],
+            actions,
         }
     }
 
@@ -63,6 +66,10 @@ impl Node {
         let dist = WeightedIndex::new(&self.strategy).unwrap();
         dist.sample(&mut rand::thread_rng())
     }
+
+    pub fn actions(&self) -> &[A] {
+        &self.actions
+    }
 }
 
 /// Trait implemented by games that can be trained with the CFR algorithm, for players identified
@@ -82,7 +89,7 @@ pub trait Game<P, A> {
     fn info_set_str(&self, player: P) -> String;
 
     /// Actions available in the current state of the game.
-    fn actions(&self) -> Vec<A>;
+    fn actions(&self) -> Option<Vec<A>>;
 
     /// Indicates if the current state of the game is terminal.
     fn is_terminal(&self) -> bool;
@@ -130,18 +137,18 @@ impl FromStr for CfrMethod {
 
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
-pub struct Cfr {
-    nodes: HashMap<String, Node>,
+pub struct Cfr<A> {
+    nodes: HashMap<String, Node<A>>,
 }
 
-impl Cfr {
+impl<A> Cfr<A> {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
         }
     }
 
-    pub fn train<G, P, A, F>(
+    pub fn train<G, P, F>(
         &mut self,
         game: &mut G,
         cfr_method: CfrMethod,
@@ -179,7 +186,7 @@ impl Cfr {
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling<G, P, A>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
+    fn chance_sampling<G, P>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
     where
         G: Game<P, A> + Clone,
         P: Eq + Copy,
@@ -189,12 +196,12 @@ impl Cfr {
             return game.utility(player);
         }
         let current_player = game.current_player().unwrap();
-        let actions: Vec<A> = game.actions();
+        let actions: Vec<A> = game.actions().unwrap();
         let info_set_str = game.info_set_str(current_player);
         let node = self
             .nodes
             .entry(info_set_str.clone())
-            .or_insert_with(|| Node::new(actions.len()));
+            .or_insert_with(|| Node::new(actions.clone()));
         let strategy = node.strategy().clone();
 
         let util: Vec<f64> = actions
@@ -228,7 +235,7 @@ impl Cfr {
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling<G, P, A>(&mut self, game: &mut G, player: P) -> f64
+    fn external_sampling<G, P>(&mut self, game: &mut G, player: P) -> f64
     where
         G: Game<P, A>,
         P: Eq + Copy,
@@ -239,7 +246,7 @@ impl Cfr {
         }
         let current_player = game.current_player().unwrap();
         let info_set_str = game.info_set_str(current_player);
-        let actions: Vec<A> = game.actions();
+        let actions: Vec<A> = game.actions().unwrap();
         if current_player == player {
             let util: Vec<f64> = actions
                 .iter()
@@ -253,7 +260,7 @@ impl Cfr {
             let node = self
                 .nodes
                 .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.len()));
+                .or_insert_with(|| Node::new(actions.clone()));
             let strategy = node.update_strategy();
 
             let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
@@ -266,7 +273,7 @@ impl Cfr {
             let node = self
                 .nodes
                 .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.len()));
+                .or_insert_with(|| Node::new(actions.clone()));
 
             node.update_strategy();
             node.update_strategy_sum(1.);
@@ -280,7 +287,7 @@ impl Cfr {
         }
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node> {
+    pub fn nodes(&self) -> &HashMap<String, Node<A>> {
         &self.nodes
     }
 
@@ -291,7 +298,7 @@ impl Cfr {
     }
 }
 
-impl Default for Cfr {
+impl<A> Default for Cfr<A> {
     fn default() -> Self {
         Self::new()
     }

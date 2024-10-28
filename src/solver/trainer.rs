@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use crate::{mus::Lance, ActionNode, Cfr, CfrMethod, Game};
+use crate::{mus::Lance, Cfr, CfrMethod, Game};
 
 pub enum Trainer {
     LanceTrainer(Lance),
@@ -11,14 +11,13 @@ pub enum Trainer {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TrainerConfig<P, A> {
+pub struct TrainerConfig {
     pub method: CfrMethod,
     pub iterations: usize,
-    pub action_tree: ActionNode<P, A>,
 }
 
 impl Trainer {
-    pub fn train<G, P, A>(&self, cfr: &mut Cfr, game: &mut G, config: &TrainerConfig<P, A>)
+    pub fn train<G, P, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig)
     where
         G: Game<P, A> + Debug + Clone,
         A: Eq + Copy,

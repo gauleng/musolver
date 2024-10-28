@@ -7,7 +7,6 @@ use musolver::{
         ActionRecorder, AgenteAleatorio, AgenteCli, AgenteMusolver, KibitzerCli, MusArena,
     },
     solver::{BancoEstrategias, SolverError, Strategy, StrategyConfig},
-    ActionNode,
 };
 
 fn show_strategy_data(strategy: &StrategyConfig) {
@@ -112,21 +111,13 @@ fn main() {
     } else {
         None
     };
-    let action_tree = if let Some(s) = &strategy {
-        s.strategy_config.trainer_config.action_tree.to_owned()
-    } else {
-        match ActionNode::from_file(PathBuf::from("config/action_tree.json").as_path()) {
-            Ok(a) => a,
-            Err(err) => panic!("Cannot open action tree file: config/action_tree.json. {err}"),
-        }
-    };
 
     let mut arena = MusArena::new(lance);
 
     let action_recorder = ActionRecorder::new();
 
-    let agente_aleatorio = AgenteAleatorio::new(action_tree.clone(), action_recorder.history());
-    let agente_cli = AgenteCli::new(action_tree.clone(), action_recorder.history());
+    let agente_aleatorio = AgenteAleatorio::new(action_recorder.history());
+    let agente_cli = AgenteCli::new(action_recorder.history());
 
     let mut cli_client = 0;
     match args.agent1 {
