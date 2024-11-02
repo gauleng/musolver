@@ -240,6 +240,8 @@ impl PartidaMus {
         &self.manos
     }
 
+    /// Indica si hubo algún envite en el lance en curso. En caso de que la partida esté
+    /// finalizada, devuelve false.
     pub fn hay_envites(&self) -> bool {
         self.estado_lance.as_ref().map_or_else(
             || false,
@@ -247,6 +249,8 @@ impl PartidaMus {
         )
     }
 
+    /// Devuelve hasta cuántos tantos se ha elevado la apuesta del lance actual. Se incluye en este
+    /// valor los envites que todavía no han sido aceptados por la pareja rival.
     pub fn ultima_apuesta(&self) -> Apuesta {
         self.estado_lance.as_ref().map_or_else(
             || Apuesta::Tantos(0),

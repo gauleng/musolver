@@ -434,6 +434,10 @@ impl EstadoLanceParejas {
         self.turno
     }
 
+    /// Devuelve hasta cuántos tantos se ha elevado la apuesta del lance actual. Se incluye en este
+    /// valor los envites que todavía no han sido aceptados por la pareja rival. Por ejemplo, si el
+    /// jugador mano envida dos tantos y el jugador a su derecha envida otros dos, esta función
+    /// devolverá Apuesta::Tantos(4).
     pub fn ultima_apuesta(&self) -> Apuesta {
         self.bote[1]
     }
