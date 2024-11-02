@@ -461,6 +461,7 @@ pub enum Turno {
     Pareja(u8),
 }
 
+#[derive(Debug, Clone)]
 pub struct EstadoLance {
     bote: [Apuesta; 2],
     turno: Option<Turno>,
@@ -614,10 +615,25 @@ impl EstadoLance {
         *self.ganador.get_or_insert(self.jugador_mejor_mano % 2)
     }
 
+    /// India si ya hay un ganador en el lance, bien sea porque una pareja ha rechazado un envite o
+    /// porque el lance ya está resuelto. En caso de que todavía un no haya ganador, esta función
+    /// devuelve None.
+    pub fn ganador(&self) -> Option<u8> {
+        self.ganador
+    }
+
     /// Devuelve el turno de la pareja que le toca actuar. En caso de que el lance ya haya acabado
     /// devuelve None.
     pub fn turno(&self) -> Option<Turno> {
         self.turno
+    }
+
+    /// Devuelve hasta cuántos tantos se ha elevado la apuesta del lance actual. Se incluye en este
+    /// valor los envites que todavía no han sido aceptados por la pareja rival. Por ejemplo, si el
+    /// jugador mano envida dos tantos y el jugador a su derecha envida otros dos, esta función
+    /// devolverá Apuesta::Tantos(4).
+    pub fn ultima_apuesta(&self) -> Apuesta {
+        self.bote[1]
     }
 }
 

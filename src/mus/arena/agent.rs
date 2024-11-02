@@ -3,7 +3,7 @@ use std::{cell::RefCell, io, rc::Rc};
 use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 use crate::{
-    mus::{Accion, PartidaMus},
+    mus::{Accion, PartidaMus, Turno},
     solver::{LanceGameDosManos, Strategy},
     Game, Node,
 };
@@ -106,18 +106,17 @@ impl AgenteMusolver {
     }
 
     fn accion_aleatoria(&mut self, partida_mus: &PartidaMus, acciones: Vec<Accion>) -> Accion {
-        let lance = partida_mus.lance_actual().unwrap();
-        let turno_inicial = lance.turno_inicial(partida_mus.manos());
-        let mut turno = partida_mus.turno().unwrap();
-        if turno_inicial == 1 {
-            turno = 1 - turno;
-        }
+        let turno = partida_mus.turno().unwrap();
+        let player_id = match turno {
+            Turno::Jugador(player_id) => player_id,
+            Turno::Pareja(player_id) => player_id,
+        } as usize;
         let info_set = LanceGameDosManos::from_partida_mus(
             partida_mus,
             self.strategy.strategy_config.game_config.abstract_game,
         )
         .unwrap()
-        .info_set_str(turno);
+        .info_set_str(player_id);
         let probabilities = match self.strategy.nodes.get(&info_set) {
             None => {
                 println!("ERROR: InfoSet no encontrado: {info_set}");

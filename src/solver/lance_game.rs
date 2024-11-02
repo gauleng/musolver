@@ -5,6 +5,7 @@ use itertools::Itertools;
 use crate::{
     mus::{
         Accion, Apuesta, Baraja, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus,
+        Turno,
     },
     Game,
 };
@@ -443,7 +444,7 @@ impl Game<usize, Accion> for LanceGameDosManos {
     }
 
     fn num_players(&self) -> usize {
-        2
+        4
     }
 
     fn actions(&self) -> Option<Vec<Accion>> {
@@ -485,9 +486,10 @@ impl Game<usize, Accion> for LanceGameDosManos {
     }
 
     fn current_player(&self) -> Option<usize> {
-        self.partida[self.idx_partida]
-            .turno()
-            .map(|v| if self.pareja_mano == 0 { v } else { 1 - v })
+        match self.partida[self.idx_partida].turno()? {
+            Turno::Jugador(player_id) => Some(player_id as usize),
+            Turno::Pareja(player_id) => Some(player_id as usize),
+        }
     }
 
     fn act(&mut self, a: Accion) {

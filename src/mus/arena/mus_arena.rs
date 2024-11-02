@@ -1,4 +1,4 @@
-use crate::mus::{Accion, Baraja, Lance, Mano, PartidaMus};
+use crate::mus::{Accion, Baraja, Lance, Mano, PartidaMus, Turno};
 
 use super::{Agent, Kibitzer};
 
@@ -74,9 +74,13 @@ impl MusArena {
         let mut lance = self.partida_mus.lance_actual();
         self.record_action(MusAction::LanceStart(lance.unwrap()));
         while let Some(turno) = self.partida_mus.turno() {
-            let accion = self.agents[self.order[turno]].actuar(&self.partida_mus);
+            let player_id = match turno {
+                Turno::Jugador(id) => id,
+                Turno::Pareja(id) => id,
+            } as usize;
+            let accion = self.agents[self.order[player_id]].actuar(&self.partida_mus);
             if self.partida_mus.actuar(accion).is_ok() {
-                self.record_action(MusAction::PlayerAction(self.order[turno], accion));
+                self.record_action(MusAction::PlayerAction(self.order[player_id], accion));
                 let nuevo_lance = self.partida_mus.lance_actual();
                 if nuevo_lance != lance {
                     lance = nuevo_lance;

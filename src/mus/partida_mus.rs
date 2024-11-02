@@ -8,9 +8,9 @@ use crate::mus::Lance;
 use crate::mus::Mano;
 
 use super::Apuesta;
-use super::EstadoLanceParejas;
+use super::EstadoLance;
 use super::MusError;
-use super::RankingManos;
+use super::Turno;
 
 /// Acciones posibles durante una partida de mus.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize, PartialOrd, Ord)]
@@ -34,7 +34,7 @@ impl Display for Accion {
 
 #[derive(Debug, Clone)]
 struct ResultadoLance {
-    ganador: usize,
+    ganador: u8,
     tantos: u8,
 }
 
@@ -44,7 +44,7 @@ pub struct PartidaMus {
     lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
     idx_lance: usize,
-    estado_lance: Option<EstadoLanceParejas>,
+    estado_lance: Option<EstadoLance>,
 }
 
 impl PartidaMus {
@@ -102,17 +102,15 @@ impl PartidaMus {
         Some(p)
     }
 
-    fn crear_estado_lance(&self, l: Lance) -> EstadoLanceParejas {
+    fn crear_estado_lance(&self, l: Lance) -> EstadoLance {
         let tantos_restantes = [
             Self::MAX_TANTOS - self.tantos[0],
             Self::MAX_TANTOS - self.tantos[1],
         ];
-        let pareja_mejor_mano = l.mejor_mano(&*self.manos);
-        let mut e = EstadoLanceParejas::new(
-            l.apuesta_minima(),
+        let mut e = EstadoLance::new(
+            &l,
+            &self.manos,
             tantos_restantes[0].max(tantos_restantes[1]),
-            l.turno_inicial(&*self.manos),
-            pareja_mejor_mano,
         );
         if !l.se_juega(&*self.manos) {
             e.resolver_lance();
@@ -131,8 +129,8 @@ impl PartidaMus {
                 g
             });
 
-            tantos += l.tantos_mano(&self.manos[ganador])
-                + l.tantos_mano(&self.manos[ganador + 2])
+            tantos += l.tantos_mano(&self.manos[ganador as usize])
+                + l.tantos_mano(&self.manos[ganador as usize + 2])
                 + l.bonus();
             self.lances[self.idx_lance].1 = Some(ResultadoLance { ganador, tantos });
         }
@@ -166,7 +164,7 @@ impl PartidaMus {
         }
     }
 
-    fn siguiente_lance(&mut self) -> Option<&EstadoLanceParejas> {
+    fn siguiente_lance(&mut self) -> Option<&EstadoLance> {
         self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
             self.idx_lance += 1;
@@ -182,7 +180,7 @@ impl PartidaMus {
     /// Realiza la acción recibida como parámetro. Devuelve el turno de la siguiente pareja o Ok(None)
     /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
     /// partida.
-    pub fn actuar(&mut self, accion: Accion) -> Result<Option<usize>, MusError> {
+    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
         let a = if let Some(e) = &mut self.estado_lance {
             e.actuar(accion)
         } else {
@@ -209,7 +207,7 @@ impl PartidaMus {
     }
 
     /// Devuelve el turno de la pareja a la que le toca jugar.
-    pub fn turno(&self) -> Option<usize> {
+    pub fn turno(&self) -> Option<Turno> {
         let estado_lance = self.estado_lance.as_ref()?;
         estado_lance.turno()
     }
@@ -219,7 +217,8 @@ impl PartidaMus {
         &self.tantos
     }
 
-    fn anotar_tantos(&mut self, pareja: usize, tantos: u8) {
+    fn anotar_tantos(&mut self, pareja: u8, tantos: u8) {
+        let pareja = pareja as usize;
         self.tantos[pareja] += tantos;
         if self.tantos[pareja] >= Self::MAX_TANTOS {
             self.tantos[pareja] = Self::MAX_TANTOS;
@@ -273,14 +272,9 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos, [0, 0]);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Paso);
+        for _ in 0..16 {
+            let _ = partida.actuar(Accion::Paso);
+        }
         assert_eq!(partida.tantos(), &[5, 2]);
     }
 
@@ -294,29 +288,35 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos, [0, 0]);
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Paso);
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1 (1)
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1 (3)
+        let _ = partida.actuar(Accion::Paso); // Pareja 0 (0)
+        let _ = partida.actuar(Accion::Paso); // Pareja 0 (2)
         assert_eq!(partida.tantos(), &[0, 2]);
 
         assert_eq!(partida.lance_actual(), Some(Lance::Chica));
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
+        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
         let _ = partida.actuar(Accion::Envido(2));
-        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // Pareja 0
         let _ = partida.actuar(Accion::Quiero); // 4, 2
         assert_eq!(partida.tantos(), &[0, 2]);
 
         // 3 no tiene pares, entonces "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Pares));
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Paso); // Jugador 0
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso); // 6, 2
         assert_eq!(partida.tantos(), &[2, 2]);
 
         // Tienen juego 2 y 3. Entonces, "juega primero" la pareja 1
         assert_eq!(partida.lance_actual(), Some(Lance::Juego));
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
-        let _ = partida.actuar(Accion::Quiero); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
+        let _ = partida.actuar(Accion::Quiero); // Jugador 1
         assert_eq!(partida.tantos(), &[9, 8]);
 
         /*
@@ -339,7 +339,8 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida = PartidaMus::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
-        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
+        let _ = partida.actuar(Accion::Paso); // Pareja 1
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), &[2, 0]);
 
@@ -350,8 +351,9 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida = PartidaMus::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
-        let _ = partida.actuar(Accion::Paso);
-        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Paso); // Jugador 0
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
+        let _ = partida.actuar(Accion::Paso); // Pareja 0
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), &[0, 2]);
     }
@@ -367,23 +369,31 @@ mod tests {
 
         // Grande
         let mut partida = PartidaMus::new(manos, [29, 32]);
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso); // Pareja 0
+        let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), &[29, 34]); // Pareja 1 + 2
                                                  // Chica
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
-        let _ = partida.actuar(Accion::Quiero); // 33, 34. Ganará la pareja 0 4 tantos al final.
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // Pareja 0. 33, 34. Ganará la pareja 0 4 tantos al final.
+        let _ = partida.actuar(Accion::Quiero);
 
         // Pares
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // Pareja 1
         let _ = partida.actuar(Accion::Quiero); // 40, 34. Ganará la pareja 0 4 tantos al final más 1 de par y 2 de medias. Total 7.
 
         // Juego
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2));
+        let _ = partida.actuar(Accion::Quiero); // Jugador 1
         let _ = partida.actuar(Accion::Quiero); // 40, 40. Ganará la pareja 1 4 tantos al final, más 2 de juego. Total 6.
         assert_eq!(partida.tantos(), &[40, 0]);
 
@@ -395,9 +405,11 @@ mod tests {
         ];
 
         let mut partida = PartidaMus::new(manos, [29, 38]);
-        let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
+        let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
+        let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Paso); // Pareja 0
+        let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.turno(), None);
         assert_eq!(partida.tantos(), &[0, 40]); // La pareja 1 gana 2 tantos y se va.
     }
@@ -411,10 +423,12 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida = PartidaMus::new(manos, [0, 0]);
-        let _ = partida.actuar(Accion::Ordago);
+        let _ = partida.actuar(Accion::Ordago); // Jugador 0
+        let _ = partida.actuar(Accion::Paso); // Pareja 1
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), &[1, 0]);
-        let _ = partida.actuar(Accion::Ordago);
+        let _ = partida.actuar(Accion::Ordago); // Jugador 0
+        let _ = partida.actuar(Accion::Quiero); // Pareja 1
         let _ = partida.actuar(Accion::Quiero);
         assert_eq!(partida.tantos(), &[40, 0]);
         assert_eq!(partida.turno(), None);
@@ -432,6 +446,8 @@ mod tests {
         assert!(partida_lance.is_some());
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         assert_eq!(partida_lance.as_ref().unwrap().lance_actual(), None);
         assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[0, 3]);
         let manos = [
@@ -441,7 +457,12 @@ mod tests {
             Mano::try_from("1111").unwrap(),
         ];
         let mut partida_lance = PartidaMus::new_partida_lance(Lance::Juego, manos, [0, 0]);
-        assert_eq!(partida_lance.as_ref().unwrap().turno(), Some(1));
+        assert_eq!(
+            partida_lance.as_ref().unwrap().turno(),
+            Some(Turno::Jugador(1))
+        );
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
+        let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[3, 0]);
