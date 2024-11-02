@@ -12,7 +12,7 @@ use crate::{
     ActionNode, Cfr, Game,
 };
 
-use super::{LanceGameDosManos, SolverError, TrainerConfig};
+use super::{LanceGame, SolverError, TrainerConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameConfig {
@@ -76,7 +76,7 @@ impl Strategy {
                         hand2.clone(),
                         opponent_hand2.clone(),
                     ];
-                    let lance_game = LanceGameDosManos::from_partida_mus(
+                    let lance_game = LanceGame::from_partida_mus(
                         &PartidaMus::new_partida_lance(
                             self.strategy_config.game_config.lance.unwrap(),
                             hands,
@@ -107,7 +107,7 @@ impl Strategy {
                                 hand2.clone(),
                                 opponent_hand2.clone(),
                             ];
-                            let lance_game = LanceGameDosManos::from_partida_mus(
+                            let lance_game = LanceGame::from_partida_mus(
                                 &PartidaMus::new_partida_lance(
                                     self.strategy_config.game_config.lance.unwrap(),
                                     hands,

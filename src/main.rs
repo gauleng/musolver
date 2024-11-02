@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use chrono::Utc;
 use musolver::{
     mus::Lance,
-    solver::{BancoEstrategias, GameConfig, LanceGameDosManos, Trainer, TrainerConfig},
+    solver::{BancoEstrategias, GameConfig, LanceGame, Trainer, TrainerConfig},
     CfrMethod,
 };
 
@@ -91,7 +91,7 @@ fn main() {
     let banco = BancoEstrategias::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
-            let mut lance_game = LanceGameDosManos::new(lance, tantos, game_config.abstract_game);
+            let mut lance_game = LanceGame::new(lance, tantos, game_config.abstract_game);
             let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut lance_game, &trainer_config);
             drop(cfr);

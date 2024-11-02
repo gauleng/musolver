@@ -296,7 +296,7 @@ impl<'a> Display for InfoSet<'a> {
 /// tantos con los que empieza el marcador y si se va a considerar un lance abstracto (ver
 /// HandConfiguration).
 #[derive(Debug, Clone)]
-pub struct LanceGameDosManos {
+pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     partida: Vec<PartidaMus>,
@@ -307,7 +307,7 @@ pub struct LanceGameDosManos {
     history: Vec<Accion>,
 }
 
-impl LanceGameDosManos {
+impl LanceGame {
     pub fn new(lance: Lance, tantos: [u8; 2], abstract_game: bool) -> Self {
         Self {
             lance,
@@ -328,7 +328,7 @@ impl LanceGameDosManos {
             abstract_game,
             partida: vec![partida_mus.clone()],
             idx_partida: 0,
-            info_set_prefix: LanceGameDosManos::info_set_prefix(partida_mus, abstract_game),
+            info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
             history: Vec::with_capacity(6),
             pareja_mano: 0,
         })
@@ -351,7 +351,7 @@ impl LanceGameDosManos {
     }
 
     fn initialize_game(&mut self, p: PartidaMus, turno_inicial: usize) {
-        self.info_set_prefix = LanceGameDosManos::info_set_prefix(&p, self.abstract_game);
+        self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
         self.partida = Vec::with_capacity(6);
         self.partida.push(p);
         self.idx_partida = 0;
@@ -359,7 +359,7 @@ impl LanceGameDosManos {
     }
 }
 
-impl Game<usize, Accion> for LanceGameDosManos {
+impl Game<usize, Accion> for LanceGame {
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
         loop {

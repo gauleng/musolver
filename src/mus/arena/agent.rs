@@ -4,7 +4,7 @@ use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 use crate::{
     mus::{Accion, PartidaMus, Turno},
-    solver::{LanceGameDosManos, Strategy},
+    solver::{LanceGame, Strategy},
     Game, Node,
 };
 
@@ -25,7 +25,7 @@ impl AgenteCli {
 
 impl Agent for AgenteCli {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let mut lance_game = LanceGameDosManos::from_partida_mus(partida_mus, true).unwrap();
+        let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
         for action in self.history.borrow().iter() {
             lance_game.act(*action);
         }
@@ -73,7 +73,7 @@ impl AgenteAleatorio {
 
 impl Agent for AgenteAleatorio {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let mut lance_game = LanceGameDosManos::from_partida_mus(partida_mus, true).unwrap();
+        let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
         for action in self.history.borrow().iter() {
             lance_game.act(*action);
         }
@@ -111,7 +111,7 @@ impl AgenteMusolver {
             Turno::Jugador(player_id) => player_id,
             Turno::Pareja(player_id) => player_id,
         } as usize;
-        let info_set = LanceGameDosManos::from_partida_mus(
+        let info_set = LanceGame::from_partida_mus(
             partida_mus,
             self.strategy.strategy_config.game_config.abstract_game,
         )
@@ -133,7 +133,7 @@ impl AgenteMusolver {
 
 impl Agent for AgenteMusolver {
     fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let mut lance_game = LanceGameDosManos::from_partida_mus(
+        let mut lance_game = LanceGame::from_partida_mus(
             partida_mus,
             self.strategy.strategy_config.game_config.abstract_game,
         )
