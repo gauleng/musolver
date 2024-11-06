@@ -157,7 +157,6 @@ impl PartidaMus {
         for l in lances {
             if let Some(r) = l.1 {
                 self.anotar_tantos(r.ganador, r.tantos);
-                if self.tantos[0] == 40 || self.tantos[1] == 40 {
                     break;
                 }
             }
