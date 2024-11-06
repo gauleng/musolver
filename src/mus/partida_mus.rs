@@ -157,6 +157,7 @@ impl PartidaMus {
         for l in lances {
             if let Some(r) = l.1 {
                 self.anotar_tantos(r.ganador, r.tantos);
+                if self.tantos[0] == Self::MAX_TANTOS || self.tantos[1] == Self::MAX_TANTOS {
                     break;
                 }
             }
@@ -180,29 +181,21 @@ impl PartidaMus {
     /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
     /// partida.
     pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
-        let a = if let Some(e) = &mut self.estado_lance {
-            e.actuar(accion)
-        } else {
-            Err(MusError::AccionNoValida)
-        };
-        let turno = a?;
+        let estado_lance = self.estado_lance.as_mut().ok_or(MusError::AccionNoValida)?;
+        let turno = estado_lance.actuar(accion)?;
         if turno.is_some() {
             return Ok(turno);
         }
         let lance = self.lances[self.idx_lance].0;
         self.tanteo_envites_lance();
         self.tanteo_final_lance(&lance);
-        loop {
-            let estado_lance = self.siguiente_lance();
-            if let Some(e) = estado_lance {
-                if e.turno().is_some() {
-                    return Ok(e.turno());
-                }
-            } else {
-                self.tanteo_final();
-                return Ok(None);
+        while let Some(e) = self.siguiente_lance() {
+            if e.turno().is_some() {
+                return Ok(e.turno());
             }
         }
+        self.tanteo_final();
+        Ok(None)
     }
 
     /// Devuelve el turno de la pareja a la que le toca jugar.
