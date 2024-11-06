@@ -21,7 +21,6 @@ use musolver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, Strategy,
     },
-    ActionNode,
 };
 
 #[derive(Clone, Debug)]
@@ -121,22 +120,20 @@ pub struct SquareData {
 }
 
 impl SquareData {
-    pub fn update_with_node(&mut self, action_node: &Option<Vec<Accion>>, probabilities: &[f64]) {
-        if let Some(children) = &action_node {
-            self.reset_probabilities();
-            children
-                .iter()
-                .zip(probabilities.iter())
-                .for_each(|(c, p)| match c {
-                    Accion::Paso => self.paso = *p,
-                    Accion::Envido(2) => self.envido2 = *p,
-                    Accion::Envido(5) => self.envido5 = *p,
-                    Accion::Envido(10) => self.envido10 = *p,
-                    Accion::Quiero => self.quiero = *p,
-                    Accion::Ordago => self.ordago = *p,
-                    _ => self.resto = *p,
-                });
-        }
+    pub fn update_with_node(&mut self, actions: &[Accion], probabilities: &[f64]) {
+        self.reset_probabilities();
+        actions
+            .iter()
+            .zip(probabilities.iter())
+            .for_each(|(c, p)| match c {
+                Accion::Paso => self.paso = *p,
+                Accion::Envido(2) => self.envido2 = *p,
+                Accion::Envido(5) => self.envido5 = *p,
+                Accion::Envido(10) => self.envido10 = *p,
+                Accion::Quiero => self.quiero = *p,
+                Accion::Ordago => self.ordago = *p,
+                _ => self.resto = *p,
+            });
     }
 
     pub fn reset_probabilities(&mut self) {
@@ -215,7 +212,7 @@ pub enum ViewMode {
 
 #[derive(Debug)]
 pub struct ActionPath {
-    pub one_hand_list: Vec<Mano>,
+    //pub one_hand_list: Vec<Mano>,
     pub strategy: Strategy,
     pub buckets: HashMap<AbstractJugada, Vec<Mano>>,
     pub jugadas: Vec<AbstractJugada>,
@@ -286,8 +283,7 @@ impl ActionPath {
             two_hands_squares,
             buckets,
             jugadas,
-            view_mode: ViewMode::TwoHands,
-            one_hand_list,
+            view_mode: ViewMode::OneHand,
             strategy: strategy.to_owned(),
             selected_tantos_mano: Some(0),
             tantos_mano: Vec::from_iter(0..40),
@@ -298,7 +294,8 @@ impl ActionPath {
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
         };
-        action_path.append_action_picklists(&strategy.strategy_config.trainer_config.action_tree);
+        let strategy_node = action_path.strategy_node(&Mano::try_from("RRRR").unwrap(), None);
+        action_path.append_action_picklists(&strategy_node.unwrap().0);
         action_path.update_squares();
         action_path
     }
@@ -326,109 +323,111 @@ impl ActionPath {
         }
     }
 
-    fn append_action_picklists(&mut self, action_node: &ActionNode<usize, Accion>) {
-        if let ActionNode::NonTerminal(_, children) = action_node {
-            let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-            valores.extend(
-                children
-                    .iter()
-                    .filter(|c| c.1 != ActionNode::Terminal)
-                    .map(|c| OptionalAction(Some(c.0))),
-            );
-            self.selected_actions.push(None);
-            self.actions.push(valores);
-        }
+    fn append_action_picklists(&mut self, actions: &[Accion]) {
+        let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
+        valores.extend(actions.iter().map(|c| OptionalAction(Some(*c))));
+        self.selected_actions.push(None);
+        self.actions.push(valores);
     }
 
-    fn update_squares(&mut self) {
+    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
         let tipo_estrategia = self.selected_strategy.unwrap();
-        let history: Vec<Accion> = self
-            .selected_actions
-            .iter()
-            .filter_map(|a| if let Some(action) = a { action.0 } else { None })
-            .collect();
+        let history: Vec<Accion> = self.selected_history();
         let lance = self.strategy.strategy_config.game_config.lance;
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
-        let actions = self.selected_action_node().actions();
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
             self.selected_tantos_postre.unwrap_or_default(),
         ];
         let abstract_game = if abstract_game { lance } else { None };
+        let info_set = InfoSet::str(
+            &tipo_estrategia,
+            &tantos,
+            mano1,
+            mano2,
+            &history,
+            abstract_game,
+        );
+        self.strategy.nodes.get(&info_set).cloned()
+    }
 
-        if self.view_mode == ViewMode::OneHand {
-            for (jugada, square) in zip(&self.jugadas, &mut self.one_hand_squares) {
-                if let Some(manos) = self.buckets.get(jugada) {
-                    let probabilities: Vec<_> = manos
-                        .iter()
-                        .filter_map(|mano| {
-                            let info_set = InfoSet::str(
-                                &tipo_estrategia,
-                                &tantos,
-                                mano,
-                                None,
-                                &history,
-                                abstract_game,
-                            );
-                            self.strategy.nodes.get(&info_set).cloned()
-                        })
-                        .collect();
-                    let n = probabilities.len();
-                    let avg_probability = probabilities
+    fn update_squares(&mut self) {
+        let avg_probability = |probabilities: Vec<(Vec<_>, Vec<_>)>| {
+            let n_hands = probabilities.len();
+            if n_hands > 0 {
+                let actions = probabilities[0].0.clone();
+                let n_actions = actions.len();
+                let avg_probability =
+                    probabilities
                         .into_iter()
-                        .reduce(|avg, v| zip(avg, v).map(|(a, v)| a + v / n as f64).collect())
-                        .unwrap();
-                    square.update_with_node(&actions, &avg_probability);
-                    square.mano = jugada.to_string();
-                }
+                        .fold(vec![0.; n_actions], |avg, v| {
+                            zip(avg, &v.1)
+                                .map(|(a, v)| a + v / n_hands as f64)
+                                .collect()
+                        });
+                Some((actions, avg_probability))
+            } else {
+                None
             }
+        };
+        if self.view_mode == ViewMode::OneHand {
+            let action_probability: Vec<Option<_>> = self
+                .jugadas
+                .iter()
+                .map(|jugada| {
+                    let manos = self.buckets.get(jugada).unwrap();
+                    let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos
+                        .iter()
+                        .filter_map(|hand| self.strategy_node(hand, None))
+                        .collect();
+
+                    avg_probability(probabilities)
+                })
+                .collect();
+            action_probability
+                .into_iter()
+                .zip(&mut self.one_hand_squares)
+                .for_each(|(square_data, square)| match square_data {
+                    Some((actions, avg_probability)) => {
+                        square.update_with_node(&actions, &avg_probability);
+                        //square.mano = jugada.to_string();
+                    }
+                    None => square.reset_probabilities(),
+                });
         } else {
             for column in 0..self.jugadas.len() {
                 for row in 0..self.jugadas.len() {
-                    let square = &mut self.two_hands_squares[row][column];
                     let jugada1 = &self.jugadas[row];
                     let jugada2 = &self.jugadas[column];
-                    let manos = self.buckets.get(jugada1).zip(self.buckets.get(jugada2));
-                    if let Some((manos1, manos2)) = manos {
-                        let probabilities: Vec<_> = manos1
-                            .iter()
-                            .cartesian_product(manos2.iter())
-                            .filter_map(|(hand1, hand2)| {
-                                let info_set = InfoSet::str(
-                                    &tipo_estrategia,
-                                    &tantos,
-                                    hand1,
-                                    Some(hand2),
-                                    &history,
-                                    abstract_game,
-                                );
-                                self.strategy.nodes.get(&info_set).cloned()
-                            })
-                            .collect();
-                        let n = probabilities.len();
-                        let avg_probability = probabilities
-                            .into_iter()
-                            .reduce(|avg, v| zip(avg, v).map(|(a, v)| a + v / n as f64).collect());
-                        if let Some(probabilities) = avg_probability {
-                            square.update_with_node(&actions, &probabilities);
+                    let (manos1, manos2) = self
+                        .buckets
+                        .get(jugada1)
+                        .zip(self.buckets.get(jugada2))
+                        .unwrap();
+                    let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
+                        .iter()
+                        .cartesian_product(manos2.iter())
+                        .filter_map(|(hand1, hand2)| self.strategy_node(hand1, Some(hand2)))
+                        .collect();
+                    let square = &mut self.two_hands_squares[row][column];
+                    match avg_probability(probabilities) {
+                        Some((actions, avg_probability)) => {
+                            square.update_with_node(&actions, &avg_probability);
                             square.mano = format!("{jugada1},{jugada2}");
                         }
+                        None => square.reset_probabilities(),
                     }
                 }
             }
         }
     }
 
-    fn selected_action_node(&self) -> &ActionNode<usize, Accion> {
-        let mut current_node = &self.strategy.strategy_config.trainer_config.action_tree;
-        for s in &self.selected_actions {
-            if let Some(a) = s {
-                current_node = current_node.next_node(a.0.unwrap()).unwrap();
-            } else {
-                break;
-            }
-        }
-        current_node
+    fn selected_history(&self) -> Vec<Accion> {
+        self.selected_actions
+            .iter()
+            .filter_map(|optional_action| optional_action.as_ref())
+            .map(|optional_action| optional_action.0.unwrap())
+            .collect()
     }
 
     pub fn update(&mut self, message: ExplorerEvent) {
@@ -439,8 +438,8 @@ impl ActionPath {
                 self.actions.drain(level + 1..);
 
                 if action.0.is_some() {
-                    let current_node = self.selected_action_node();
-                    self.append_action_picklists(&current_node.to_owned());
+                    let strategy_node = self.strategy_node(&Mano::try_from("RRRR").unwrap(), None);
+                    self.append_action_picklists(&strategy_node.unwrap().0);
                 }
             }
             ExplorerEvent::SetStrategy(strategy) => {
@@ -449,27 +448,27 @@ impl ActionPath {
             ExplorerEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
             ExplorerEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
         }
-        let turn = self.selected_action_node().to_play();
-        self.view_mode = match self.selected_strategy {
-            Some(HandConfiguration::DosManos) => ViewMode::OneHand,
-            Some(HandConfiguration::CuatroManos) => ViewMode::TwoHands,
-            Some(HandConfiguration::TresManos1vs2)
-            | Some(HandConfiguration::TresManos1vs2Intermedio) => {
-                if turn.unwrap() == 0 {
-                    ViewMode::OneHand
-                } else {
-                    ViewMode::TwoHands
-                }
-            }
-            Some(HandConfiguration::TresManos2vs1) => {
-                if turn.unwrap() == 0 {
-                    ViewMode::TwoHands
-                } else {
-                    ViewMode::OneHand
-                }
-            }
-            Some(HandConfiguration::SinLance) | None => ViewMode::OneHand,
-        };
+        // let turn = self.selected_action_node().to_play();
+        // self.view_mode = match self.selected_strategy {
+        //     Some(HandConfiguration::DosManos) => ViewMode::OneHand,
+        //     Some(HandConfiguration::CuatroManos) => ViewMode::TwoHands,
+        //     Some(HandConfiguration::TresManos1vs2)
+        //     | Some(HandConfiguration::TresManos1vs2Intermedio) => {
+        //         if turn.unwrap() == 0 {
+        //             ViewMode::OneHand
+        //         } else {
+        //             ViewMode::TwoHands
+        //         }
+        //     }
+        //     Some(HandConfiguration::TresManos2vs1) => {
+        //         if turn.unwrap() == 0 {
+        //             ViewMode::TwoHands
+        //         } else {
+        //             ViewMode::OneHand
+        //         }
+        //     }
+        //     Some(HandConfiguration::SinLance) | None => ViewMode::OneHand,
+        // };
         self.update_squares();
     }
 
