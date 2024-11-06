@@ -122,7 +122,7 @@ impl AgenteMusolver {
                 println!("ERROR: InfoSet no encontrado: {info_set}");
                 &Node::new(acciones.clone()).strategy().to_owned()
             }
-            Some(n) => &n.iter().map(|(_, p)| *p).collect(),
+            Some(n) => &n.1,
         };
 
         let dist = WeightedIndex::new(probabilities).unwrap();

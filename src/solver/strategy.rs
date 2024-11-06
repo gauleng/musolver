@@ -29,7 +29,7 @@ pub struct StrategyConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<String, Vec<(Accion, f64)>>,
+    pub nodes: HashMap<String, (Vec<Accion>, Vec<f64>)>,
 }
 
 impl Strategy {
@@ -119,7 +119,7 @@ impl Strategy {
                             .unwrap();
                             let info_set_str = lance_game.info_set_str(*acting_player);
                             let strategy = self.nodes.get(&info_set_str).unwrap();
-                            new_opponent_hands[idx_hands].2 = prob * strategy[idx_action].1;
+                            new_opponent_hands[idx_hands].2 = prob * strategy.1[idx_action];
                             weights[idx_action] += new_opponent_hands[idx_hands].2;
                         }
                     }
