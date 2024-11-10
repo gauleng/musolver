@@ -329,7 +329,7 @@ impl LanceGame {
             partida: vec![partida_mus.clone()],
             info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
             history: Vec::with_capacity(12),
-            history_str: vec![vec!["".into()]],
+            history_str: vec![vec![]],
             pareja_mano: 0,
         })
     }
