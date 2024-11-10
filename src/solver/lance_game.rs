@@ -304,7 +304,7 @@ pub struct LanceGame {
     pareja_mano: usize,
     abstract_game: bool,
     history: Vec<Accion>,
-    history_str: Vec<String>,
+    history_str: Vec<Vec<String>>,
 }
 
 impl LanceGame {
@@ -316,7 +316,7 @@ impl LanceGame {
             partida: vec![],
             info_set_prefix: None,
             history: Vec::with_capacity(12),
-            history_str: Vec::with_capacity(12),
+            history_str: vec![vec!["".into()]],
             pareja_mano: 0,
         }
     }
@@ -329,7 +329,7 @@ impl LanceGame {
             partida: vec![partida_mus.clone()],
             info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
             history: Vec::with_capacity(12),
-            history_str: Vec::with_capacity(12),
+            history_str: vec![vec!["".into()]],
             pareja_mano: 0,
         })
     }
@@ -428,8 +428,10 @@ impl Game<usize, Accion> for LanceGame {
         let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
         let mut output = String::with_capacity(15 + self.history.len() + 1);
         output.push_str(info_set_prefix);
-        for i in &self.history_str {
-            output.push_str(i);
+        if let Some(history_str) = self.history_str.last() {
+            for i in history_str {
+                output.push_str(i);
+            }
         }
         output
     }
@@ -489,15 +491,29 @@ impl Game<usize, Accion> for LanceGame {
 
     fn act(&mut self, a: Accion) {
         self.history.push(a);
-        self.history_str.push(a.to_string());
+        self.history_str
+            .extend_from_within(self.history_str.len() - 1..);
+        let last_history_str = self.history_str.last_mut().unwrap();
+        let turno = self.partida.last().unwrap().turno().unwrap();
+        match turno {
+            Turno::Pareja(2) | Turno::Pareja(3) => {
+                last_history_str.pop();
+            }
+            _ => {}
+        };
+        let action_str = match turno {
+            Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
+            _ => a.to_string(),
+        };
+        last_history_str.push(action_str);
         self.partida.extend_from_within(self.partida.len() - 1..);
         let _ = self.partida.last_mut().unwrap().actuar(a);
     }
 
     fn takeback(&mut self) {
         self.partida.pop();
-        self.history.pop();
         self.history_str.pop();
+        self.history.pop();
     }
 }
 
