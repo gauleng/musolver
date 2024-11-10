@@ -300,11 +300,11 @@ pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     partida: Vec<PartidaMus>,
-    idx_partida: usize,
     info_set_prefix: Option<[String; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
     history: Vec<Accion>,
+    history_str: Vec<String>,
 }
 
 impl LanceGame {
@@ -314,9 +314,9 @@ impl LanceGame {
             tantos,
             abstract_game,
             partida: vec![],
-            idx_partida: 0,
             info_set_prefix: None,
-            history: Vec::with_capacity(6),
+            history: Vec::with_capacity(12),
+            history_str: Vec::with_capacity(12),
             pareja_mano: 0,
         }
     }
@@ -327,9 +327,9 @@ impl LanceGame {
             tantos: *partida_mus.tantos(),
             abstract_game,
             partida: vec![partida_mus.clone()],
-            idx_partida: 0,
             info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
-            history: Vec::with_capacity(6),
+            history: Vec::with_capacity(12),
+            history_str: Vec::with_capacity(12),
             pareja_mano: 0,
         })
     }
@@ -354,7 +354,6 @@ impl LanceGame {
         self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
         self.partida = Vec::with_capacity(6);
         self.partida.push(p);
-        self.idx_partida = 0;
         self.pareja_mano = turno_inicial;
     }
 }
@@ -416,7 +415,7 @@ impl Game<usize, Accion> for LanceGame {
     }
 
     fn utility(&self, player: usize) -> f64 {
-        let partida = &self.partida[self.idx_partida];
+        let partida = self.partida.last().unwrap();
         let tantos = *partida.tantos();
         let payoff = [
             tantos[0] as i8 - tantos[1] as i8,
@@ -429,8 +428,8 @@ impl Game<usize, Accion> for LanceGame {
         let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
         let mut output = String::with_capacity(15 + self.history.len() + 1);
         output.push_str(info_set_prefix);
-        for i in self.history.iter() {
-            output.push_str(&i.to_string());
+        for i in &self.history_str {
+            output.push_str(i);
         }
         output
     }
@@ -444,69 +443,61 @@ impl Game<usize, Accion> for LanceGame {
     }
 
     fn actions(&self) -> Option<Vec<Accion>> {
-        let partida = &self.partida[self.idx_partida];
+        let partida = self.partida.last().unwrap();
         let turno = partida.turno()?;
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        if ultimo_envite > Apuesta::Tantos(0) {
-            let mut acciones = match ultimo_envite {
-                Apuesta::Tantos(2) => vec![
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(2),
-                    Accion::Envido(5),
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ],
-                Apuesta::Tantos(4..=5) => vec![
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ],
-                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
-            };
-            if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
-                acciones.retain(|a| a >= self.history.last().unwrap());
-            }
-            Some(acciones)
-        } else {
-            Some(vec![
+        let mut acciones = match ultimo_envite {
+            Apuesta::Tantos(0) => vec![
                 Accion::Paso,
                 Accion::Envido(2),
                 Accion::Envido(5),
                 Accion::Envido(10),
                 Accion::Ordago,
-            ])
+            ],
+            Apuesta::Tantos(2) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Tantos(4..=5) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+            _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+        };
+        if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
+            acciones.retain(|a| a >= self.history.last().unwrap());
         }
+        Some(acciones)
     }
 
     fn is_terminal(&self) -> bool {
-        self.partida[self.idx_partida].turno().is_none()
+        self.partida.last().unwrap().turno().is_none()
     }
 
     fn current_player(&self) -> Option<usize> {
-        match self.partida[self.idx_partida].turno()? {
+        match self.partida.last().unwrap().turno()? {
             Turno::Jugador(player_id) | Turno::Pareja(player_id) => Some(player_id as usize),
         }
     }
 
     fn act(&mut self, a: Accion) {
         self.history.push(a);
-        self.idx_partida += 1;
-        if self.idx_partida < self.partida.len() {
-            let (partidas, last) = self.partida.split_at_mut(self.idx_partida);
-            last[0].clone_from(&partidas[self.idx_partida - 1]);
-        } else {
-            self.partida
-                .push(self.partida[self.idx_partida - 1].clone());
-        }
-        let _ = self.partida[self.idx_partida].actuar(a);
+        self.history_str.push(a.to_string());
+        self.partida.extend_from_within(self.partida.len() - 1..);
+        let _ = self.partida.last_mut().unwrap().actuar(a);
     }
 
     fn takeback(&mut self) {
-        self.idx_partida -= 1;
+        self.partida.pop();
         self.history.pop();
+        self.history_str.pop();
     }
 }
 
