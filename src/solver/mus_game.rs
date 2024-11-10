@@ -43,8 +43,7 @@ impl<'a> MusGame<'a> {
             ManosNormalizadas::normalizar_mano(partida.manos(), &partida.lance_actual().unwrap());
         let tantos = partida.tantos();
         let pareja_mano = match partida.turno().unwrap() {
-            Turno::Jugador(id) => id,
-            Turno::Pareja(id) => id,
+            Turno::Jugador(id) | Turno::Pareja(id) => id,
         } as usize;
         let prefijo = format!("{}:{},", tantos[pareja_mano], tantos[1 - pareja_mano]);
         let manos_normalizadas_str = manos_normalizadas.to_string_array();

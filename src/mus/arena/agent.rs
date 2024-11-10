@@ -108,8 +108,7 @@ impl AgenteMusolver {
     fn accion_aleatoria(&mut self, partida_mus: &PartidaMus, acciones: Vec<Accion>) -> Accion {
         let turno = partida_mus.turno().unwrap();
         let player_id = match turno {
-            Turno::Jugador(player_id) => player_id,
-            Turno::Pareja(player_id) => player_id,
+            Turno::Jugador(player_id) | Turno::Pareja(player_id) => player_id,
         } as usize;
         let info_set = LanceGame::from_partida_mus(
             partida_mus,

@@ -75,8 +75,7 @@ impl MusArena {
         self.record_action(MusAction::LanceStart(lance.unwrap()));
         while let Some(turno) = self.partida_mus.turno() {
             let player_id = match turno {
-                Turno::Jugador(id) => id,
-                Turno::Pareja(id) => id,
+                Turno::Jugador(id) | Turno::Pareja(id) => id,
             } as usize;
             let accion = self.agents[self.order[player_id]].actuar(&self.partida_mus);
             if self.partida_mus.actuar(accion).is_ok() {

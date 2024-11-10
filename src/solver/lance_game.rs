@@ -487,8 +487,7 @@ impl Game<usize, Accion> for LanceGame {
 
     fn current_player(&self) -> Option<usize> {
         match self.partida[self.idx_partida].turno()? {
-            Turno::Jugador(player_id) => Some(player_id as usize),
-            Turno::Pareja(player_id) => Some(player_id as usize),
+            Turno::Jugador(player_id) | Turno::Pareja(player_id) => Some(player_id as usize),
         }
     }
 
