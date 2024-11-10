@@ -30,33 +30,32 @@ impl Agent for AgenteCli {
             lance_game.act(*action);
         }
         println!("Elija una acción:");
-        if let Some(next_actions) = lance_game.actions() {
-            next_actions
-                .iter()
-                .enumerate()
-                .for_each(|(i, a)| println!("{i}: {:?}", a));
-            let mut input = String::new();
-            loop {
-                io::stdin()
-                    .read_line(&mut input)
-                    .expect("Failed to read line");
-                let num = input.trim().parse::<usize>();
-                match num {
-                    Ok(n) => {
-                        if n < next_actions.len() {
-                            return next_actions[n];
-                        } else {
-                            println!("Opción no válida.");
-                        }
+        let next_actions = lance_game.actions();
+        next_actions
+            .iter()
+            .enumerate()
+            .for_each(|(i, a)| println!("{i}: {:?}", a));
+        let mut input = String::new();
+        loop {
+            io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read line");
+            let num = input.trim().parse::<usize>();
+            match num {
+                Ok(n) => {
+                    let selected_action = next_actions.get(n);
+                    if let Some(a) = selected_action {
+                        return *a;
                     }
-                    Err(_) => {
-                        println!("Opción no válida.");
-                        input.clear();
-                    }
+                    println!("Opción no válida.");
+                    input.clear();
+                }
+                Err(_) => {
+                    println!("Opción no válida.");
+                    input.clear();
                 }
             }
         }
-        Accion::Paso
     }
 }
 
@@ -77,20 +76,17 @@ impl Agent for AgenteAleatorio {
         for action in self.history.borrow().iter() {
             lance_game.act(*action);
         }
-        match lance_game.actions() {
-            None => {
-                println!(
-                    "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                    self.history.borrow()
-                );
-                Accion::Paso
-            }
-            Some(c) => {
-                let mut rng = rand::thread_rng();
-                let idx = rng.gen_range(0..c.len());
-                c[idx]
-            }
+        let actions = lance_game.actions();
+        if actions.is_empty() {
+            println!(
+                "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
+                self.history.borrow()
+            );
+            return Accion::Paso;
         }
+        let mut rng = rand::thread_rng();
+        let idx = rng.gen_range(0..actions.len());
+        actions[idx]
     }
 }
 
@@ -141,15 +137,13 @@ impl Agent for AgenteMusolver {
             lance_game.act(*action);
         }
         let next_actions = lance_game.actions();
-        match next_actions {
-            None => {
-                println!(
-                    "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                    self.history.borrow()
-                );
-                Accion::Paso
-            }
-            Some(c) => self.accion_aleatoria(partida_mus, c),
+        if next_actions.is_empty() {
+            println!(
+                "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
+                self.history.borrow()
+            );
+            return Accion::Paso;
         }
+        self.accion_aleatoria(partida_mus, next_actions)
     }
 }

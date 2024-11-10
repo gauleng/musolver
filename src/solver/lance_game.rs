@@ -444,9 +444,9 @@ impl Game<usize, Accion> for LanceGame {
         4
     }
 
-    fn actions(&self) -> Option<Vec<Accion>> {
+    fn actions(&self) -> Vec<Accion> {
         let partida = self.partida.last().unwrap();
-        let turno = partida.turno()?;
+        let turno = partida.turno().unwrap();
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
         let mut acciones = match ultimo_envite {
             Apuesta::Tantos(0) => vec![
@@ -476,7 +476,7 @@ impl Game<usize, Accion> for LanceGame {
         if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
             acciones.retain(|a| a >= self.history.last().unwrap());
         }
-        Some(acciones)
+        acciones
     }
 
     fn is_terminal(&self) -> bool {

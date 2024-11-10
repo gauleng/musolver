@@ -89,7 +89,7 @@ pub trait Game<P, A> {
     fn info_set_str(&self, player: P) -> String;
 
     /// Actions available in the current state of the game.
-    fn actions(&self) -> Option<Vec<A>>;
+    fn actions(&self) -> Vec<A>;
 
     /// Indicates if the current state of the game is terminal.
     fn is_terminal(&self) -> bool;
@@ -196,7 +196,7 @@ impl<A> Cfr<A> {
             return game.utility(player);
         }
         let current_player = game.current_player().unwrap();
-        let actions: Vec<A> = game.actions().unwrap();
+        let actions: Vec<A> = game.actions();
         let info_set_str = game.info_set_str(current_player);
         let node = self
             .nodes
@@ -246,7 +246,7 @@ impl<A> Cfr<A> {
         }
         let current_player = game.current_player().unwrap();
         let info_set_str = game.info_set_str(current_player);
-        let actions: Vec<A> = game.actions().unwrap();
+        let actions: Vec<A> = game.actions();
         if current_player == player {
             let util: Vec<f64> = actions
                 .iter()
