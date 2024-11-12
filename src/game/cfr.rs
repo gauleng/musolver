@@ -8,7 +8,7 @@ use super::GameError;
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node<A> {
-    regret_sum: Vec<f64>,
+    pub regret_sum: Vec<f64>,
     strategy: Vec<f64>,
     strategy_sum: Vec<f64>,
     actions: Vec<A>,
