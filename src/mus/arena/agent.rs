@@ -92,12 +92,12 @@ impl Agent for AgenteAleatorio {
 
 #[derive(Debug, Clone)]
 pub struct AgenteMusolver {
-    strategy: Strategy,
+    strategy: Strategy<LanceGame>,
     history: Rc<RefCell<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
-    pub fn new(strategy: Strategy, history: Rc<RefCell<Vec<Accion>>>) -> Self {
+    pub fn new(strategy: Strategy<LanceGame>, history: Rc<RefCell<Vec<Accion>>>) -> Self {
         Self { strategy, history }
     }
 

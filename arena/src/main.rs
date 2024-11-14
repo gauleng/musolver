@@ -6,7 +6,7 @@ use musolver::{
     mus::arena::{
         ActionRecorder, AgenteAleatorio, AgenteCli, AgenteMusolver, KibitzerCli, MusArena,
     },
-    solver::{BancoEstrategias, SolverError, Strategy, StrategyConfig},
+    solver::{BancoEstrategias, LanceGame, SolverError, Strategy, StrategyConfig},
 };
 
 fn show_strategy_data(strategy: &StrategyConfig) {
@@ -79,7 +79,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let strategy: Option<Strategy> =
+    let strategy: Option<Strategy<LanceGame>> =
         if args.agent1 == AgentType::Musolver || args.agent2 == AgentType::Musolver {
             let strategy_path = PathBuf::from(match args.strategy_path {
                 Some(path) => path,

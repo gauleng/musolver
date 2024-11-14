@@ -88,7 +88,11 @@ impl BancoEstrategias {
         result
     }
 
-    pub fn load_estrategia(&self, path: &Path, l: Lance) -> Result<Strategy, SolverError> {
+    pub fn load_estrategia(
+        &self,
+        path: &Path,
+        l: Lance,
+    ) -> Result<Strategy<LanceGame>, SolverError> {
         let mut estrategia_path = PathBuf::from(path);
         estrategia_path.push(format!("{:?}", l));
         estrategia_path.set_extension("json");

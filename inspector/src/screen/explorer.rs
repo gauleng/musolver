@@ -19,7 +19,7 @@ use musolver::{
     mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        HandConfiguration, InfoSet, Strategy,
+        HandConfiguration, InfoSet, LanceGame, Strategy,
     },
 };
 
@@ -213,7 +213,7 @@ pub enum ViewMode {
 #[derive(Debug)]
 pub struct ActionPath {
     //pub one_hand_list: Vec<Mano>,
-    pub strategy: Strategy,
+    pub strategy: Strategy<LanceGame>,
     pub buckets: HashMap<AbstractJugada, Vec<Mano>>,
     pub jugadas: Vec<AbstractJugada>,
 
@@ -231,7 +231,7 @@ pub struct ActionPath {
 }
 
 impl ActionPath {
-    pub fn new(strategy: Strategy) -> Self {
+    pub fn new(strategy: Strategy<LanceGame>) -> Self {
         let one_hand_list = ActionPath::one_hand_list(&strategy);
         let mut buckets = HashMap::new();
         for hand in &one_hand_list {
@@ -300,7 +300,7 @@ impl ActionPath {
         action_path
     }
 
-    fn one_hand_list(s: &Strategy) -> Vec<Mano> {
+    fn one_hand_list(s: &Strategy<LanceGame>) -> Vec<Mano> {
         let manos = CartaIter::new(&Carta::CARTAS_MUS, 4).map(Mano::new);
         if let Some(lance) = &s.strategy_config.game_config.lance {
             match lance {

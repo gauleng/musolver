@@ -5,7 +5,7 @@ use iced::{
     Element,
     Length::{Fill, Shrink},
 };
-use musolver::solver::{BancoEstrategias, Strategy, StrategyConfig};
+use musolver::solver::{BancoEstrategias, LanceGame, Strategy, StrategyConfig};
 
 #[derive(Debug, Clone)]
 pub enum LoaderEvent {
@@ -14,7 +14,7 @@ pub enum LoaderEvent {
 }
 
 pub enum LoaderAction {
-    OpenExplorer(Strategy),
+    OpenExplorer(Strategy<LanceGame>),
 }
 
 pub struct Loader {
