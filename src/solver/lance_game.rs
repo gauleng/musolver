@@ -356,11 +356,6 @@ impl LanceGame {
         self.partida.push(p);
         self.pareja_mano = turno_inicial;
     }
-
-    pub fn history_str(&self) -> String {
-        let history_str = self.history_str.last().unwrap();
-        history_str.join("")
-    }
 }
 
 impl Game for LanceGame {
@@ -522,6 +517,11 @@ impl Game for LanceGame {
         self.partida.pop();
         self.history_str.pop();
         self.history.pop();
+    }
+
+    fn history_str(&self) -> String {
+        let history_str = self.history_str.last().unwrap();
+        history_str.join("")
     }
 }
 

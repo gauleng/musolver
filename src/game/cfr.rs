@@ -72,6 +72,91 @@ impl<A> Node<A> {
     }
 }
 
+#[derive(Debug)]
+struct GameNode<G> {
+    lance_game: G,
+    next_nodes: Vec<usize>,
+    reach_player: f64,
+    reach_opponent: f64,
+    utility: f64,
+}
+
+#[derive(Debug)]
+struct GameGraph<G> {
+    node_ids: HashMap<String, usize>,
+    last_node_id: usize,
+    game_nodes: Vec<GameNode<G>>,
+}
+
+impl<G, P, A> GameGraph<G>
+where
+    G: Game<P, A> + Clone,
+    A: Copy,
+{
+    fn new(game: G) -> Self {
+        let history_str = game.history_str();
+        let node_ids = HashMap::from([(history_str, 0)]);
+
+        Self {
+            node_ids,
+            last_node_id: 0,
+            game_nodes: vec![GameNode {
+                lance_game: game,
+                next_nodes: vec![],
+                reach_player: 1.,
+                reach_opponent: 1.,
+                utility: 0.,
+            }],
+        }
+    }
+
+    fn inflate(&mut self) {
+        let mut game_list = vec![0];
+        while !game_list.is_empty() {
+            game_list = game_list
+                .drain(..)
+                .flat_map(|idx| self.next_nodes(idx))
+                .collect();
+        }
+    }
+
+    fn next_nodes(&mut self, idx: usize) -> Vec<usize> {
+        let game = &self.game_nodes[idx].lance_game;
+        if game.is_terminal() {
+            vec![]
+        } else {
+            let actions = game.actions();
+            actions
+                .iter()
+                .filter_map(|action| {
+                    let mut new_game = self.game_nodes[idx].lance_game.clone();
+                    new_game.act(*action);
+                    let history_str = new_game.history_str();
+                    match self.node_ids.get(&history_str) {
+                        Some(next_id) => {
+                            self.game_nodes[idx].next_nodes.push(*next_id);
+                            None
+                        }
+                        None => {
+                            self.last_node_id += 1;
+                            self.node_ids.insert(history_str, self.last_node_id);
+                            self.game_nodes.push(GameNode {
+                                lance_game: new_game,
+                                next_nodes: vec![],
+                                reach_player: 0.,
+                                reach_opponent: 0.,
+                                utility: 0.,
+                            });
+                            self.game_nodes[idx].next_nodes.push(self.last_node_id);
+                            Some(self.last_node_id)
+                        }
+                    }
+                })
+                .collect()
+        }
+    }
+}
+
 /// Trait implemented by games that can be trained with the CFR algorithm, for players identified
 /// with P and possible actions A.
 pub trait Game {
@@ -90,6 +175,8 @@ pub trait Game {
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.
     fn info_set_str(&self, player: Self::P) -> String;
+
+    fn history_str(&self) -> String;
 
     /// Actions available in the current state of the game.
     fn actions(&self) -> Vec<Self::A>;
@@ -122,6 +209,7 @@ pub enum CfrMethod {
     CfrPlus,
     ChanceSampling,
     ExternalSampling,
+    FsiCfr,
 }
 
 impl FromStr for CfrMethod {
@@ -133,6 +221,7 @@ impl FromStr for CfrMethod {
             "cfr-plus" => Ok(CfrMethod::CfrPlus),
             "chance-sampling" => Ok(CfrMethod::ChanceSampling),
             "external-sampling" => Ok(CfrMethod::ExternalSampling),
+            "fsi-cfr" => Ok(CfrMethod::FsiCfr),
             _ => Err(GameError::InvalidCfrMethod(s.to_owned())),
         }
     }
@@ -167,22 +256,37 @@ where
     {
         let mut util = vec![0.; game.num_players()];
         for i in 0..iterations {
-            for (player_idx, u) in util.iter_mut().enumerate() {
-                let player_id = game.player_id(player_idx);
-                match cfr_method {
-                    CfrMethod::Cfr => {
+            match cfr_method {
+                CfrMethod::Cfr => {
+                    for (player_idx, u) in util.iter_mut().enumerate() {
+                        let player_id = game.player_id(player_idx);
                         game.new_iter(|game, po| {
                             *u += po * self.chance_sampling(game, player_id, 1., po);
                         });
                     }
-                    CfrMethod::CfrPlus => todo!(),
-                    CfrMethod::ChanceSampling => {
-                        game.new_random();
+                }
+                CfrMethod::CfrPlus => todo!(),
+                CfrMethod::ChanceSampling => {
+                    game.new_random();
+                    for (player_idx, u) in util.iter_mut().enumerate() {
+                        let player_id = game.player_id(player_idx);
                         *u += self.chance_sampling(game, player_id, 1., 1.);
                     }
-                    CfrMethod::ExternalSampling => {
-                        game.new_random();
+                }
+                CfrMethod::ExternalSampling => {
+                    game.new_random();
+                    for (player_idx, u) in util.iter_mut().enumerate() {
+                        let player_id = game.player_id(player_idx);
                         *u += self.external_sampling(game, player_id);
+                    }
+                }
+                CfrMethod::FsiCfr => {
+                    game.new_random();
+                    let mut game_graph = GameGraph::new(game.clone());
+                    game_graph.inflate();
+                    for player_idx in 0..game.num_players() {
+                        let player_id = game.player_id(player_idx);
+                        self.fsicfr(&mut game_graph, player_id);
                     }
                 }
             }
@@ -287,6 +391,81 @@ where
             let util = self.external_sampling(game, player);
             game.takeback();
             util
+        }
+    }
+
+    fn fsicfr<G, P>(&mut self, game_graph: &mut GameGraph<G>, player: P)
+    where
+        G: Game<P, A>,
+        P: Eq + Copy,
+        A: Copy,
+    {
+        game_graph.game_nodes[0].reach_player = 1.;
+        game_graph.game_nodes[0].reach_opponent = 1.;
+        for idx in 0..game_graph.game_nodes.len() {
+            let game_node = &mut game_graph.game_nodes[idx];
+            let lance_game = &mut game_node.lance_game;
+            if !lance_game.is_terminal() {
+                let current_player = lance_game.current_player().unwrap();
+                let info_set_str = lance_game.info_set_str(current_player);
+                let actions = lance_game.actions();
+                let node = self
+                    .nodes
+                    .entry(info_set_str.clone())
+                    .or_insert_with(|| Node::new(actions.clone()));
+                let strategy = node.strategy();
+                for (i, s) in strategy.iter().enumerate() {
+                    let child_idx = game_graph.game_nodes[idx].next_nodes[i];
+
+                    if current_player == player {
+                        game_graph.game_nodes[child_idx].reach_player +=
+                            s * game_graph.game_nodes[idx].reach_player;
+                        game_graph.game_nodes[child_idx].reach_opponent +=
+                            game_graph.game_nodes[idx].reach_opponent;
+                    } else {
+                        game_graph.game_nodes[child_idx].reach_player +=
+                            game_graph.game_nodes[idx].reach_player;
+                        game_graph.game_nodes[child_idx].reach_opponent +=
+                            s * game_graph.game_nodes[idx].reach_opponent;
+                    }
+                }
+            }
+        }
+
+        for idx in (0..game_graph.game_nodes.len()).rev() {
+            let lance_game = &mut game_graph.game_nodes[idx].lance_game;
+            if lance_game.is_terminal() {
+                game_graph.game_nodes[idx].utility = lance_game.utility(player);
+            } else {
+                let current_player = lance_game.current_player().unwrap();
+                let info_set_str = lance_game.info_set_str(current_player);
+                let node = self.nodes.get_mut(&info_set_str).unwrap();
+                let strategy = node.strategy();
+
+                let utility: Vec<f64> = game_graph.game_nodes[idx]
+                    .next_nodes
+                    .iter()
+                    .map(|child_idx| game_graph.game_nodes[*child_idx].utility)
+                    .collect();
+                game_graph.game_nodes[idx].utility = strategy
+                    .iter()
+                    .zip(utility.iter())
+                    .map(|(s, u)| s * u)
+                    .sum();
+                if current_player == player {
+                    node.regret_sum
+                        .iter_mut()
+                        .zip(utility.iter())
+                        .for_each(|(r, u)| {
+                            *r += game_graph.game_nodes[idx].reach_opponent
+                                * (u - game_graph.game_nodes[idx].utility)
+                        });
+                    node.update_strategy_sum(game_graph.game_nodes[idx].reach_player);
+                    node.update_strategy();
+                }
+            }
+            game_graph.game_nodes[idx].reach_player = 0.;
+            game_graph.game_nodes[idx].reach_opponent = 0.;
         }
     }
 
