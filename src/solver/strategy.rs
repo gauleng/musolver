@@ -34,7 +34,7 @@ pub struct Strategy {
 
 impl Strategy {
     pub fn new(
-        cfr: &Cfr<Accion>,
+        cfr: &Cfr<LanceGame>,
         trainer_config: &TrainerConfig,
         game_config: &GameConfig,
     ) -> Self {

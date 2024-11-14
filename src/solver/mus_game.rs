@@ -7,7 +7,7 @@ use crate::{
 
 use super::{BancoEstrategias, HandConfiguration, ManosNormalizadas};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MusGame<'a> {
     manos_normalizadas: [String; 2],
     tipo_estrategia: HandConfiguration,
@@ -102,7 +102,10 @@ impl<'a> MusGame<'a> {
     }
 }
 
-impl<'a> Game<usize, Accion> for MusGame<'a> {
+impl<'a> Game for MusGame<'a> {
+    type P = usize;
+    type A = Accion;
+
     fn utility(&self, player: usize) -> f64 {
         let mut partida = self.partida.clone();
         self.history.iter().for_each(|&a| {

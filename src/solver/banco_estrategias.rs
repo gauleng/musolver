@@ -8,20 +8,17 @@ use std::{
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-use crate::{
-    mus::{Accion, Lance},
-    Cfr,
-};
+use crate::{mus::Lance, Cfr};
 
-use super::{GameConfig, SolverError, Strategy, StrategyConfig, TrainerConfig};
+use super::{GameConfig, LanceGame, SolverError, Strategy, StrategyConfig, TrainerConfig};
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct BancoEstrategias {
-    grande: RefCell<Cfr<Accion>>,
-    chica: RefCell<Cfr<Accion>>,
-    pares: RefCell<Cfr<Accion>>,
-    juego: RefCell<Cfr<Accion>>,
-    punto: RefCell<Cfr<Accion>>,
+    grande: RefCell<Cfr<LanceGame>>,
+    chica: RefCell<Cfr<LanceGame>>,
+    pares: RefCell<Cfr<LanceGame>>,
+    juego: RefCell<Cfr<LanceGame>>,
+    punto: RefCell<Cfr<LanceGame>>,
 }
 
 impl BancoEstrategias {
@@ -35,7 +32,7 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr<Accion>> {
+    pub fn estrategia_lance(&self, l: Lance) -> Ref<'_, Cfr<LanceGame>> {
         match l {
             Lance::Grande => self.grande.borrow(),
             Lance::Chica => self.chica.borrow(),
@@ -44,7 +41,7 @@ impl BancoEstrategias {
             Lance::Juego => self.juego.borrow(),
         }
     }
-    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr<Accion>> {
+    pub fn estrategia_lance_mut(&self, l: Lance) -> &std::cell::RefCell<Cfr<LanceGame>> {
         match l {
             Lance::Grande => &self.grande,
             Lance::Chica => &self.chica,
@@ -138,8 +135,8 @@ impl BancoEstrategias {
     }
 }
 
-impl Default for BancoEstrategias {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for BancoEstrategias {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }

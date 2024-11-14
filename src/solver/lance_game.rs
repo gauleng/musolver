@@ -363,7 +363,10 @@ impl LanceGame {
     }
 }
 
-impl Game<usize, Accion> for LanceGame {
+impl Game for LanceGame {
+    type P = usize;
+    type A = Accion;
+
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
         loop {

@@ -74,31 +74,34 @@ impl<A> Node<A> {
 
 /// Trait implemented by games that can be trained with the CFR algorithm, for players identified
 /// with P and possible actions A.
-pub trait Game<P, A> {
+pub trait Game {
+    type A;
+    type P;
+
     /// Number of players of the game.
     fn num_players(&self) -> usize;
 
     /// Identifier for the player in position idx.
-    fn player_id(&self, idx: usize) -> P;
+    fn player_id(&self, idx: usize) -> Self::P;
 
     /// Utility function for the player P after the actions considered in the history slice.
-    fn utility(&self, player: P) -> f64;
+    fn utility(&self, player: Self::P) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.
-    fn info_set_str(&self, player: P) -> String;
+    fn info_set_str(&self, player: Self::P) -> String;
 
     /// Actions available in the current state of the game.
-    fn actions(&self) -> Vec<A>;
+    fn actions(&self) -> Vec<Self::A>;
 
     /// Indicates if the current state of the game is terminal.
     fn is_terminal(&self) -> bool;
 
     /// Player to play in the current state of the game.
-    fn current_player(&self) -> Option<P>;
+    fn current_player(&self) -> Option<Self::P>;
 
     /// Advance the state with the given action for the current player.
-    fn act(&mut self, a: A);
+    fn act(&mut self, a: Self::A);
 
     /// Takeback the last action and return to the previous state of the game.
     fn takeback(&mut self);
@@ -137,27 +140,29 @@ impl FromStr for CfrMethod {
 
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
-pub struct Cfr<A> {
-    nodes: HashMap<String, Node<A>>,
+pub struct Cfr<G: Game> {
+    nodes: HashMap<String, Node<G::A>>,
 }
 
-impl<A> Cfr<A> {
+impl<G> Cfr<G>
+where
+    G: Game + Clone,
+{
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
         }
     }
 
-    pub fn train<G, P, F>(
+    pub fn train<F>(
         &mut self,
         game: &mut G,
         cfr_method: CfrMethod,
         iterations: usize,
         mut iteration_callback: F,
     ) where
-        G: Game<P, A> + Clone,
-        P: Eq + Copy,
-        A: Eq + Copy,
+        G::P: Eq + Copy,
+        G::A: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
         let mut util = vec![0.; game.num_players()];
@@ -186,17 +191,16 @@ impl<A> Cfr<A> {
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling<G, P>(&mut self, game: &mut G, player: P, pi: f64, po: f64) -> f64
+    fn chance_sampling(&mut self, game: &mut G, player: <G as Game>::P, pi: f64, po: f64) -> f64
     where
-        G: Game<P, A> + Clone,
-        P: Eq + Copy,
-        A: Eq + Copy,
+        G::P: Eq + Copy,
+        G::A: Eq + Copy,
     {
         if game.is_terminal() {
             return game.utility(player);
         }
         let current_player = game.current_player().unwrap();
-        let actions: Vec<A> = game.actions();
+        let actions: Vec<<G as Game>::A> = game.actions();
         let info_set_str = game.info_set_str(current_player);
         let node = self
             .nodes
@@ -235,18 +239,17 @@ impl<A> Cfr<A> {
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling<G, P>(&mut self, game: &mut G, player: P) -> f64
+    fn external_sampling(&mut self, game: &mut G, player: <G as Game>::P) -> f64
     where
-        G: Game<P, A>,
-        P: Eq + Copy,
-        A: Eq + Copy,
+        G::P: Eq + Copy,
+        G::A: Eq + Copy,
     {
         if game.is_terminal() {
             return game.utility(player);
         }
         let current_player = game.current_player().unwrap();
         let info_set_str = game.info_set_str(current_player);
-        let actions: Vec<A> = game.actions();
+        let actions: Vec<<G as Game>::A> = game.actions();
         if current_player == player {
             let util: Vec<f64> = actions
                 .iter()
@@ -287,7 +290,7 @@ impl<A> Cfr<A> {
         }
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node<A>> {
+    pub fn nodes(&self) -> &HashMap<String, Node<G::A>> {
         &self.nodes
     }
 
@@ -298,7 +301,10 @@ impl<A> Cfr<A> {
     }
 }
 
-impl<A> Default for Cfr<A> {
+impl<G> Default for Cfr<G>
+where
+    G: Game + Clone,
+{
     fn default() -> Self {
         Self::new()
     }

@@ -17,11 +17,11 @@ pub struct TrainerConfig {
 }
 
 impl Trainer {
-    pub fn train<G, P, A>(&self, cfr: &mut Cfr<A>, game: &mut G, config: &TrainerConfig)
+    pub fn train<G>(&self, cfr: &mut Cfr<G>, game: &mut G, config: &TrainerConfig)
     where
-        G: Game<P, A> + Debug + Clone,
-        A: Eq + Copy,
-        P: Eq + Copy,
+        G: Game + Debug + Clone,
+        G::A: Eq + Copy,
+        G::P: Eq + Copy,
     {
         use std::time::Instant;
 
