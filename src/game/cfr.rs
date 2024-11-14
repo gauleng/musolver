@@ -88,10 +88,10 @@ struct GameGraph<G> {
     game_nodes: Vec<GameNode<G>>,
 }
 
-impl<G, P, A> GameGraph<G>
+impl<G> GameGraph<G>
 where
-    G: Game<P, A> + Clone,
-    A: Copy,
+    G: Game + Clone,
+    G::A: Copy,
 {
     fn new(game: G) -> Self {
         let history_str = game.history_str();
@@ -394,11 +394,10 @@ where
         }
     }
 
-    fn fsicfr<G, P>(&mut self, game_graph: &mut GameGraph<G>, player: P)
+    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P)
     where
-        G: Game<P, A>,
-        P: Eq + Copy,
-        A: Copy,
+        G::P: Eq + Copy,
+        G::A: Copy,
     {
         game_graph.game_nodes[0].reach_player = 1.;
         game_graph.game_nodes[0].reach_opponent = 1.;

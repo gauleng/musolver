@@ -208,4 +208,8 @@ impl<'a> Game for MusGame<'a> {
     fn takeback(&mut self) {
         todo!()
     }
+
+    fn history_str(&self) -> String {
+        todo!()
+    }
 }
