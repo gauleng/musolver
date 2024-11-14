@@ -284,13 +284,13 @@ where
                     game.new_random();
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
-                    for player_idx in 0..game.num_players() {
+                    for (player_idx, u) in util.iter_mut().enumerate() {
                         let player_id = game.player_id(player_idx);
-                        self.fsicfr(&mut game_graph, player_id);
+                        *u += self.fsicfr(&mut game_graph, player_id);
                     }
                 }
             }
-            iteration_callback(&i, &[util[0] / i as f64, util[1] / i as f64]);
+            iteration_callback(&i, &util.iter().map(|u| u / i as f64).collect::<Vec<f64>>());
         }
     }
 
@@ -394,7 +394,7 @@ where
         }
     }
 
-    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P)
+    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P) -> f64
     where
         G::P: Eq + Copy,
         G::A: Copy,
@@ -466,6 +466,7 @@ where
             game_graph.game_nodes[idx].reach_player = 0.;
             game_graph.game_nodes[idx].reach_opponent = 0.;
         }
+        game_graph.game_nodes[0].utility
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node<G::A>> {

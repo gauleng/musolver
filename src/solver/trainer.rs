@@ -36,7 +36,13 @@ impl Trainer {
         cfr.train(game, config.method, config.iterations, |i, util| {
             pb.inc(1);
             if i % 1000 == 0 {
-                pb.set_message(format!("Utility: {:.5} {:.5}", util[0], util[1],));
+                pb.set_message(format!(
+                    "Utility: {}",
+                    util.iter()
+                        .map(|u| u.to_string())
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                ));
             }
         });
 
