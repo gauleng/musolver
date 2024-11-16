@@ -170,7 +170,7 @@ pub trait Game {
     fn player_id(&self, idx: usize) -> Self::P;
 
     /// Utility function for the player P after the actions considered in the history slice.
-    fn utility(&self, player: Self::P) -> f64;
+    fn utility(&mut self, player: Self::P) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.

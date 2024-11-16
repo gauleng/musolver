@@ -106,7 +106,7 @@ impl<'a> Game for MusGame<'a> {
     type P = usize;
     type A = Accion;
 
-    fn utility(&self, player: usize) -> f64 {
+    fn utility(&mut self, player: usize) -> f64 {
         let mut partida = self.partida.clone();
         self.history.iter().for_each(|&a| {
             let _ = partida.actuar(a);

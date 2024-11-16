@@ -321,6 +321,7 @@ pub struct EstadoLance {
     apuesta_minima: u8,
     ganador: Option<u8>,
     jugador_mejor_mano: u8,
+    tantos_mano: [u8; 2],
 
     idx_turno: u8,
     idx_parejas: [(Option<Turno>, Option<Turno>); 2],
@@ -354,6 +355,10 @@ impl EstadoLance {
             ),
             _ => (None, None),
         };
+        let tantos_mano = [
+            lance.tantos_mano(&manos[0]) + lance.tantos_mano(&manos[2]) + lance.bonus(),
+            lance.tantos_mano(&manos[1]) + lance.tantos_mano(&manos[3]) + lance.bonus(),
+        ];
         let idx_parejas = [build_pareja(&pareja_mano), build_pareja(&pareja_postre)];
         let idx_turno = lance.turno_inicial(manos) as u8;
         let turno = if pareja_mano.is_empty() || pareja_postre.is_empty() {
@@ -369,6 +374,7 @@ impl EstadoLance {
             apuesta_minima: lance.apuesta_minima(),
             ganador: None,
             jugador_mejor_mano: lance.mejor_mano(manos) as u8,
+            tantos_mano,
             idx_turno,
             idx_parejas,
             accion_pareja: None,
@@ -441,6 +447,11 @@ impl EstadoLance {
             apostado = Apuesta::Tantos(self.apuesta_minima);
         }
         apostado
+    }
+
+    /// Devuelve los tantos de mano de cada una de las parejas.
+    pub fn tantos_mano(&self) -> &[u8; 2] {
+        &self.tantos_mano
     }
 
     /// Determina el ganador del lance. Si no se quisieron, devuelve la pareja que se lleva los
@@ -657,6 +668,24 @@ mod tests_estado_lance {
         assert_eq!(partida.actuar(Accion::Paso).unwrap(), None);
         assert_eq!(partida.resolver_lance(), 1);
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(9));
+    }
+
+    #[test]
+    fn test_tantos_mano() {
+        let manos: [Mano; 4] = [
+            "R111".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+            "RRR1".parse().unwrap(),
+        ];
+        let partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        assert_eq!(partida.tantos_mano(), &[0, 0]);
+        let partida = EstadoLance::new(&Lance::Pares, &manos, 40);
+        assert_eq!(partida.tantos_mano(), &[4, 4]);
+        let partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        assert_eq!(partida.tantos_mano(), &[3, 6]);
+        let partida = EstadoLance::new(&Lance::Punto, &manos, 40);
+        assert_eq!(partida.tantos_mano(), &[1, 1]);
     }
 }
 

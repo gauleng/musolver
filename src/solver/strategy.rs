@@ -72,7 +72,7 @@ impl<G: Game<P = usize, A = Accion> + Clone> Strategy<G> {
                         hand2.clone(),
                         opponent_hand2.clone(),
                     ];
-                    let lance_game = LanceGame::from_partida_mus(
+                    let mut lance_game = LanceGame::from_partida_mus(
                         &PartidaMus::new_partida_lance(
                             self.strategy_config.game_config.lance.unwrap(),
                             hands,
@@ -81,7 +81,7 @@ impl<G: Game<P = usize, A = Accion> + Clone> Strategy<G> {
                         .unwrap(),
                         false,
                     );
-                    if let Some(l) = lance_game {
+                    if let Some(l) = &mut lance_game {
                         expected_payoff += opponent_dist * l.utility(player);
                     }
                 }

@@ -4,8 +4,8 @@ use itertools::Itertools;
 
 use crate::{
     mus::{
-        Accion, Apuesta, Baraja, DistribucionDobleCartaIter, Juego, Lance, Mano, Pares, PartidaMus,
-        Turno,
+        Accion, Apuesta, Baraja, DistribucionDobleCartaIter, EstadoLance, Juego, Lance, Mano,
+        Pares, PartidaMus, Turno,
     },
     Game,
 };
@@ -299,7 +299,7 @@ impl<'a> Display for InfoSet<'a> {
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
-    partida: Vec<PartidaMus>,
+    estado_lance: Vec<EstadoLance>,
     info_set_prefix: Option<[String; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
@@ -313,7 +313,7 @@ impl LanceGame {
             lance,
             tantos,
             abstract_game,
-            partida: vec![],
+            estado_lance: vec![],
             info_set_prefix: None,
             history: Vec::with_capacity(12),
             history_str: vec![vec!["".into()]],
@@ -322,40 +322,50 @@ impl LanceGame {
     }
 
     pub fn from_partida_mus(partida_mus: &PartidaMus, abstract_game: bool) -> Option<Self> {
+        let lance = partida_mus.lance_actual()?;
         Some(Self {
-            lance: partida_mus.lance_actual()?,
+            lance,
             tantos: *partida_mus.tantos(),
             abstract_game,
-            partida: vec![partida_mus.clone()],
-            info_set_prefix: LanceGame::info_set_prefix(partida_mus, abstract_game),
+            estado_lance: vec![EstadoLance::new(&lance, partida_mus.manos(), 40)],
+            info_set_prefix: LanceGame::info_set_prefix(
+                &lance,
+                partida_mus.manos(),
+                partida_mus.tantos(),
+                abstract_game,
+            ),
             history: Vec::with_capacity(12),
             history_str: vec![vec![]],
             pareja_mano: 0,
         })
     }
 
-    fn info_set_prefix(partida_mus: &PartidaMus, abstracto: bool) -> Option<[String; 4]> {
-        let lance = partida_mus.lance_actual()?;
-        let manos_normalizadas = ManosNormalizadas::normalizar_mano(partida_mus.manos(), &lance);
+    fn info_set_prefix(
+        lance: &Lance,
+        manos: &[Mano; 4],
+        tantos: &[u8; 2],
+        abstracto: bool,
+    ) -> Option<[String; 4]> {
+        let manos_normalizadas = ManosNormalizadas::normalizar_mano(manos, lance);
         let info_set_prefix: [String; 4] = core::array::from_fn(|i| {
             InfoSet::str(
                 &manos_normalizadas.hand_configuration(),
-                partida_mus.tantos(),
-                &partida_mus.manos()[i],
+                tantos,
+                &manos[i],
                 None,
                 &[],
-                if abstracto { Some(lance) } else { None },
+                if abstracto { Some(*lance) } else { None },
             )
         });
         Some(info_set_prefix)
     }
 
-    fn initialize_game(&mut self, p: PartidaMus, turno_inicial: usize) {
-        self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
-        self.partida = Vec::with_capacity(6);
-        self.partida.push(p);
-        self.pareja_mano = turno_inicial;
-    }
+    // fn initialize_game(&mut self, manos: &[Mano; 4], turno_inicial: usize) {
+    //     self.info_set_prefix = LanceGame::info_set_prefix(&p, self.abstract_game);
+    //     self.estado_lance = Vec::with_capacity(6);
+    //     self.estado_lance.push(p);
+    //     self.pareja_mano = turno_inicial;
+    // }
 }
 
 impl Game for LanceGame {
@@ -372,9 +382,16 @@ impl Game for LanceGame {
             if turno_inicial == 1 {
                 tantos.swap(0, 1);
             }
-            let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
-            if let Some(p) = intento_partida {
-                self.initialize_game(p, turno_inicial);
+            let intento_partida = EstadoLance::new(&self.lance, &manos, 40);
+            if intento_partida.turno().is_some() {
+                self.estado_lance = Vec::with_capacity(6);
+                self.estado_lance.push(intento_partida);
+                self.info_set_prefix = LanceGame::info_set_prefix(
+                    &self.lance,
+                    &manos,
+                    &self.tantos,
+                    self.abstract_game,
+                );
                 break;
             }
         }
@@ -408,18 +425,31 @@ impl Game for LanceGame {
                 if turno_inicial == 1 {
                     tantos.swap(0, 1);
                 }
-                let intento_partida = PartidaMus::new_partida_lance(self.lance, manos, tantos);
-                if let Some(p) = intento_partida {
-                    self.initialize_game(p, turno_inicial);
+                let intento_partida = EstadoLance::new(&self.lance, &manos, 40);
+                if intento_partida.turno().is_some() {
+                    self.estado_lance = Vec::with_capacity(6);
+                    self.estado_lance.push(intento_partida);
+                    self.info_set_prefix = LanceGame::info_set_prefix(
+                        &self.lance,
+                        &manos,
+                        &self.tantos,
+                        self.abstract_game,
+                    );
                     f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
         }
     }
 
-    fn utility(&self, player: usize) -> f64 {
-        let partida = self.partida.last().unwrap();
-        let tantos = *partida.tantos();
+    fn utility(&mut self, player: usize) -> f64 {
+        let estado_lance = self.estado_lance.last_mut().unwrap();
+        let ganador = estado_lance.resolver_lance();
+        let tantos_ganador = match estado_lance.tantos_apostados() {
+            Apuesta::Tantos(t) => t,
+            Apuesta::Ordago => 40,
+        } + estado_lance.tantos_mano()[ganador as usize];
+        let mut tantos = [0, 0];
+        tantos[ganador as usize] = tantos_ganador;
         let payoff = [
             tantos[0] as i8 - tantos[1] as i8,
             tantos[1] as i8 - tantos[0] as i8,
@@ -448,7 +478,7 @@ impl Game for LanceGame {
     }
 
     fn actions(&self) -> Vec<Accion> {
-        let partida = self.partida.last().unwrap();
+        let partida = self.estado_lance.last().unwrap();
         let turno = partida.turno().unwrap();
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
         let mut acciones = match ultimo_envite {
@@ -483,11 +513,11 @@ impl Game for LanceGame {
     }
 
     fn is_terminal(&self) -> bool {
-        self.partida.last().unwrap().turno().is_none()
+        self.estado_lance.last().unwrap().turno().is_none()
     }
 
     fn current_player(&self) -> Option<usize> {
-        match self.partida.last().unwrap().turno()? {
+        match self.estado_lance.last().unwrap().turno()? {
             Turno::Jugador(player_id) | Turno::Pareja(player_id) => Some(player_id as usize),
         }
     }
@@ -497,7 +527,7 @@ impl Game for LanceGame {
         self.history_str
             .extend_from_within(self.history_str.len() - 1..);
         let last_history_str = self.history_str.last_mut().unwrap();
-        let turno = self.partida.last().unwrap().turno().unwrap();
+        let turno = self.estado_lance.last().unwrap().turno().unwrap();
         match turno {
             Turno::Pareja(2) | Turno::Pareja(3) => {
                 last_history_str.pop();
@@ -509,12 +539,13 @@ impl Game for LanceGame {
             _ => a.to_string(),
         };
         last_history_str.push(action_str);
-        self.partida.extend_from_within(self.partida.len() - 1..);
-        let _ = self.partida.last_mut().unwrap().actuar(a);
+        self.estado_lance
+            .extend_from_within(self.estado_lance.len() - 1..);
+        let _ = self.estado_lance.last_mut().unwrap().actuar(a);
     }
 
     fn takeback(&mut self) {
-        self.partida.pop();
+        self.estado_lance.pop();
         self.history_str.pop();
         self.history.pop();
     }
