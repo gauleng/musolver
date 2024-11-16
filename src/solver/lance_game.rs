@@ -327,7 +327,11 @@ impl LanceGame {
             lance,
             tantos: *partida_mus.tantos(),
             abstract_game,
-            estado_lance: vec![EstadoLance::new(&lance, partida_mus.manos(), 40)],
+            estado_lance: vec![EstadoLance::new(
+                &lance,
+                partida_mus.manos(),
+                PartidaMus::MAX_TANTOS,
+            )],
             info_set_prefix: LanceGame::info_set_prefix(
                 &lance,
                 partida_mus.manos(),
@@ -382,7 +386,7 @@ impl Game for LanceGame {
             if turno_inicial == 1 {
                 tantos.swap(0, 1);
             }
-            let intento_partida = EstadoLance::new(&self.lance, &manos, 40);
+            let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
             if intento_partida.turno().is_some() {
                 self.estado_lance = Vec::with_capacity(6);
                 self.estado_lance.push(intento_partida);
@@ -425,7 +429,7 @@ impl Game for LanceGame {
                 if turno_inicial == 1 {
                     tantos.swap(0, 1);
                 }
-                let intento_partida = EstadoLance::new(&self.lance, &manos, 40);
+                let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
                 if intento_partida.turno().is_some() {
                     self.estado_lance = Vec::with_capacity(6);
                     self.estado_lance.push(intento_partida);
@@ -446,10 +450,14 @@ impl Game for LanceGame {
         let ganador = estado_lance.resolver_lance();
         let tantos_ganador = match estado_lance.tantos_apostados() {
             Apuesta::Tantos(t) => t,
-            Apuesta::Ordago => 40,
+            Apuesta::Ordago => PartidaMus::MAX_TANTOS,
         } + estado_lance.tantos_mano()[ganador as usize];
-        let mut tantos = [0, 0];
-        tantos[ganador as usize] = tantos_ganador;
+        let mut tantos = self.tantos;
+        tantos[ganador as usize] += tantos_ganador;
+        if tantos[ganador as usize] >= PartidaMus::MAX_TANTOS {
+            tantos[ganador as usize] = PartidaMus::MAX_TANTOS;
+            tantos[1 - ganador as usize] = 0;
+        }
         let payoff = [
             tantos[0] as i8 - tantos[1] as i8,
             tantos[1] as i8 - tantos[0] as i8,

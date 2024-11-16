@@ -48,7 +48,7 @@ pub struct PartidaMus {
 }
 
 impl PartidaMus {
-    const MAX_TANTOS: u8 = 40;
+    pub const MAX_TANTOS: u8 = 40;
 
     /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
     /// array y se asume que la primera posición se corresponde con la mano del jugador mano y la

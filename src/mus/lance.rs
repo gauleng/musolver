@@ -487,6 +487,8 @@ impl EstadoLance {
 
 #[cfg(test)]
 mod tests_estado_lance {
+    use crate::mus::PartidaMus;
+
     use super::*;
 
     #[test]
@@ -497,7 +499,7 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -522,7 +524,7 @@ mod tests_estado_lance {
             "RR11".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), None);
         assert_eq!(partida.resolver_lance(), 1);
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(0));
@@ -534,7 +536,7 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "R111".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -551,7 +553,7 @@ mod tests_estado_lance {
             "R111".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -571,7 +573,7 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
         ];
         // Cuatro participantes, envite del jugador 0.
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -590,7 +592,7 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Cuatro participantes, envite del jugador 1.
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -609,7 +611,7 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Tres participantes con envite inicial de la pareja.
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -624,7 +626,7 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Revocación.
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -643,7 +645,7 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(2));
 
         // Doble revocación
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -678,13 +680,13 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let partida = EstadoLance::new(&Lance::Grande, &manos, 40);
+        let partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.tantos_mano(), &[0, 0]);
-        let partida = EstadoLance::new(&Lance::Pares, &manos, 40);
+        let partida = EstadoLance::new(&Lance::Pares, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.tantos_mano(), &[4, 4]);
-        let partida = EstadoLance::new(&Lance::Juego, &manos, 40);
+        let partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.tantos_mano(), &[3, 6]);
-        let partida = EstadoLance::new(&Lance::Punto, &manos, 40);
+        let partida = EstadoLance::new(&Lance::Punto, &manos, PartidaMus::MAX_TANTOS);
         assert_eq!(partida.tantos_mano(), &[1, 1]);
     }
 }
