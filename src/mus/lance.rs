@@ -323,8 +323,7 @@ pub struct EstadoLance {
     jugador_mejor_mano: u8,
 
     idx_turno: u8,
-    idx_parejas: [Vec<Turno>; 2],
-    idx_pareja: u8,
+    idx_parejas: [(Option<Turno>, Option<Turno>); 2],
     accion_pareja: Option<Accion>,
 }
 
@@ -347,30 +346,20 @@ impl EstadoLance {
         };
         let (pareja_mano, pareja_postre): (Vec<u8>, Vec<u8>) =
             idx_activos.iter().partition(|&idx| *idx % 2 == 0);
-        let idx_parejas = [
-            if pareja_mano.len() == 1 {
-                vec![Turno::Jugador(pareja_mano[0])]
-            } else if pareja_mano.len() == 2 {
-                vec![Turno::Pareja(pareja_mano[0]), Turno::Pareja(pareja_mano[1])]
-            } else {
-                vec![]
-            },
-            if pareja_postre.len() == 1 {
-                vec![Turno::Jugador(pareja_postre[0])]
-            } else if pareja_postre.len() == 2 {
-                vec![
-                    Turno::Pareja(pareja_postre[0]),
-                    Turno::Pareja(pareja_postre[1]),
-                ]
-            } else {
-                vec![]
-            },
-        ];
+        let build_pareja = |pareja: &[u8]| match pareja.len() {
+            1 => (Some(Turno::Jugador(pareja[0])), None),
+            2 => (
+                Some(Turno::Pareja(pareja[0])),
+                Some(Turno::Pareja(pareja[1])),
+            ),
+            _ => (None, None),
+        };
+        let idx_parejas = [build_pareja(&pareja_mano), build_pareja(&pareja_postre)];
         let idx_turno = lance.turno_inicial(manos) as u8;
         let turno = if pareja_mano.is_empty() || pareja_postre.is_empty() {
             None
         } else {
-            Some(idx_parejas[idx_turno as usize][0])
+            idx_parejas[idx_turno as usize].0
         };
         Self {
             bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
@@ -382,7 +371,6 @@ impl EstadoLance {
             jugador_mejor_mano: lance.mejor_mano(manos) as u8,
             idx_turno,
             idx_parejas,
-            idx_pareja: 0,
             accion_pareja: None,
         }
     }
@@ -393,10 +381,9 @@ impl EstadoLance {
     pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
         self.turno().ok_or(MusError::AccionNoValida)?;
         let idx_pareja_activa = &self.idx_parejas[self.idx_turno as usize];
-        self.idx_pareja += 1;
-        if (self.idx_pareja as usize) < idx_pareja_activa.len() {
+        if idx_pareja_activa.1.is_some() && self.accion_pareja.is_none() {
             self.accion_pareja = Some(a);
-            self.turno = Some(idx_pareja_activa[1]);
+            self.turno = idx_pareja_activa.1;
             return Ok(self.turno);
         }
         let apuesta_maxima = Some(a).max(self.accion_pareja).unwrap();
@@ -415,9 +402,8 @@ impl EstadoLance {
             self.turno = None;
             return Ok(None);
         }
-        self.idx_pareja = 0;
         self.accion_pareja = None;
-        self.turno = Some(self.idx_parejas[self.idx_turno as usize][0]);
+        self.turno = self.idx_parejas[self.idx_turno as usize].0;
         Ok(self.turno)
     }
 
