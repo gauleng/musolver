@@ -299,12 +299,12 @@ impl<'a> Display for InfoSet<'a> {
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
-    estado_lance: Vec<EstadoLance>,
+    estado_lance: Option<EstadoLance>,
     info_set_prefix: Option<[String; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
-    history: Vec<Accion>,
-    history_str: Vec<Vec<String>>,
+    last_action: Option<Accion>,
+    history_str: Vec<String>,
 }
 
 impl LanceGame {
@@ -313,12 +313,29 @@ impl LanceGame {
             lance,
             tantos,
             abstract_game,
-            estado_lance: vec![],
+            estado_lance: None,
             info_set_prefix: None,
-            history: Vec::with_capacity(12),
-            history_str: vec![vec!["".into()]],
+            last_action: None,
+            history_str: vec![],
             pareja_mano: 0,
         }
+    }
+
+    pub fn new_with_configuration(&mut self, hand_configuration: HandConfiguration, lance: Lance) {
+        let jugadores = match hand_configuration {
+            HandConfiguration::CuatroManos => vec![0, 1, 2, 3],
+            HandConfiguration::TresManos1vs2 => vec![0, 1, 3],
+            HandConfiguration::TresManos1vs2Intermedio => vec![0, 1, 2],
+            HandConfiguration::TresManos2vs1 => vec![0, 2, 3],
+            HandConfiguration::DosManos => vec![0, 1],
+            HandConfiguration::SinLance => vec![0, 2],
+        };
+        let estado_lance =
+            EstadoLance::con_jugadores(&lance, &jugadores, [0, 0], 0, PartidaMus::MAX_TANTOS);
+        self.pareja_mano = match estado_lance.turno().unwrap() {
+            Turno::Pareja(idx) | Turno::Jugador(idx) => idx as usize,
+        };
+        self.estado_lance = Some(estado_lance);
     }
 
     pub fn from_partida_mus(partida_mus: &PartidaMus, abstract_game: bool) -> Option<Self> {
@@ -327,19 +344,19 @@ impl LanceGame {
             lance,
             tantos: *partida_mus.tantos(),
             abstract_game,
-            estado_lance: vec![EstadoLance::new(
+            estado_lance: Some(EstadoLance::new(
                 &lance,
                 partida_mus.manos(),
                 PartidaMus::MAX_TANTOS,
-            )],
+            )),
             info_set_prefix: LanceGame::info_set_prefix(
                 &lance,
                 partida_mus.manos(),
                 partida_mus.tantos(),
                 abstract_game,
             ),
-            history: Vec::with_capacity(12),
-            history_str: vec![vec![]],
+            last_action: None,
+            history_str: vec![],
             pareja_mano: 0,
         })
     }
@@ -381,21 +398,17 @@ impl Game for LanceGame {
         loop {
             baraja.barajar();
             let manos = baraja.repartir_manos();
-            let mut tantos = self.tantos;
             let turno_inicial = self.lance.turno_inicial(&manos);
-            if turno_inicial == 1 {
-                tantos.swap(0, 1);
-            }
             let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
             if intento_partida.turno().is_some() {
-                self.estado_lance = Vec::with_capacity(6);
-                self.estado_lance.push(intento_partida);
+                self.estado_lance = Some(intento_partida);
                 self.info_set_prefix = LanceGame::info_set_prefix(
                     &self.lance,
                     &manos,
                     &self.tantos,
                     self.abstract_game,
                 );
+                self.pareja_mano = turno_inicial;
                 break;
             }
         }
@@ -424,21 +437,17 @@ impl Game for LanceGame {
                     manos_pareja1[1].clone(),
                     Mano::new(mano2_pareja2),
                 ];
-                let mut tantos = self.tantos;
                 let turno_inicial = self.lance.turno_inicial(&manos);
-                if turno_inicial == 1 {
-                    tantos.swap(0, 1);
-                }
                 let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
                 if intento_partida.turno().is_some() {
-                    self.estado_lance = Vec::with_capacity(6);
-                    self.estado_lance.push(intento_partida);
+                    self.estado_lance = Some(intento_partida);
                     self.info_set_prefix = LanceGame::info_set_prefix(
                         &self.lance,
                         &manos,
                         &self.tantos,
                         self.abstract_game,
                     );
+                    self.pareja_mano = turno_inicial;
                     f(self, probabilidad_pareja1 * probabilidad_pareja2);
                 }
             }
@@ -446,13 +455,16 @@ impl Game for LanceGame {
     }
 
     fn utility(&mut self, player: usize) -> f64 {
-        let estado_lance = self.estado_lance.last_mut().unwrap();
+        let estado_lance = self.estado_lance.as_mut().unwrap();
         let ganador = estado_lance.resolver_lance();
         let tantos_ganador = match estado_lance.tantos_apostados() {
             Apuesta::Tantos(t) => t,
             Apuesta::Ordago => PartidaMus::MAX_TANTOS,
         } + estado_lance.tantos_mano()[ganador as usize];
         let mut tantos = self.tantos;
+        if self.pareja_mano == 1 {
+            tantos.swap(0, 1);
+        }
         tantos[ganador as usize] += tantos_ganador;
         if tantos[ganador as usize] >= PartidaMus::MAX_TANTOS {
             tantos[ganador as usize] = PartidaMus::MAX_TANTOS;
@@ -467,12 +479,10 @@ impl Game for LanceGame {
 
     fn info_set_str(&self, player: usize) -> String {
         let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
-        let mut output = String::with_capacity(15 + self.history.len() + 1);
+        let mut output = String::with_capacity(15 + self.history_str.len() + 1);
         output.push_str(info_set_prefix);
-        if let Some(history_str) = self.history_str.last() {
-            for i in history_str {
-                output.push_str(i);
-            }
+        for i in &self.history_str {
+            output.push_str(i);
         }
         output
     }
@@ -486,7 +496,7 @@ impl Game for LanceGame {
     }
 
     fn actions(&self) -> Vec<Accion> {
-        let partida = self.estado_lance.last().unwrap();
+        let partida = self.estado_lance.as_ref().unwrap();
         let turno = partida.turno().unwrap();
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
         let mut acciones = match ultimo_envite {
@@ -515,30 +525,27 @@ impl Game for LanceGame {
             _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
         };
         if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
-            acciones.retain(|a| a >= self.history.last().unwrap());
+            acciones.retain(|a| a >= self.last_action.as_ref().unwrap());
         }
         acciones
     }
 
     fn is_terminal(&self) -> bool {
-        self.estado_lance.last().unwrap().turno().is_none()
+        self.estado_lance.as_ref().unwrap().turno().is_none()
     }
 
     fn current_player(&self) -> Option<usize> {
-        match self.estado_lance.last().unwrap().turno()? {
+        match self.estado_lance.as_ref().unwrap().turno()? {
             Turno::Jugador(player_id) | Turno::Pareja(player_id) => Some(player_id as usize),
         }
     }
 
     fn act(&mut self, a: Accion) {
-        self.history.push(a);
-        self.history_str
-            .extend_from_within(self.history_str.len() - 1..);
-        let last_history_str = self.history_str.last_mut().unwrap();
-        let turno = self.estado_lance.last().unwrap().turno().unwrap();
+        self.last_action = Some(a);
+        let turno = self.estado_lance.as_ref().unwrap().turno().unwrap();
         match turno {
             Turno::Pareja(2) | Turno::Pareja(3) => {
-                last_history_str.pop();
+                self.history_str.pop();
             }
             _ => {}
         };
@@ -546,21 +553,14 @@ impl Game for LanceGame {
             Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
             _ => a.to_string(),
         };
-        last_history_str.push(action_str);
-        self.estado_lance
-            .extend_from_within(self.estado_lance.len() - 1..);
-        let _ = self.estado_lance.last_mut().unwrap().actuar(a);
+        self.history_str.push(action_str);
+        let _ = self.estado_lance.as_mut().unwrap().actuar(a);
     }
 
-    fn takeback(&mut self) {
-        self.estado_lance.pop();
-        self.history_str.pop();
-        self.history.pop();
-    }
+    fn takeback(&mut self) {}
 
     fn history_str(&self) -> String {
-        let history_str = self.history_str.last().unwrap();
-        history_str.join("")
+        self.history_str.join("")
     }
 }
 

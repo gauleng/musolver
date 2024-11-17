@@ -21,6 +21,7 @@ use musolver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, LanceGame, Strategy,
     },
+    Game,
 };
 
 #[derive(Clone, Debug)]
@@ -339,16 +340,24 @@ impl ActionPath {
             self.selected_tantos_mano.unwrap_or_default(),
             self.selected_tantos_postre.unwrap_or_default(),
         ];
-        let abstract_game = if abstract_game { lance } else { None };
+        let abstract_game_lance = if abstract_game { lance } else { None };
+        let mut lance_game = LanceGame::new(lance.unwrap(), tantos, abstract_game);
+        lance_game.new_with_configuration(tipo_estrategia, lance.unwrap());
+        for action in &history {
+            lance_game.act(*action);
+        }
         let info_set = InfoSet::str(
             &tipo_estrategia,
             &tantos,
             mano1,
             mano2,
-            &history,
-            abstract_game,
+            &[],
+            abstract_game_lance,
         );
-        self.strategy.nodes.get(&info_set).cloned()
+        self.strategy
+            .nodes
+            .get(&(info_set + &lance_game.history_str()))
+            .cloned()
     }
 
     fn update_squares(&mut self) {

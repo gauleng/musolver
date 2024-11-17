@@ -329,6 +329,55 @@ pub struct EstadoLance {
 }
 
 impl EstadoLance {
+    pub fn con_jugadores(
+        lance: &Lance,
+        jugadores: &[u8],
+        tantos_mano: [u8; 2],
+        jugador_mejor_mano: u8,
+        apuesta_maxima: u8,
+    ) -> Self {
+        let (pareja_mano, pareja_postre): (Vec<u8>, Vec<u8>) =
+            jugadores.iter().partition(|&idx| *idx % 2 == 0);
+        let build_pareja = |pareja: &[u8]| match pareja.len() {
+            1 => (Some(Turno::Jugador(pareja[0])), None),
+            2 => (
+                Some(Turno::Pareja(pareja[0])),
+                Some(Turno::Pareja(pareja[1])),
+            ),
+            _ => (None, None),
+        };
+        let idx_parejas = [build_pareja(&pareja_mano), build_pareja(&pareja_postre)];
+        let idx_turno = if (idx_parejas[0] == (Some(Turno::Jugador(2)), None)
+            || idx_parejas[0] == (Some(Turno::Pareja(0)), Some(Turno::Pareja(2))))
+            && idx_parejas[1] == (Some(Turno::Jugador(1)), None)
+        {
+            1
+        } else {
+            0
+        };
+        let turno = if pareja_mano.is_empty()
+            || pareja_postre.is_empty()
+            || (lance == &Lance::Punto && (pareja_mano.len() < 2 || pareja_postre.len() < 2))
+        {
+            None
+        } else {
+            idx_parejas[idx_turno as usize].0
+        };
+        Self {
+            bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
+            turno,
+            ultimo_envite: idx_turno,
+            apuesta_maxima,
+            apuesta_minima: lance.apuesta_minima(),
+            ganador: None,
+            jugador_mejor_mano,
+            tantos_mano,
+            idx_turno,
+            idx_parejas,
+            accion_pareja: None,
+        }
+    }
+
     /// Crea un nuevo estado lance.
     pub fn new(lance: &Lance, manos: &[Mano; 4], apuesta_maxima: u8) -> Self {
         let idx_activos: Vec<_> = match lance {
@@ -345,40 +394,17 @@ impl EstadoLance {
                 .collect(),
             _ => vec![0, 1, 2, 3],
         };
-        let (pareja_mano, pareja_postre): (Vec<u8>, Vec<u8>) =
-            idx_activos.iter().partition(|&idx| *idx % 2 == 0);
-        let build_pareja = |pareja: &[u8]| match pareja.len() {
-            1 => (Some(Turno::Jugador(pareja[0])), None),
-            2 => (
-                Some(Turno::Pareja(pareja[0])),
-                Some(Turno::Pareja(pareja[1])),
-            ),
-            _ => (None, None),
-        };
         let tantos_mano = [
             lance.tantos_mano(&manos[0]) + lance.tantos_mano(&manos[2]) + lance.bonus(),
             lance.tantos_mano(&manos[1]) + lance.tantos_mano(&manos[3]) + lance.bonus(),
         ];
-        let idx_parejas = [build_pareja(&pareja_mano), build_pareja(&pareja_postre)];
-        let idx_turno = lance.turno_inicial(manos) as u8;
-        let turno = if pareja_mano.is_empty() || pareja_postre.is_empty() {
-            None
-        } else {
-            idx_parejas[idx_turno as usize].0
-        };
-        Self {
-            bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
-            turno,
-            ultimo_envite: idx_turno,
-            apuesta_maxima,
-            apuesta_minima: lance.apuesta_minima(),
-            ganador: None,
-            jugador_mejor_mano: lance.mejor_mano(manos) as u8,
+        EstadoLance::con_jugadores(
+            lance,
+            &idx_activos,
             tantos_mano,
-            idx_turno,
-            idx_parejas,
-            accion_pareja: None,
-        }
+            lance.mejor_mano(manos) as u8,
+            apuesta_maxima,
+        )
     }
 
     /// Efectúa la acción para el jugador del turno actual.
