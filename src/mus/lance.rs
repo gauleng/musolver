@@ -386,11 +386,21 @@ impl EstadoLance {
                 .enumerate()
                 .filter_map(|(idx, mano)| mano.pares().map(|_| idx as u8))
                 .collect(),
-
             Lance::Juego => manos
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, mano)| mano.juego().map(|_| idx as u8))
+                .collect(),
+            Lance::Punto => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| {
+                    if mano.juego().is_some() {
+                        None
+                    } else {
+                        Some(idx as u8)
+                    }
+                })
                 .collect(),
             _ => vec![0, 1, 2, 3],
         };
