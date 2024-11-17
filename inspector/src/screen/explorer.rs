@@ -342,7 +342,7 @@ impl ActionPath {
         ];
         let abstract_game_lance = if abstract_game { lance } else { None };
         let mut lance_game = LanceGame::new(lance.unwrap(), tantos, abstract_game);
-        lance_game.new_with_configuration(tipo_estrategia, lance.unwrap());
+        lance_game.new_with_configuration(tipo_estrategia);
         for action in &history {
             lance_game.act(*action);
         }

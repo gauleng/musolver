@@ -321,7 +321,7 @@ impl LanceGame {
         }
     }
 
-    pub fn new_with_configuration(&mut self, hand_configuration: HandConfiguration, lance: Lance) {
+    pub fn new_with_configuration(&mut self, hand_configuration: HandConfiguration) {
         let jugadores = match hand_configuration {
             HandConfiguration::CuatroManos => vec![0, 1, 2, 3],
             HandConfiguration::TresManos1vs2 => vec![0, 1, 3],
@@ -331,7 +331,7 @@ impl LanceGame {
             HandConfiguration::SinLance => vec![0, 2],
         };
         let estado_lance =
-            EstadoLance::con_jugadores(&lance, &jugadores, [0, 0], 0, PartidaMus::MAX_TANTOS);
+            EstadoLance::con_jugadores(&self.lance, &jugadores, [0, 0], 0, PartidaMus::MAX_TANTOS);
         self.pareja_mano = match estado_lance.turno().unwrap() {
             Turno::Pareja(idx) | Turno::Jugador(idx) => idx as usize,
         };
