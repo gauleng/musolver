@@ -8,6 +8,7 @@ members = [ "arena","inspector"]
 
 [dependencies]
 approx = "0.5.1"
+arrayvec = "0.7.6"
 chrono = "0.4.38"
 clap = { version = "4.5.17", features = ["derive"] }
 csv = "1.3.0"

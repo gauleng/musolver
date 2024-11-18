@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use arrayvec::{ArrayString, ArrayVec};
 use itertools::Itertools;
 
 use crate::{
@@ -300,11 +301,11 @@ pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     estado_lance: Option<EstadoLance>,
-    info_set_prefix: Option<[String; 4]>,
+    info_set_prefix: Option<[ArrayString<64>; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
     last_action: Option<Accion>,
-    history_str: Vec<String>,
+    history_str: ArrayVec<ArrayString<4>, 14>,
 }
 
 impl LanceGame {
@@ -316,7 +317,7 @@ impl LanceGame {
             estado_lance: None,
             info_set_prefix: None,
             last_action: None,
-            history_str: vec![],
+            history_str: ArrayVec::new(),
             pareja_mano: 0,
         }
     }
@@ -356,7 +357,7 @@ impl LanceGame {
                 abstract_game,
             ),
             last_action: None,
-            history_str: vec![],
+            history_str: ArrayVec::new(),
             pareja_mano: 0,
         })
     }
@@ -366,17 +367,18 @@ impl LanceGame {
         manos: &[Mano; 4],
         tantos: &[u8; 2],
         abstracto: bool,
-    ) -> Option<[String; 4]> {
+    ) -> Option<[ArrayString<64>; 4]> {
         let manos_normalizadas = ManosNormalizadas::normalizar_mano(manos, lance);
-        let info_set_prefix: [String; 4] = core::array::from_fn(|i| {
-            InfoSet::str(
+        let info_set_prefix: [ArrayString<64>; 4] = core::array::from_fn(|i| {
+            ArrayString::<64>::from(&InfoSet::str(
                 &manos_normalizadas.hand_configuration(),
                 tantos,
                 &manos[i],
                 None,
                 &[],
                 if abstracto { Some(*lance) } else { None },
-            )
+            ))
+            .unwrap()
         });
         Some(info_set_prefix)
     }
@@ -553,7 +555,8 @@ impl Game for LanceGame {
             Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
             _ => a.to_string(),
         };
-        self.history_str.push(action_str);
+        self.history_str
+            .push(ArrayString::<4>::from(&action_str).unwrap());
         let _ = self.estado_lance.as_mut().unwrap().actuar(a);
     }
 
