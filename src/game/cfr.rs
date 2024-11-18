@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
@@ -75,7 +76,7 @@ impl<A> Node<A> {
 #[derive(Debug)]
 struct GameNode<G> {
     lance_game: G,
-    next_nodes: Vec<usize>,
+    next_nodes: ArrayVec<usize, 16>,
     reach_player: f64,
     reach_opponent: f64,
     utility: f64,
@@ -102,7 +103,7 @@ where
             last_node_id: 0,
             game_nodes: vec![GameNode {
                 lance_game: game,
-                next_nodes: vec![],
+                next_nodes: ArrayVec::new(),
                 reach_player: 1.,
                 reach_opponent: 1.,
                 utility: 0.,
@@ -142,7 +143,7 @@ where
                             self.node_ids.insert(history_str, self.last_node_id);
                             self.game_nodes.push(GameNode {
                                 lance_game: new_game,
-                                next_nodes: vec![],
+                                next_nodes: ArrayVec::new(),
                                 reach_player: 0.,
                                 reach_opponent: 0.,
                                 utility: 0.,

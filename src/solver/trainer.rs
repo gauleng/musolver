@@ -39,7 +39,7 @@ impl Trainer {
                 pb.set_message(format!(
                     "Utility: {}",
                     util.iter()
-                        .map(|u| u.to_string())
+                        .map(|u| format!("{:.5}", u))
                         .collect::<Vec<String>>()
                         .join(" "),
                 ));
