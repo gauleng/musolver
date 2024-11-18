@@ -295,7 +295,8 @@ impl ActionPath {
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
         };
-        let strategy_node = action_path.strategy_node(&Mano::try_from("RRRR").unwrap(), None);
+        let mano = &action_path.buckets.values().next().unwrap()[0];
+        let strategy_node = action_path.strategy_node(mano, None);
         action_path.append_action_picklists(&strategy_node.unwrap().0);
         action_path.update_squares();
         action_path
@@ -447,7 +448,8 @@ impl ActionPath {
                 self.actions.drain(level + 1..);
 
                 if action.0.is_some() {
-                    let strategy_node = self.strategy_node(&Mano::try_from("RRRR").unwrap(), None);
+                    let mano = &self.buckets.values().next().unwrap()[0];
+                    let strategy_node = self.strategy_node(mano, None);
                     self.append_action_picklists(&strategy_node.unwrap().0);
                 }
             }
