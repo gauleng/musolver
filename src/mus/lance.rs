@@ -870,4 +870,21 @@ mod tests_lance {
         let manos = vec![a, b];
         assert_eq!(juego.mejor_mano(&manos), 0);
     }
+
+    #[test]
+    fn test_compara_manos4() {
+        let a = Mano::try_from("5555").unwrap();
+        let b = Mano::try_from("6611").unwrap();
+        let grande = Lance::Grande;
+        let chica = Lance::Chica;
+        let pares = Lance::Pares;
+        let juego = Lance::Juego;
+        let punto = Lance::Punto;
+        assert_eq!(grande.compara_manos(&a, &b), Less);
+        assert_eq!(chica.compara_manos(&a, &b), Less);
+        assert_eq!(pares.compara_manos(&a, &b), Less);
+        assert_eq!(punto.compara_manos(&a, &b), Greater);
+        let manos = vec![a, b];
+        assert_eq!(juego.mejor_mano(&manos), 0);
+    }
 }
