@@ -1,4 +1,4 @@
-use arrayvec::ArrayVec;
+use arrayvec::{ArrayString, ArrayVec};
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
@@ -80,6 +80,7 @@ struct GameNode<G> {
     reach_player: f64,
     reach_opponent: f64,
     utility: f64,
+    info_set_str: Option<ArrayString<64>>,
 }
 
 #[derive(Debug)]
@@ -97,17 +98,22 @@ where
     fn new(game: G) -> Self {
         let history_str = game.history_str();
         let node_ids = HashMap::from([(history_str, 0)]);
+        let current_player = game.current_player().unwrap();
+        let info_set_str = game.info_set_str(current_player);
+        let mut game_nodes = Vec::with_capacity(512);
+        game_nodes.push(GameNode {
+            lance_game: game,
+            next_nodes: ArrayVec::new(),
+            reach_player: 1.,
+            reach_opponent: 1.,
+            utility: 0.,
+            info_set_str: ArrayString::from(&info_set_str).ok(),
+        });
 
         Self {
             node_ids,
             last_node_id: 0,
-            game_nodes: vec![GameNode {
-                lance_game: game,
-                next_nodes: ArrayVec::new(),
-                reach_player: 1.,
-                reach_opponent: 1.,
-                utility: 0.,
-            }],
+            game_nodes,
         }
     }
 
@@ -139,6 +145,11 @@ where
                             None
                         }
                         None => {
+                            let info_set_str =
+                                new_game.current_player().and_then(|current_player| {
+                                    ArrayString::<64>::from(&new_game.info_set_str(current_player))
+                                        .ok()
+                                });
                             self.last_node_id += 1;
                             self.node_ids.insert(history_str, self.last_node_id);
                             self.game_nodes.push(GameNode {
@@ -147,6 +158,7 @@ where
                                 reach_player: 0.,
                                 reach_opponent: 0.,
                                 utility: 0.,
+                                info_set_str: info_set_str,
                             });
                             self.game_nodes[idx].next_nodes.push(self.last_node_id);
                             Some(self.last_node_id)
@@ -407,11 +419,13 @@ where
             let lance_game = &mut game_node.lance_game;
             if !lance_game.is_terminal() {
                 let current_player = lance_game.current_player().unwrap();
-                let info_set_str = lance_game.info_set_str(current_player);
+                let info_set_str = game_node
+                    .info_set_str
+                    .expect("InfoSet must be valid in non terminal nodes.");
                 let actions = lance_game.actions();
                 let node = self
                     .nodes
-                    .entry(info_set_str.clone())
+                    .entry(info_set_str.to_string())
                     .or_insert_with(|| Node::new(actions.clone()));
                 let strategy = node.strategy();
                 for (i, s) in strategy.iter().enumerate() {
@@ -438,8 +452,10 @@ where
                 game_graph.game_nodes[idx].utility = lance_game.utility(player);
             } else {
                 let current_player = lance_game.current_player().unwrap();
-                let info_set_str = lance_game.info_set_str(current_player);
-                let node = self.nodes.get_mut(&info_set_str).unwrap();
+                let info_set_str = game_graph.game_nodes[idx]
+                    .info_set_str
+                    .expect("InfoSet must be valid in non terminal nodes.");
+                let node = self.nodes.get_mut(info_set_str.as_str()).unwrap();
                 let strategy = node.strategy();
 
                 let utility: Vec<f64> = game_graph.game_nodes[idx]
