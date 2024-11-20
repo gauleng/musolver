@@ -544,7 +544,12 @@ impl Game for LanceGame {
 
     fn act(&mut self, a: Accion) {
         self.last_action = Some(a);
-        let turno = self.estado_lance.as_ref().unwrap().turno().unwrap();
+        let turno = self
+            .estado_lance
+            .as_ref()
+            .expect("At least one EstadoLance must be available.")
+            .turno()
+            .unwrap();
         match turno {
             Turno::Pareja(2) | Turno::Pareja(3) => {
                 self.history_str.pop();

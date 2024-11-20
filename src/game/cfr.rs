@@ -158,7 +158,7 @@ where
                                 reach_player: 0.,
                                 reach_opponent: 0.,
                                 utility: 0.,
-                                info_set_str: info_set_str,
+                                info_set_str,
                             });
                             self.game_nodes[idx].next_nodes.push(self.last_node_id);
                             Some(self.last_node_id)
@@ -297,6 +297,20 @@ where
                     game.new_random();
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
+                    for game_node in &mut game_graph.game_nodes {
+                        if !game_node.lance_game.is_terminal() {
+                            let info_set_str = game_node
+                                .lance_game
+                                .current_player()
+                                .map(|current_player| {
+                                    game_node.lance_game.info_set_str(current_player)
+                                })
+                                .unwrap();
+                            self.nodes
+                                .entry(info_set_str)
+                                .or_insert_with(|| Node::new(game_node.lance_game.actions()));
+                        }
+                    }
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         let player_id = game.player_id(player_idx);
                         *u += self.fsicfr(&mut game_graph, player_id);
@@ -422,11 +436,10 @@ where
                 let info_set_str = game_node
                     .info_set_str
                     .expect("InfoSet must be valid in non terminal nodes.");
-                let actions = lance_game.actions();
                 let node = self
                     .nodes
-                    .entry(info_set_str.to_string())
-                    .or_insert_with(|| Node::new(actions.clone()));
+                    .get(info_set_str.as_str())
+                    .expect("InfoSet should be preloaded before calling fsicfr.");
                 let strategy = node.strategy();
                 for (i, s) in strategy.iter().enumerate() {
                     let child_idx = game_graph.game_nodes[idx].next_nodes[i];
