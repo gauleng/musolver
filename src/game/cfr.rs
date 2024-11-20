@@ -299,15 +299,9 @@ where
                     game_graph.inflate();
                     for game_node in &mut game_graph.game_nodes {
                         if !game_node.lance_game.is_terminal() {
-                            let info_set_str = game_node
-                                .lance_game
-                                .current_player()
-                                .map(|current_player| {
-                                    game_node.lance_game.info_set_str(current_player)
-                                })
-                                .unwrap();
+                            let info_set_str = game_node.info_set_str.unwrap();
                             self.nodes
-                                .entry(info_set_str)
+                                .entry(info_set_str.to_string())
                                 .or_insert_with(|| Node::new(game_node.lance_game.actions()));
                         }
                     }
