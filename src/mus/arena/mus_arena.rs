@@ -25,7 +25,7 @@ pub struct MusArena {
     pub kibitzers: Vec<Box<dyn Kibitzer>>,
     partida_mus: PartidaMus,
     lance: Option<Lance>,
-    order: [usize; 2],
+    order: [usize; 4],
 }
 
 impl MusArena {
@@ -34,7 +34,7 @@ impl MusArena {
             agents: vec![],
             kibitzers: vec![],
             partida_mus: MusArena::new_partida(lance),
-            order: [0, 1],
+            order: [0, 1, 2, 3],
             lance,
         }
     }
@@ -65,7 +65,7 @@ impl MusArena {
 
     pub fn start(&mut self) {
         self.partida_mus = MusArena::new_partida(self.lance);
-        self.order.swap(0, 1);
+        self.order.rotate_right(1);
         self.record_action(MusAction::GameStart(self.order[0]));
         let manos = self.partida_mus.manos().clone();
         for (i, m) in manos.iter().enumerate() {
