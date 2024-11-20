@@ -297,14 +297,18 @@ where
                     game.new_random();
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
-                    for game_node in &mut game_graph.game_nodes {
-                        if !game_node.lance_game.is_terminal() {
-                            let info_set_str = game_node.info_set_str.unwrap();
+                    game_graph
+                        .game_nodes
+                        .iter()
+                        .filter(|node| !node.lance_game.is_terminal())
+                        .for_each(|non_terminal_node| {
+                            let info_set_str = non_terminal_node.info_set_str.unwrap();
                             self.nodes
                                 .entry(info_set_str.to_string())
-                                .or_insert_with(|| Node::new(game_node.lance_game.actions()));
-                        }
-                    }
+                                .or_insert_with(|| {
+                                    Node::new(non_terminal_node.lance_game.actions())
+                                });
+                        });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         let player_id = game.player_id(player_idx);
                         *u += self.fsicfr(&mut game_graph, player_id);
