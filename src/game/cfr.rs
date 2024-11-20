@@ -294,6 +294,9 @@ where
                     }
                 }
                 CfrMethod::FsiCfr => {
+                    let round_size = 1_000_000;
+                    let round_number = (1 + (i / round_size)) as f64;
+                    let round_weight = round_number / (round_number + 1.);
                     game.new_random();
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
@@ -311,7 +314,7 @@ where
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         let player_id = game.player_id(player_idx);
-                        *u += self.fsicfr(&mut game_graph, player_id);
+                        *u += self.fsicfr(&mut game_graph, player_id, round_weight);
                     }
                 }
             }
@@ -419,7 +422,7 @@ where
         }
     }
 
-    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P) -> f64
+    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P, round_weight: f64) -> f64
     where
         G::P: Eq + Copy,
         G::A: Copy,
@@ -484,10 +487,13 @@ where
                         .iter_mut()
                         .zip(utility.iter())
                         .for_each(|(r, u)| {
-                            *r += game_graph.game_nodes[idx].reach_opponent
+                            *r += round_weight
+                                * game_graph.game_nodes[idx].reach_opponent
                                 * (u - game_graph.game_nodes[idx].utility)
                         });
-                    node.update_strategy_sum(game_graph.game_nodes[idx].reach_player);
+                    node.update_strategy_sum(
+                        round_weight * game_graph.game_nodes[idx].reach_player,
+                    );
                     node.update_strategy();
                 }
             }
