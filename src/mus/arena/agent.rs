@@ -3,9 +3,9 @@ use std::{cell::RefCell, io, rc::Rc};
 use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 use crate::{
-    mus::{Accion, PartidaMus, Turno},
+    mus::{Accion, PartidaMus},
     solver::{LanceGame, Strategy},
-    Game, Node,
+    Game,
 };
 
 pub trait Agent {
@@ -101,28 +101,10 @@ impl AgenteMusolver {
         Self { strategy, history }
     }
 
-    fn accion_aleatoria(&mut self, partida_mus: &PartidaMus, acciones: Vec<Accion>) -> Accion {
-        let turno = partida_mus.turno().unwrap();
-        let player_id = match turno {
-            Turno::Jugador(player_id) | Turno::Pareja(player_id) => player_id,
-        } as usize;
-        let info_set = LanceGame::from_partida_mus(
-            partida_mus,
-            self.strategy.strategy_config.game_config.abstract_game,
-        )
-        .unwrap()
-        .info_set_str(player_id);
-        let probabilities = match self.strategy.nodes.get(&info_set) {
-            None => {
-                println!("ERROR: InfoSet no encontrado: {info_set}");
-                &Node::new(acciones.clone()).strategy().to_owned()
-            }
-            Some(n) => &n.1,
-        };
-
+    fn accion_aleatoria(actions: &[Accion], probabilities: &[f64]) -> Accion {
         let dist = WeightedIndex::new(probabilities).unwrap();
         let idx = dist.sample(&mut rand::thread_rng());
-        acciones[idx]
+        actions[idx]
     }
 }
 
@@ -136,14 +118,19 @@ impl Agent for AgenteMusolver {
         for action in self.history.borrow().iter() {
             lance_game.act(*action);
         }
-        let next_actions = lance_game.actions();
-        if next_actions.is_empty() {
+        let current_player = lance_game.current_player().unwrap();
+        let action_probability = self
+            .strategy
+            .nodes
+            .get(&lance_game.info_set_str(current_player));
+        if let Some((actions, probabilities)) = action_probability {
+            Self::accion_aleatoria(actions, probabilities)
+        } else {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
                 self.history.borrow()
             );
-            return Accion::Paso;
+            Accion::Paso
         }
-        self.accion_aleatoria(partida_mus, next_actions)
     }
 }

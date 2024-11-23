@@ -95,46 +95,25 @@ impl Kibitzer for KibitzerCli {
             }
             MusAction::PlayerAction(player_id, accion) => {
                 if *player_id != self.cli_player {
-                    println!("❗❗❗Jugador {player_id} ha actuado: {:?}", accion);
+                    println!(
+                        "❗❗❗{} ha actuado: {:?}",
+                        self.nombres_jugadores[*player_id], accion
+                    );
                 }
             }
             MusAction::Payoff(pareja_id, tantos) => {
                 if *tantos > 0 {
-                    let pareja_ganadora = if *pareja_id == self.jugador_mano % 2 {
-                        0
-                    } else {
-                        1
-                    };
-                    if pareja_ganadora == self.cli_player % 2 {
+                    if *pareja_id == self.cli_player % 2 {
                         println!();
                         println!("¡¡¡¡HAS GANADO {tantos} tantos!!!! 🚀🚀🚀");
                         println!();
-                        println!(
-                            "Manos del rival: {} {}",
-                            KibitzerCli::hand_str(
-                                &self.lance_actual.unwrap(),
-                                &self.manos[1 - pareja_ganadora],
-                                false
-                            ),
-                            KibitzerCli::hand_str(
-                                &self.lance_actual.unwrap(),
-                                &self.manos[3 - pareja_ganadora],
-                                false
-                            ),
-                        );
                     } else {
+                        println!("Pareja rival ha ganado {tantos} tantos con manos.",);
+                    }
+                    for mano in &self.manos {
                         println!(
-                            "Pareja {pareja_id} ha ganado {tantos} tantos con manos: {} {}",
-                            KibitzerCli::hand_str(
-                                &self.lance_actual.unwrap(),
-                                &self.manos[pareja_ganadora],
-                                false
-                            ),
-                            KibitzerCli::hand_str(
-                                &self.lance_actual.unwrap(),
-                                &self.manos[pareja_ganadora + 2],
-                                false
-                            ),
+                            "{}",
+                            KibitzerCli::hand_str(&self.lance_actual.unwrap(), mano, false)
                         );
                     }
                 }
@@ -204,7 +183,7 @@ struct Args {
     #[arg(short, long)]
     strategy_path: Option<String>,
 
-    #[arg(short, long, num_args = 4, value_enum)]
+    #[arg(short, long, num_args = 4, required = true, value_enum)]
     agents: Vec<AgentType>,
 }
 
@@ -261,11 +240,11 @@ fn main() {
             AgentType::Cli => {
                 arena.agents.push(Box::new(agente_cli.clone()));
                 cli_client = i;
-                nombres_jugadores.push("Hero".to_string());
+                nombres_jugadores.push(format!("Hero#{i}"));
             }
             AgentType::Random => {
                 arena.agents.push(Box::new(agente_aleatorio.clone()));
-                nombres_jugadores.push("Random".to_string());
+                nombres_jugadores.push(format!("Random#{i}"));
             }
             AgentType::Musolver => {
                 if let Some(s) = &strategy {
@@ -275,7 +254,7 @@ fn main() {
                 } else {
                     panic!("Cannot load musolver: strategy not available.");
                 }
-                nombres_jugadores.push("Musolver".to_string());
+                nombres_jugadores.push(format!("Musolver#{i}"));
             }
         }
     }
