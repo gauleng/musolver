@@ -265,5 +265,7 @@ fn main() {
 
     loop {
         arena.start();
+        println!("Press any key to continue.");
+        let _ = io::stdin().read_line(&mut String::new());
     }
 }
