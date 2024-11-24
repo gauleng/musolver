@@ -71,11 +71,11 @@ impl Agent for AgenteMusolver {
         for action in self.history.borrow().iter() {
             lance_game.act(*action);
         }
-        let current_player = lance_game.current_player().unwrap();
-        let action_probability = self
-            .strategy
-            .nodes
-            .get(&lance_game.info_set_str(current_player));
+        let info_set_str = lance_game
+            .current_player()
+            .map(|current_player| lance_game.info_set_str(current_player))
+            .unwrap();
+        let action_probability = self.strategy.nodes.get(&info_set_str);
         if let Some((actions, probabilities)) = action_probability {
             Self::accion_aleatoria(actions, probabilities)
         } else {

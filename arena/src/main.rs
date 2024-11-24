@@ -95,10 +95,17 @@ impl Kibitzer for KibitzerCli {
             }
             MusAction::PlayerAction(player_id, accion) => {
                 if *player_id != self.cli_player {
-                    println!(
-                        "❗❗❗{} ha actuado: {:?}",
-                        self.nombres_jugadores[*player_id], accion
-                    );
+                    if (*player_id + self.cli_player) % 2 == 0 {
+                        println!(
+                            "💚💚💚{} ha actuado: {:?}",
+                            self.nombres_jugadores[*player_id], accion
+                        );
+                    } else {
+                        println!(
+                            "❗❗❗{} ha actuado: {:?}",
+                            self.nombres_jugadores[*player_id], accion
+                        );
+                    }
                 }
             }
             MusAction::Payoff(pareja_id, tantos) => {
@@ -313,7 +320,7 @@ fn main() {
 
     loop {
         arena.start();
-        println!("Press any key to continue.");
+        println!("Pulsa una tecla para continuar...");
         let _ = io::stdin().read_line(&mut String::new());
     }
 }
