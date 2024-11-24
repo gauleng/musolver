@@ -344,14 +344,13 @@ where
             .iter()
             .zip(strategy.iter())
             .map(|(a, s)| {
-                game.act(*a);
-                let u = if current_player == player {
-                    self.chance_sampling(game, player, pi * s, po)
+                let mut new_game = game.clone();
+                new_game.act(*a);
+                if current_player == player {
+                    self.chance_sampling(&mut new_game, player, pi * s, po)
                 } else {
-                    self.chance_sampling(game, player, pi, po * s)
-                };
-                game.takeback();
-                u
+                    self.chance_sampling(&mut new_game, player, pi, po * s)
+                }
             })
             .collect();
         let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
@@ -386,10 +385,9 @@ where
             let util: Vec<f64> = actions
                 .iter()
                 .map(|accion| {
-                    game.act(*accion);
-                    let u = self.external_sampling(game, player);
-                    game.takeback();
-                    u
+                    let mut new_game = game.clone();
+                    new_game.act(*accion);
+                    self.external_sampling(&mut new_game, player)
                 })
                 .collect();
             let node = self
