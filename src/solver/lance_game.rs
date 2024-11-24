@@ -565,8 +565,6 @@ impl Game for LanceGame {
         let _ = self.estado_lance.as_mut().unwrap().actuar(a);
     }
 
-    fn takeback(&mut self) {}
-
     fn history_str(&self) -> String {
         self.history_str.join("")
     }

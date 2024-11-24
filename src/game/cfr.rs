@@ -203,9 +203,6 @@ pub trait Game {
     /// Advance the state with the given action for the current player.
     fn act(&mut self, a: Self::A);
 
-    /// Takeback the last action and return to the previous state of the game.
-    fn takeback(&mut self);
-
     /// Initializes the game with a random instance. This method is called by the external and
     /// chance sampling methods.
     fn new_random(&mut self);
@@ -413,10 +410,9 @@ where
             let s = node.get_random_action();
             let accion = actions.get(s).unwrap();
 
-            game.act(*accion);
-            let util = self.external_sampling(game, player);
-            game.takeback();
-            util
+            let mut new_game = game.clone();
+            new_game.act(*accion);
+            self.external_sampling(&mut new_game, player)
         }
     }
 
