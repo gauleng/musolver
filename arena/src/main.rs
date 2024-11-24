@@ -1,16 +1,16 @@
 use core::panic;
-use std::{io, path::PathBuf};
+use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
 
 use clap::{command, Parser, ValueEnum};
 use musolver::{
     mus::{
         arena::{
-            ActionRecorder, AgenteAleatorio, AgenteCli, AgenteMusolver, Kibitzer, MusAction,
-            MusArena,
+            ActionRecorder, Agent, AgenteAleatorio, AgenteMusolver, Kibitzer, MusAction, MusArena,
         },
-        Juego, Lance, Mano, PartidaMus,
+        Accion, Juego, Lance, Mano, PartidaMus,
     },
     solver::{BancoEstrategias, LanceGame, SolverError, Strategy, StrategyConfig},
+    Game,
 };
 
 pub struct KibitzerCli {
@@ -123,6 +123,54 @@ impl Kibitzer for KibitzerCli {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct AgenteCli {
+    history: Rc<RefCell<Vec<Accion>>>,
+}
+
+impl AgenteCli {
+    pub fn new(history: Rc<RefCell<Vec<Accion>>>) -> Self {
+        Self { history }
+    }
+}
+
+impl Agent for AgenteCli {
+    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
+        let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
+        for action in self.history.borrow().iter() {
+            lance_game.act(*action);
+        }
+        println!("Elija una acción:");
+        let next_actions = lance_game.actions();
+        next_actions
+            .iter()
+            .enumerate()
+            .for_each(|(i, a)| println!("{i}: {:?}", a));
+        let mut input = String::new();
+        loop {
+            io::stdin()
+                .read_line(&mut input)
+                .expect("Failed to read line");
+            let num = input.trim().parse::<usize>();
+            match num {
+                Ok(n) => {
+                    let selected_action = next_actions.get(n);
+                    if let Some(a) = selected_action {
+                        return *a;
+                    }
+                    println!("Opción no válida.");
+                    input.clear();
+                }
+                Err(_) => {
+                    println!("Opción no válida.");
+                    input.clear();
+                }
+            }
+        }
+    }
+}
+
 fn show_strategy_data(strategy: &StrategyConfig) {
     println!(
         "\tLance: {}",
