@@ -8,7 +8,7 @@ use iced::{
     mouse,
     widget::{
         canvas::{self, Stroke, Text},
-        column, pick_list, row, scrollable, Canvas, Column, Container, Row,
+        column, container, pick_list, row, scrollable, text, Canvas, Column, Container, Row,
     },
     Color, Element,
     Length::{self, Fill},
@@ -30,6 +30,7 @@ pub enum ExplorerEvent {
     SetStrategy(HandConfiguration),
     SetTantosMano(u8),
     SetTantosPostre(u8),
+    SelectBucket(Option<usize>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -118,6 +119,7 @@ pub struct SquareData {
     pub resto: f64,
     pub mano: String,
     pub cache: canvas::Cache,
+    pub square_id: usize,
 }
 
 impl SquareData {
@@ -140,12 +142,13 @@ impl SquareData {
     pub fn reset_probabilities(&mut self) {
         *self = Self {
             mano: self.mano.clone(),
+            square_id: self.square_id,
             ..Default::default()
         };
     }
 }
 
-impl<AppEvent> canvas::Program<AppEvent> for SquareData {
+impl canvas::Program<ExplorerEvent> for SquareData {
     type State = ();
 
     fn draw(
@@ -203,6 +206,24 @@ impl<AppEvent> canvas::Program<AppEvent> for SquareData {
         // Then, we produce the geometry
         vec![content]
     }
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        event: canvas::Event,
+        bounds: iced::Rectangle,
+        cursor: mouse::Cursor,
+    ) -> (canvas::event::Status, Option<ExplorerEvent>) {
+        if let canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) = event {
+            if cursor.position_in(bounds).is_some() {
+                return (
+                    canvas::event::Status::Captured,
+                    Some(ExplorerEvent::SelectBucket(Some(self.square_id))),
+                );
+            }
+        }
+        (canvas::event::Status::Ignored, None)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -229,6 +250,7 @@ pub struct ActionPath {
     pub view_mode: ViewMode,
     pub one_hand_squares: Vec<SquareData>,
     pub two_hands_squares: Vec<Vec<SquareData>>,
+    pub hovered_square: Option<usize>,
 }
 
 impl ActionPath {
@@ -252,15 +274,16 @@ impl ActionPath {
         jugadas.sort();
         let mut one_hand_squares = Vec::with_capacity(jugadas.len());
         let mut two_hands_squares = Vec::with_capacity(jugadas.len());
-        for s in &jugadas {
+        for (idx, jugada) in jugadas.iter().enumerate() {
             one_hand_squares.push(SquareData {
-                mano: s.to_string(),
+                mano: jugada.to_string(),
+                square_id: idx,
                 ..SquareData::default()
             });
             let mut row = Vec::with_capacity(one_hand_list.len());
-            for s2 in &jugadas {
+            for jugada2 in &jugadas {
                 row.push(SquareData {
-                    mano: format!("{},{}", s, s2),
+                    mano: format!("{},{}", jugada, jugada2),
                     ..SquareData::default()
                 })
             }
@@ -294,6 +317,7 @@ impl ActionPath {
             actions: vec![],
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
+            hovered_square: None,
         };
         let mano = &action_path.buckets.values().next().unwrap()[0];
         let strategy_node = action_path.strategy_node(mano, None);
@@ -458,6 +482,7 @@ impl ActionPath {
             }
             ExplorerEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
             ExplorerEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
+            ExplorerEvent::SelectBucket(bucket_id) => self.hovered_square = bucket_id,
         }
         // let turn = self.selected_action_node().to_play();
         // self.view_mode = match self.selected_strategy {
@@ -528,6 +553,34 @@ impl ActionPath {
         let legend =
             Container::new(Canvas::new(Legend::default()).width(700).height(60)).padding(20);
 
+        let bucket_info = column(self.hovered_square.map(|bucket_id| {
+            container(column![
+                text!("Paso: {:.2}%", self.one_hand_squares[bucket_id].paso * 100.),
+                text!(
+                    "Quiero: {:.2}%",
+                    self.one_hand_squares[bucket_id].quiero * 100.
+                ),
+                text!(
+                    "Envido 2: {:.2}%",
+                    self.one_hand_squares[bucket_id].envido2 * 100.
+                ),
+                text!(
+                    "Envido 5: {:.2}%",
+                    self.one_hand_squares[bucket_id].envido5 * 100.
+                ),
+                text!(
+                    "Envido 10: {:.2}%",
+                    self.one_hand_squares[bucket_id].envido10 * 100.
+                ),
+                text!(
+                    "Órdago: {:.2}%",
+                    self.one_hand_squares[bucket_id].ordago * 100.
+                ),
+            ])
+            .into()
+        }))
+        .padding(20);
+
         let mut matrix = Column::new();
         if self.view_mode == ViewMode::OneHand {
             for square in &self.one_hand_squares {
@@ -543,12 +596,15 @@ impl ActionPath {
             }
         }
 
-        let scrollable_matrix = scrollable(matrix)
-            .direction(scrollable::Direction::Both {
-                vertical: scrollable::Scrollbar::default(),
-                horizontal: scrollable::Scrollbar::default(),
-            })
-            .width(Length::Fill);
+        let scrollable_matrix = row![
+            bucket_info,
+            scrollable(matrix)
+                .direction(scrollable::Direction::Both {
+                    vertical: scrollable::Scrollbar::default(),
+                    horizontal: scrollable::Scrollbar::default(),
+                })
+                .width(Length::Fill)
+        ];
         let layout = column![top_row, legend, scrollable_matrix].align_x(Horizontal::Center);
 
         layout.into()
