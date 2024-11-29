@@ -8,7 +8,7 @@ use iced::{
     mouse,
     widget::{
         canvas::{self, Stroke, Text},
-        column, container, pick_list, row, scrollable, text, Canvas, Column, Container, Row,
+        column, pick_list, row, scrollable, text, Canvas, Column, Container, Row,
     },
     Color, Element,
     Length::{self, Fill},
@@ -108,8 +108,7 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct SquareData {
+pub struct SquareData<Message> {
     pub paso: f64,
     pub quiero: f64,
     pub envido2: f64,
@@ -119,10 +118,32 @@ pub struct SquareData {
     pub resto: f64,
     pub mano: String,
     pub cache: canvas::Cache,
-    pub square_id: usize,
+    on_hover: Option<Box<dyn Fn() -> Message + 'static>>,
 }
 
-impl SquareData {
+impl<Message> SquareData<Message> {
+    pub fn new(mano: String) -> Self {
+        Self {
+            paso: 0.,
+            quiero: 0.,
+            envido2: 0.,
+            envido5: 0.,
+            envido10: 0.,
+            ordago: 0.,
+            resto: 0.,
+            mano,
+            cache: canvas::Cache::default(),
+            on_hover: None,
+        }
+    }
+
+    pub fn on_hover(mut self, on_hover: impl Fn() -> Message + 'static) -> Self {
+        self.on_hover = Some(Box::new(on_hover));
+        self
+    }
+}
+
+impl<Message> SquareData<Message> {
     pub fn update_with_node(&mut self, actions: &[Accion], probabilities: &[f64]) {
         self.reset_probabilities();
         actions
@@ -140,15 +161,17 @@ impl SquareData {
     }
 
     pub fn reset_probabilities(&mut self) {
-        *self = Self {
-            mano: self.mano.clone(),
-            square_id: self.square_id,
-            ..Default::default()
-        };
+        self.paso = 0.;
+        self.quiero = 0.;
+        self.envido2 = 0.;
+        self.envido5 = 0.;
+        self.envido10 = 0.;
+        self.ordago = 0.;
+        self.resto = 0.;
     }
 }
 
-impl canvas::Program<ExplorerEvent> for SquareData {
+impl<Message> canvas::Program<Message> for SquareData<Message> {
     type State = ();
 
     fn draw(
@@ -213,13 +236,12 @@ impl canvas::Program<ExplorerEvent> for SquareData {
         event: canvas::Event,
         bounds: iced::Rectangle,
         cursor: mouse::Cursor,
-    ) -> (canvas::event::Status, Option<ExplorerEvent>) {
+    ) -> (canvas::event::Status, Option<Message>) {
         if let canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) = event {
             if cursor.position_in(bounds).is_some() {
-                return (
-                    canvas::event::Status::Captured,
-                    Some(ExplorerEvent::SelectBucket(Some(self.square_id))),
-                );
+                if let Some(callback) = &self.on_hover {
+                    return (canvas::event::Status::Captured, Some(callback()));
+                }
             }
         }
         (canvas::event::Status::Ignored, None)
@@ -232,7 +254,6 @@ pub enum ViewMode {
     TwoHands = 1,
 }
 
-#[derive(Debug)]
 pub struct ActionPath {
     //pub one_hand_list: Vec<Mano>,
     pub strategy: Strategy<LanceGame>,
@@ -248,8 +269,8 @@ pub struct ActionPath {
     pub selected_actions: Vec<Option<OptionalAction>>,
     pub actions: Vec<Vec<OptionalAction>>,
     pub view_mode: ViewMode,
-    pub one_hand_squares: Vec<SquareData>,
-    pub two_hands_squares: Vec<Vec<SquareData>>,
+    pub one_hand_squares: Vec<SquareData<ExplorerEvent>>,
+    pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
     pub hovered_square: Option<usize>,
 }
 
@@ -274,18 +295,14 @@ impl ActionPath {
         jugadas.sort();
         let mut one_hand_squares = Vec::with_capacity(jugadas.len());
         let mut two_hands_squares = Vec::with_capacity(jugadas.len());
-        for (idx, jugada) in jugadas.iter().enumerate() {
-            one_hand_squares.push(SquareData {
-                mano: jugada.to_string(),
-                square_id: idx,
-                ..SquareData::default()
-            });
+        for (i, jugada) in jugadas.iter().enumerate() {
+            one_hand_squares.push(
+                SquareData::new(jugada.to_string())
+                    .on_hover(move || ExplorerEvent::SelectBucket(Some(i))),
+            );
             let mut row = Vec::with_capacity(one_hand_list.len());
             for jugada2 in &jugadas {
-                row.push(SquareData {
-                    mano: format!("{},{}", jugada, jugada2),
-                    ..SquareData::default()
-                })
+                row.push(SquareData::new(format!("{},{}", jugada, jugada2)))
             }
             two_hands_squares.push(row);
         }
@@ -553,33 +570,41 @@ impl ActionPath {
         let legend =
             Container::new(Canvas::new(Legend::default()).width(700).height(60)).padding(20);
 
-        let bucket_info = column(self.hovered_square.map(|bucket_id| {
-            container(column![
-                text!("Paso: {:.2}%", self.one_hand_squares[bucket_id].paso * 100.),
-                text!(
-                    "Quiero: {:.2}%",
-                    self.one_hand_squares[bucket_id].quiero * 100.
-                ),
-                text!(
-                    "Envido 2: {:.2}%",
-                    self.one_hand_squares[bucket_id].envido2 * 100.
-                ),
-                text!(
-                    "Envido 5: {:.2}%",
-                    self.one_hand_squares[bucket_id].envido5 * 100.
-                ),
-                text!(
-                    "Envido 10: {:.2}%",
-                    self.one_hand_squares[bucket_id].envido10 * 100.
-                ),
-                text!(
-                    "Órdago: {:.2}%",
-                    self.one_hand_squares[bucket_id].ordago * 100.
-                ),
-            ])
-            .into()
-        }))
-        .padding(20);
+        let bucket_info = self
+            .hovered_square
+            .map_or_else(
+                || column![text("-")],
+                |bucket_id| {
+                    column![
+                        text!("{}", self.one_hand_squares[bucket_id].mano)
+                            .center()
+                            .size(20),
+                        text!("Paso: {:.1}%", self.one_hand_squares[bucket_id].paso * 100.),
+                        text!(
+                            "Quiero: {:.1}%",
+                            self.one_hand_squares[bucket_id].quiero * 100.
+                        ),
+                        text!(
+                            "Envido 2: {:.1}%",
+                            self.one_hand_squares[bucket_id].envido2 * 100.
+                        ),
+                        text!(
+                            "Envido 5: {:.1}%",
+                            self.one_hand_squares[bucket_id].envido5 * 100.
+                        ),
+                        text!(
+                            "Envido 10: {:.1}%",
+                            self.one_hand_squares[bucket_id].envido10 * 100.
+                        ),
+                        text!(
+                            "Órdago: {:.1}%",
+                            self.one_hand_squares[bucket_id].ordago * 100.
+                        ),
+                    ]
+                },
+            )
+            .width(300)
+            .padding(20);
 
         let mut matrix = Column::new();
         if self.view_mode == ViewMode::OneHand {
