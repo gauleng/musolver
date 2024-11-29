@@ -146,6 +146,7 @@ impl<Message> SquareData<Message> {
 impl<Message> SquareData<Message> {
     pub fn update_with_node(&mut self, actions: &[Accion], probabilities: &[f64]) {
         self.reset_probabilities();
+        self.cache.clear();
         actions
             .iter()
             .zip(probabilities.iter())
@@ -438,12 +439,14 @@ impl ActionPath {
             action_probability
                 .into_iter()
                 .zip(&mut self.one_hand_squares)
-                .for_each(|(square_data, square)| match square_data {
-                    Some((actions, avg_probability)) => {
-                        square.update_with_node(&actions, &avg_probability);
-                        //square.mano = jugada.to_string();
+                .for_each(|(square_data, square)| {
+                    match square_data {
+                        Some((actions, avg_probability)) => {
+                            square.update_with_node(&actions, &avg_probability);
+                            //square.mano = jugada.to_string();
+                        }
+                        None => square.reset_probabilities(),
                     }
-                    None => square.reset_probabilities(),
                 });
         } else {
             for column in 0..self.jugadas.len() {
