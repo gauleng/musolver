@@ -11,10 +11,12 @@ use musolver::solver::{BancoEstrategias, LanceGame, Strategy, StrategyConfig};
 pub enum LoaderEvent {
     SearchText(String),
     LoadStrategy(String),
+    PlayStrategy(String),
 }
 
 pub enum LoaderAction {
     OpenExplorer(Strategy<LanceGame>),
+    OpenGame(Strategy<LanceGame>),
 }
 
 pub struct Loader {
@@ -54,9 +56,10 @@ impl Loader {
                                 )
                             ]
                             .width(Fill),
-                            container(
-                                button("Load").on_press(LoaderEvent::LoadStrategy(path.to_owned()))
-                            )
+                            container(row![
+                                button("Play").on_press(LoaderEvent::PlayStrategy(path.to_owned())),
+                                button("Load").on_press(LoaderEvent::LoadStrategy(path.to_owned())),
+                            ])
                             .center_y(Shrink)
                         ])
                         .style(container::rounded_box)
@@ -83,6 +86,10 @@ impl Loader {
             LoaderEvent::LoadStrategy(path) => {
                 let strategy = Strategy::from_file(PathBuf::from(path).as_path());
                 Some(LoaderAction::OpenExplorer(strategy.unwrap()))
+            }
+            LoaderEvent::PlayStrategy(path) => {
+                let strategy = Strategy::from_file(PathBuf::from(path).as_path());
+                Some(LoaderAction::OpenGame(strategy.unwrap()))
             }
         }
     }
