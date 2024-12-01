@@ -56,10 +56,15 @@ impl Loader {
                                 )
                             ]
                             .width(Fill),
-                            container(row![
-                                button("Play").on_press(LoaderEvent::PlayStrategy(path.to_owned())),
-                                button("Load").on_press(LoaderEvent::LoadStrategy(path.to_owned())),
-                            ])
+                            container(
+                                row![
+                                    button("Play")
+                                        .on_press(LoaderEvent::PlayStrategy(path.to_owned())),
+                                    button("Load")
+                                        .on_press(LoaderEvent::LoadStrategy(path.to_owned())),
+                                ]
+                                .spacing(5)
+                            )
                             .center_y(Shrink)
                         ])
                         .style(container::rounded_box)
