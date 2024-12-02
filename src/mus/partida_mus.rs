@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::rc::Rc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -40,7 +39,7 @@ struct ResultadoLance {
 
 #[derive(Debug, Clone)]
 pub struct PartidaMus {
-    manos: Rc<[Mano; 4]>,
+    manos: [Mano; 4],
     lances: Vec<(Lance, Option<ResultadoLance>)>,
     tantos: [u8; 2],
     idx_lance: usize,
@@ -69,7 +68,7 @@ impl PartidaMus {
             lances.push((Lance::Punto, None));
         }
         let mut p = PartidaMus {
-            manos: Rc::new(manos),
+            manos,
             lances,
             idx_lance: 0,
             tantos,
@@ -90,7 +89,7 @@ impl PartidaMus {
     pub fn new_partida_lance(lance: Lance, manos: [Mano; 4], tantos: [u8; 2]) -> Option<Self> {
         let lances = vec![(lance, None)];
         let mut p = Self {
-            manos: Rc::new(manos),
+            manos,
             lances,
             idx_lance: 0,
             tantos,
@@ -112,7 +111,7 @@ impl PartidaMus {
             &self.manos,
             tantos_restantes[0].max(tantos_restantes[1]),
         );
-        if !l.se_juega(&*self.manos) {
+        if !l.se_juega(&self.manos) {
             e.resolver_lance();
         }
         e

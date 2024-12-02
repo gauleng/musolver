@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 musolver = { path = ".." }
 iced = { version = "0.13.1", features = ["canvas"] }
-itertools = "0.13.0"
+itertools.workspace = true
+async-trait.workspace = true

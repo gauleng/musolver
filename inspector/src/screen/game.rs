@@ -1,8 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use iced::{
-    futures::{channel::mpsc, Stream},
-    widget::{button, column, container, row, text},
+    futures::{channel::mpsc, Stream, StreamExt},
+    widget::{button, column, container, row, scrollable, text},
     Alignment, Element, Length, Task,
 };
 use musolver::{
@@ -33,6 +34,7 @@ pub struct MusArenaUi {
     actions: Vec<Accion>,
     hands: [Mano; 4],
     dealer: usize,
+    scoreboard: [u8; 2],
 }
 
 impl MusArenaUi {
@@ -50,6 +52,7 @@ impl MusArenaUi {
                 ],
                 dealer: 0,
                 arena_events: vec![],
+                scoreboard: [0, 0],
             },
             task,
         )
@@ -59,19 +62,22 @@ impl MusArenaUi {
         let hand_row =
             |hand: String, is_dealer| row![text(hand), text(if is_dealer { "(M)" } else { "" })];
 
+        let scoreboard =
+            row![text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)];
+
         let hands = container(
             column![
                 hand_row(self.hands[0].to_string(), self.dealer == 0),
                 row![
-                    hand_row(self.hands[1].to_string(), self.dealer == 1).width(100),
+                    hand_row("XXXX".to_string(), self.dealer == 1).width(100),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    hand_row(self.hands[3].to_string(), self.dealer == 3).width(100)
+                    hand_row("XXXX".to_string(), self.dealer == 3).width(100)
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                hand_row(self.hands[2].to_string(), self.dealer == 2),
+                hand_row("XXXX".to_string(), self.dealer == 2),
             ]
             .align_x(Alignment::Center),
         )
@@ -96,7 +102,13 @@ impl MusArenaUi {
                 .on_press(GameEvent::ActionSelected(*action))
                 .into()
         }));
-        column![row![hands, history], actions].into()
+        column![
+            scoreboard,
+            row![hands, scrollable(history)].height(500),
+            actions
+        ]
+        .align_x(Alignment::Center)
+        .into()
     }
 
     pub fn update(&mut self, message: GameEvent) {
@@ -112,6 +124,10 @@ impl MusArenaUi {
                     }
                     MusAction::DealHand(player_id, mano) => {
                         self.hands[player_id] = mano.clone();
+                    }
+                    MusAction::Payoff(couple_id, tantos) => {
+                        self.scoreboard[couple_id] += tantos;
+                        self.arena_events.push(mus_action);
                     }
                     _ => {
                         self.arena_events.push(mus_action);
@@ -145,12 +161,12 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
         struct AgentGui {
             sender: mpsc::Sender<ArenaMessage>,
             receiver: mpsc::Receiver<Accion>,
-            history: Rc<RefCell<Vec<Accion>>>,
+            history: Arc<Mutex<Vec<Accion>>>,
         }
         impl AgentGui {
             fn new(
                 mut sender: mpsc::Sender<ArenaMessage>,
-                history: Rc<RefCell<Vec<Accion>>>,
+                history: Arc<Mutex<Vec<Accion>>>,
             ) -> Self {
                 let (to_agent, receiver) = mpsc::channel(100);
                 let _ = sender.try_send(ArenaMessage::AgentInitialized(to_agent));
@@ -161,31 +177,28 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
                 }
             }
         }
+        #[async_trait]
         impl Agent for AgentGui {
-            fn actuar(&mut self, partida_mus: &musolver::mus::PartidaMus) -> musolver::mus::Accion {
+            async fn actuar(
+                &mut self,
+                partida_mus: &musolver::mus::PartidaMus,
+            ) -> musolver::mus::Accion {
                 let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
-                for action in self.history.borrow().iter() {
+                for action in self.history.lock().unwrap().iter() {
                     lance_game.act(*action);
                 }
                 let next_actions = lance_game.actions();
-                let first_action = next_actions[0];
                 let _ = self
                     .sender
                     .try_send(ArenaMessage::ActionRequested(next_actions));
-                // loop {
-                //     if let Ok(accion) = self.receiver.try_next() {
-                //         return accion.unwrap();
-                //     }
-                //     std::thread::sleep(std::time::Duration::from_millis(10));
-                // }
-                first_action
+                self.receiver.next().await.unwrap()
             }
         }
         let mut arena = MusArena::new(Some(Lance::Grande));
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
-        let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history().clone());
-        let agent_gui = AgentGui::new(sender.clone(), action_recorder.history().clone());
+        let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());
+        let agent_gui = AgentGui::new(sender.clone(), action_recorder.history());
 
         arena.agents.push(Box::new(agent_gui));
         arena.agents.push(Box::new(agent_musolver.clone()));
@@ -193,8 +206,8 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
         arena.agents.push(Box::new(agent_musolver.clone()));
         arena.kibitzers.push(Box::new(kibitzer));
         arena.kibitzers.push(Box::new(action_recorder));
-        // loop {
-        arena.start();
-        // }
+        loop {
+            arena.start().await;
+        }
     })
 }

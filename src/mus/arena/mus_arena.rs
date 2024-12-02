@@ -21,8 +21,8 @@ pub enum MusAction {
 
 /// Simulates a mus game or a particular lance.
 pub struct MusArena {
-    pub agents: Vec<Box<dyn Agent>>,
-    pub kibitzers: Vec<Box<dyn Kibitzer>>,
+    pub agents: Vec<Box<dyn Agent + Send>>,
+    pub kibitzers: Vec<Box<dyn Kibitzer + Send>>,
     partida_mus: PartidaMus,
     lance: Option<Lance>,
     order: [usize; 4],
@@ -63,7 +63,7 @@ impl MusArena {
             .for_each(|k| k.record(&self.partida_mus, a.clone()));
     }
 
-    pub fn start(&mut self) {
+    pub async fn start(&mut self) {
         self.partida_mus = MusArena::new_partida(self.lance);
         self.order.rotate_left(1);
         self.record_action(MusAction::GameStart(self.order[0]));
@@ -77,7 +77,9 @@ impl MusArena {
             let player_id = match turno {
                 Turno::Jugador(id) | Turno::Pareja(id) => id,
             } as usize;
-            let accion = self.agents[self.order[player_id]].actuar(&self.partida_mus);
+            let accion = self.agents[self.order[player_id]]
+                .actuar(&self.partida_mus)
+                .await;
             if self.partida_mus.actuar(accion).is_ok() {
                 self.record_action(MusAction::PlayerAction(self.order[player_id], accion));
                 let nuevo_lance = self.partida_mus.lance_actual();

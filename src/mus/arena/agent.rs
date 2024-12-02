@@ -1,5 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 
 use crate::{
@@ -8,32 +9,35 @@ use crate::{
     Game,
 };
 
+#[async_trait]
 pub trait Agent {
-    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion;
+    async fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion;
 }
 
 #[derive(Debug, Clone)]
 pub struct AgenteAleatorio {
-    history: Rc<RefCell<Vec<Accion>>>,
+    history: Arc<Mutex<Vec<Accion>>>,
 }
 
 impl AgenteAleatorio {
-    pub fn new(history: Rc<RefCell<Vec<Accion>>>) -> Self {
+    pub fn new(history: Arc<Mutex<Vec<Accion>>>) -> Self {
         Self { history }
     }
 }
 
+#[async_trait]
 impl Agent for AgenteAleatorio {
-    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
+    async fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
         let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
-        for action in self.history.borrow().iter() {
+        let history = self.history.lock().unwrap().clone();
+        for action in &history {
             lance_game.act(*action);
         }
         let actions = lance_game.actions();
         if actions.is_empty() {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                self.history.borrow()
+                history
             );
             return Accion::Paso;
         }
@@ -46,11 +50,11 @@ impl Agent for AgenteAleatorio {
 #[derive(Debug, Clone)]
 pub struct AgenteMusolver {
     strategy: Strategy<LanceGame>,
-    history: Rc<RefCell<Vec<Accion>>>,
+    history: Arc<Mutex<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
-    pub fn new(strategy: Strategy<LanceGame>, history: Rc<RefCell<Vec<Accion>>>) -> Self {
+    pub fn new(strategy: Strategy<LanceGame>, history: Arc<Mutex<Vec<Accion>>>) -> Self {
         Self { strategy, history }
     }
 
@@ -61,14 +65,16 @@ impl AgenteMusolver {
     }
 }
 
+#[async_trait]
 impl Agent for AgenteMusolver {
-    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
+    async fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
         let mut lance_game = LanceGame::from_partida_mus(
             partida_mus,
             self.strategy.strategy_config.game_config.abstract_game,
         )
         .unwrap();
-        for action in self.history.borrow().iter() {
+        let history = self.history.lock().unwrap().clone();
+        for action in &history {
             lance_game.act(*action);
         }
         let info_set_str = lance_game
@@ -81,7 +87,7 @@ impl Agent for AgenteMusolver {
         } else {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                self.history.borrow()
+                history
             );
             Accion::Paso
         }
