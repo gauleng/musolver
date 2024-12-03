@@ -194,7 +194,8 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
                 self.receiver.next().await.unwrap()
             }
         }
-        let mut arena = MusArena::new(Some(Lance::Grande));
+        let lance = strategy.strategy_config.game_config.lance;
+        let mut arena = MusArena::new(lance);
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
         let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());
