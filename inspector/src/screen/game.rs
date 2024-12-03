@@ -6,10 +6,11 @@ use iced::{
     widget::{button, column, container, row, scrollable, text},
     Alignment, Element, Length, Task,
 };
+use image::GenericImageView;
 use musolver::{
     mus::{
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
-        Accion, Lance, Mano,
+        Accion, Mano,
     },
     solver::{LanceGame, Strategy},
     Game,
@@ -35,6 +36,7 @@ pub struct MusArenaUi {
     hands: [Mano; 4],
     dealer: usize,
     scoreboard: [u8; 2],
+    deck_images: DeckImages,
 }
 
 impl MusArenaUi {
@@ -53,14 +55,35 @@ impl MusArenaUi {
                 dealer: 0,
                 arena_events: vec![],
                 scoreboard: [0, 0],
+                deck_images: deck(),
             },
             task,
         )
     }
 
     pub fn view(&self) -> Element<GameEvent> {
-        let hand_row =
-            |hand: String, is_dealer| row![text(hand), text(if is_dealer { "(M)" } else { "" })];
+        let hand_row = |hand: &Mano, visible, is_dealer| {
+            row![
+                if visible {
+                    row(hand.cartas().iter().map(|carta| {
+                        iced::widget::image(
+                            self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
+                        )
+                        .width(100)
+                        .into()
+                    }))
+                } else {
+                    row![
+                        iced::widget::image(self.deck_images.back.clone()).width(60),
+                        iced::widget::image(self.deck_images.back.clone()).width(60),
+                        iced::widget::image(self.deck_images.back.clone()).width(60),
+                        iced::widget::image(self.deck_images.back.clone()).width(60),
+                    ]
+                },
+                text(if is_dealer { "(M)" } else { "" })
+            ]
+            .align_y(Alignment::Center)
+        };
 
         let scoreboard = container(row![text(format!(
             "{} - {}",
@@ -72,17 +95,17 @@ impl MusArenaUi {
 
         let hands = container(
             column![
-                hand_row(self.hands[0].to_string(), self.dealer == 0),
+                hand_row(&self.hands[0], true, self.dealer == 0),
                 row![
-                    hand_row("XXXX".to_string(), self.dealer == 1).width(100),
+                    hand_row(&self.hands[1], false, self.dealer == 1),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    hand_row("XXXX".to_string(), self.dealer == 3).width(100)
+                    hand_row(&self.hands[3], false, self.dealer == 3)
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                hand_row("XXXX".to_string(), self.dealer == 2),
+                hand_row(&self.hands[2], false, self.dealer == 2),
             ]
             .align_x(Alignment::Center),
         )
@@ -127,7 +150,8 @@ impl MusArenaUi {
             row![hands, history.height(Length::Fill)]
                 .height(Length::Fill)
                 .align_y(Alignment::Center)
-                .padding(10),
+                .padding(10)
+                .spacing(10),
             actions
         ]
         .align_x(Alignment::Center)
@@ -237,4 +261,38 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
             arena.start().await;
         }
     })
+}
+
+struct DeckImages {
+    cards: Vec<Vec<iced::widget::image::Handle>>,
+    back: iced::widget::image::Handle,
+}
+
+fn deck() -> DeckImages {
+    let image = image::open("inspector/assets/Baraja_española_completa.png")
+        .expect("Deck image file should be in assets folder.");
+    let dim = image.dimensions();
+    let (rows, cols) = (5, 12);
+    let (card_width, card_height) = (dim.0 / cols, dim.1 / rows);
+    let mut cards = vec![vec![]; cols as usize];
+    for row in 0..rows - 1 {
+        for col in 0..cols {
+            let x = col * card_width;
+            let y = row * card_height;
+            let card = image.crop_imm(x, y, card_width, card_height);
+            let buffer = card.to_rgba8().into_raw();
+            cards[col as usize].push(iced::widget::image::Handle::from_rgba(
+                card_width,
+                card_height,
+                buffer,
+            ));
+        }
+    }
+    let buffer_back = image
+        .crop_imm(card_width, 4 * card_height, card_width, card_height)
+        .to_rgba8()
+        .into_raw();
+
+    let back = iced::widget::image::Handle::from_rgba(card_width, card_height, buffer_back);
+    DeckImages { cards, back }
 }
