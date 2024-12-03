@@ -62,9 +62,13 @@ impl MusArenaUi {
         let hand_row =
             |hand: String, is_dealer| row![text(hand), text(if is_dealer { "(M)" } else { "" })];
 
-        let scoreboard =
-            row![text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)]
-                .padding(10);
+        let scoreboard = container(row![text(format!(
+            "{} - {}",
+            self.scoreboard[0], self.scoreboard[1]
+        ))
+        .size(40)])
+        .style(container::rounded_box)
+        .padding(10);
 
         let hands = container(
             column![
@@ -84,19 +88,24 @@ impl MusArenaUi {
         )
         .width(Length::Fill);
 
-        let history = column(self.arena_events.iter().map(|mus_action| {
-            match mus_action {
-                MusAction::LanceStart(lance) => text(format!("Lance start: {lance:?}")),
-                MusAction::PlayerAction(player_id, accion) => {
-                    text(format!("Player {player_id}: {accion}"))
+        let history = container(
+            scrollable(column(self.arena_events.iter().map(|mus_action| {
+                match mus_action {
+                    MusAction::LanceStart(lance) => text(format!("Lance start: {lance:?}")),
+                    MusAction::PlayerAction(player_id, accion) => {
+                        text(format!("Player {player_id}: {accion}"))
+                    }
+                    MusAction::Payoff(pareja_id, tantos) => {
+                        text(format!("Payoff: Couple {pareja_id} wins {tantos} tantos"))
+                    }
+                    _ => text(""),
                 }
-                MusAction::Payoff(pareja_id, tantos) => {
-                    text(format!("Payoff: Couple {pareja_id} wins {tantos} tantos"))
-                }
-                _ => text(""),
-            }
-            .into()
-        }))
+                .into()
+            })))
+            .anchor_bottom()
+            .width(Length::Fill),
+        )
+        .style(container::bordered_box)
         .width(300);
 
         let actions = row(self.actions.iter().map(|action| {
@@ -115,7 +124,7 @@ impl MusArenaUi {
 
         column![
             scoreboard,
-            row![hands, scrollable(history).height(Length::Fill)]
+            row![hands, history.height(Length::Fill)]
                 .height(Length::Fill)
                 .align_y(Alignment::Center)
                 .padding(10),
@@ -124,6 +133,7 @@ impl MusArenaUi {
         .align_x(Alignment::Center)
         .width(Length::Fill)
         .height(Length::Fill)
+        .spacing(10)
         .into()
     }
 

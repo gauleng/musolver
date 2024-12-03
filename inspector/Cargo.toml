@@ -8,3 +8,4 @@ musolver = { path = ".." }
 iced = { version = "0.13.1", features = ["canvas"] }
 itertools.workspace = true
 async-trait.workspace = true
+image = "0.25.5"
