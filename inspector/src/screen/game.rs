@@ -63,7 +63,8 @@ impl MusArenaUi {
             |hand: String, is_dealer| row![text(hand), text(if is_dealer { "(M)" } else { "" })];
 
         let scoreboard =
-            row![text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)];
+            row![text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)]
+                .padding(10);
 
         let hands = container(
             column![
@@ -81,7 +82,7 @@ impl MusArenaUi {
             ]
             .align_x(Alignment::Center),
         )
-        .center(500);
+        .width(Length::Fill);
 
         let history = column(self.arena_events.iter().map(|mus_action| {
             match mus_action {
@@ -95,19 +96,34 @@ impl MusArenaUi {
                 _ => text(""),
             }
             .into()
-        }));
+        }))
+        .width(300);
 
         let actions = row(self.actions.iter().map(|action| {
-            button(text(action.to_string()))
-                .on_press(GameEvent::ActionSelected(*action))
-                .into()
-        }));
+            button(
+                text(action.to_string())
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center),
+            )
+            .width(80)
+            .height(40)
+            .on_press(GameEvent::ActionSelected(*action))
+            .into()
+        }))
+        .spacing(10)
+        .padding(10);
+
         column![
             scoreboard,
-            row![hands, scrollable(history)].height(500),
+            row![hands, scrollable(history).height(Length::Fill)]
+                .height(Length::Fill)
+                .align_y(Alignment::Center)
+                .padding(10),
             actions
         ]
         .align_x(Alignment::Center)
+        .width(Length::Fill)
+        .height(Length::Fill)
         .into()
     }
 
