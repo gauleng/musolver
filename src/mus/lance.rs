@@ -52,8 +52,11 @@ impl Display for Pares {
 }
 
 pub enum Jugada {
+    Grande,
+    Chica,
     Pares(Pares),
     Juego(Juego),
+    Punto,
 }
 
 /// Lances de una partida de mus.
@@ -138,6 +141,16 @@ impl Mano {
             32 => Some(Juego::Treintaydos),
             33..=40 => Some(Juego::Resto(p)),
             _ => None,
+        }
+    }
+
+    pub fn jugada(&self, lance: &Lance) -> Option<Jugada> {
+        match lance {
+            Lance::Grande => Some(Jugada::Grande),
+            Lance::Chica => Some(Jugada::Chica),
+            Lance::Pares => self.pares().map(Jugada::Pares),
+            Lance::Punto => self.juego().map_or_else(|| Some(Jugada::Punto), |_| None),
+            Lance::Juego => self.juego().map(Jugada::Juego),
         }
     }
 }

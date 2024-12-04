@@ -10,7 +10,7 @@ use image::GenericImageView;
 use musolver::{
     mus::{
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
-        Accion, Mano,
+        Accion, Lance, Mano,
     },
     solver::{LanceGame, Strategy},
     Game,
@@ -60,12 +60,13 @@ pub enum GameEvent {
 pub struct MusArenaUi {
     state: ArenaState,
     arena_events: Vec<MusAction>,
+    deck_images: DeckImages,
     actions: Vec<Accion>,
     hands: [Mano; 4],
     dealer: usize,
     scoreboard: [u8; 2],
-    deck_images: DeckImages,
     game_running: bool,
+    lance: Option<Lance>,
 }
 
 impl MusArenaUi {
@@ -86,35 +87,13 @@ impl MusArenaUi {
                 scoreboard: [0, 0],
                 deck_images: deck(),
                 game_running: false,
+                lance: None,
             },
             task,
         )
     }
 
     pub fn view(&self) -> Element<GameEvent> {
-        let hand_row = |hand: &Mano, card_width, visible, is_dealer| {
-            row![
-                if visible {
-                    row(hand.cartas().iter().map(|carta| {
-                        iced::widget::image(
-                            self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
-                        )
-                        .width(card_width)
-                        .into()
-                    }))
-                } else {
-                    row![
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                    ]
-                },
-                text(if is_dealer { "(M)" } else { "" })
-            ]
-            .align_y(Alignment::Center)
-        };
-
         let scoreboard = container(row![text(format!(
             "{} - {}",
             self.scoreboard[0], self.scoreboard[1]
@@ -125,17 +104,17 @@ impl MusArenaUi {
 
         let hands = container(
             column![
-                hand_row(&self.hands[0], 100, true, self.dealer == 0),
+                self.hand_row(&self.hands[0], 100, true, self.dealer == 0),
                 row![
-                    hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1),
+                    self.hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3)
+                    self.hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3)
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
+                self.hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
             ]
             .align_x(Alignment::Center),
         )
@@ -202,6 +181,49 @@ impl MusArenaUi {
         .into()
     }
 
+    fn hand_row(
+        &self,
+        hand: &Mano,
+        card_width: u16,
+        visible: bool,
+        is_dealer: bool,
+    ) -> iced::widget::Container<'_, GameEvent> {
+        let active = if let Some(lance) = self.lance {
+            hand.jugada(&lance).is_some()
+        } else {
+            false
+        };
+
+        container(
+            row![
+                if visible {
+                    row(hand.cartas().iter().map(|carta| {
+                        iced::widget::image(
+                            self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
+                        )
+                        .width(card_width)
+                        .into()
+                    }))
+                } else {
+                    row![
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                    ]
+                },
+                text(if is_dealer { "(M)" } else { "" })
+            ]
+            .align_y(Alignment::Center),
+        )
+        .padding(5)
+        .style(if active {
+            container::rounded_box
+        } else {
+            container::dark
+        })
+    }
+
     pub fn update(&mut self, message: GameEvent) {
         match message {
             GameEvent::ArenaMessage(mus_action) => match mus_action {
@@ -219,6 +241,10 @@ impl MusArenaUi {
                     }
                     MusAction::Payoff(couple_id, tantos) => {
                         self.scoreboard[couple_id] += tantos;
+                        self.arena_events.push(mus_action);
+                    }
+                    MusAction::LanceStart(lance) => {
+                        self.lance = Some(lance);
                         self.arena_events.push(mus_action);
                     }
                     _ => {
