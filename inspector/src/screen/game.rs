@@ -57,12 +57,19 @@ pub enum GameEvent {
     ActionSelected(Accion),
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Player {
+    name: String,
+    hand: Mano,
+    last_action: Option<Accion>,
+}
+
 pub struct MusArenaUi {
     state: ArenaState,
     arena_events: Vec<MusAction>,
     deck_images: DeckImages,
     actions: Vec<Accion>,
-    hands: [Mano; 4],
+    players: [Player; 4],
     dealer: usize,
     scoreboard: [u8; 2],
     game_running: bool,
@@ -76,11 +83,23 @@ impl MusArenaUi {
             Self {
                 state: ArenaState::Disconnected,
                 actions: vec![],
-                hands: [
-                    Mano::default(),
-                    Mano::default(),
-                    Mano::default(),
-                    Mano::default(),
+                players: [
+                    Player {
+                        name: "Hero".to_string(),
+                        ..Default::default()
+                    },
+                    Player {
+                        name: "Musolver".to_string(),
+                        ..Default::default()
+                    },
+                    Player {
+                        name: "Musolver".to_string(),
+                        ..Default::default()
+                    },
+                    Player {
+                        name: "Musolver".to_string(),
+                        ..Default::default()
+                    },
                 ],
                 dealer: 0,
                 arena_events: vec![],
@@ -112,10 +131,10 @@ impl MusArenaUi {
                         .align_x(Alignment::Center),
                     self.hand_row(1, 60),
                 ]
-                .align_y(Alignment::Center)
-                .height(100),
+                .align_y(Alignment::Center),
                 self.hand_row(0, 100),
             ]
+            .spacing(10)
             .align_x(Alignment::Center),
         )
         .width(Length::Fill);
@@ -186,7 +205,7 @@ impl MusArenaUi {
         player_id: usize,
         card_width: u16,
     ) -> iced::widget::Container<'_, GameEvent> {
-        let hand = &self.hands[player_id];
+        let hand = &self.players[player_id].hand;
         let is_dealer = player_id == self.dealer;
         let visible = player_id == 0 || !self.game_running;
         let active = if let Some(lance) = self.lance {
@@ -195,28 +214,36 @@ impl MusArenaUi {
             false
         };
 
-        container(
-            row![
-                if visible {
-                    row(hand.cartas().iter().map(|carta| {
-                        iced::widget::image(
-                            self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
-                        )
-                        .width(card_width)
-                        .into()
-                    }))
-                } else {
-                    row![
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                    ]
-                },
-                text(if is_dealer { "(M)" } else { "" })
-            ]
-            .align_y(Alignment::Center),
-        )
+        let cards_row = row![
+            if visible {
+                row(hand.cartas().iter().map(|carta| {
+                    iced::widget::image(
+                        self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
+                    )
+                    .width(card_width)
+                    .into()
+                }))
+            } else {
+                row![
+                    iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                    iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                    iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                    iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                ]
+            },
+            text(if is_dealer { "(M)" } else { "" })
+        ]
+        .align_y(Alignment::Center);
+
+        container(column![
+            text(&self.players[player_id].name),
+            cards_row,
+            text(
+                self.players[player_id]
+                    .last_action
+                    .map_or_else(|| "".to_string(), |action| action.to_string())
+            )
+        ])
         .padding(5)
         .style(if active {
             container::rounded_box
@@ -236,9 +263,12 @@ impl MusArenaUi {
                     MusAction::GameStart(dealer_id) => {
                         self.dealer = dealer_id;
                         self.game_running = true;
+                        self.players.iter_mut().for_each(|player| {
+                            player.last_action = None;
+                        });
                     }
                     MusAction::DealHand(player_id, mano) => {
-                        self.hands[player_id] = mano.clone();
+                        self.players[player_id].hand = mano.clone();
                     }
                     MusAction::Payoff(couple_id, tantos) => {
                         self.scoreboard[couple_id] += tantos;
@@ -248,7 +278,8 @@ impl MusArenaUi {
                         self.lance = Some(lance);
                         self.arena_events.push(mus_action);
                     }
-                    _ => {
+                    MusAction::PlayerAction(player_id, action) => {
+                        self.players[player_id].last_action = Some(action);
                         self.arena_events.push(mus_action);
                     }
                 },
