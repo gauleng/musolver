@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use iced::{
-    futures::{channel::mpsc, Stream, StreamExt},
+    futures::{channel::mpsc, SinkExt, Stream, StreamExt},
     widget::{button, column, container, row, scrollable, text},
     Alignment, Element, Length, Task,
 };
@@ -17,26 +17,55 @@ use musolver::{
 };
 
 #[derive(Debug, Clone)]
+pub struct Connection {
+    to_agent: mpsc::Sender<ArenaCommand>,
+    to_arena: mpsc::Sender<ArenaCommand>,
+}
+impl Connection {
+    fn pick_action(&mut self, accion: Accion) {
+        let _ = self.to_agent.try_send(ArenaCommand::PickAction(accion));
+    }
+
+    fn new_game(&mut self) {
+        let _ = self.to_arena.try_send(ArenaCommand::NewGame);
+    }
+}
+
+enum ArenaState {
+    Disconnected,
+    Connected(Connection),
+}
+
+#[derive(Debug, Clone)]
 pub enum ArenaMessage {
-    AgentInitialized(mpsc::Sender<Accion>),
+    AgentInitialized(Connection),
     GameAction(MusAction),
     ActionRequested(Vec<Accion>),
+    NewGameRequested,
+}
+
+enum ArenaCommand {
+    PickAction(Accion),
+    NewGame,
+    Terminate,
 }
 
 #[derive(Debug, Clone)]
 pub enum GameEvent {
+    NewGame,
     ArenaMessage(ArenaMessage),
     ActionSelected(Accion),
 }
 
 pub struct MusArenaUi {
-    to_agent: Option<mpsc::Sender<Accion>>,
+    state: ArenaState,
     arena_events: Vec<MusAction>,
     actions: Vec<Accion>,
     hands: [Mano; 4],
     dealer: usize,
     scoreboard: [u8; 2],
     deck_images: DeckImages,
+    game_running: bool,
 }
 
 impl MusArenaUi {
@@ -44,7 +73,7 @@ impl MusArenaUi {
         let task = Task::run(setup_arena(strategy), GameEvent::ArenaMessage);
         (
             Self {
-                to_agent: None,
+                state: ArenaState::Disconnected,
                 actions: vec![],
                 hands: [
                     Mano::default(),
@@ -56,28 +85,29 @@ impl MusArenaUi {
                 arena_events: vec![],
                 scoreboard: [0, 0],
                 deck_images: deck(),
+                game_running: false,
             },
             task,
         )
     }
 
     pub fn view(&self) -> Element<GameEvent> {
-        let hand_row = |hand: &Mano, visible, is_dealer| {
+        let hand_row = |hand: &Mano, card_width, visible, is_dealer| {
             row![
                 if visible {
                     row(hand.cartas().iter().map(|carta| {
                         iced::widget::image(
                             self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
                         )
-                        .width(100)
+                        .width(card_width)
                         .into()
                     }))
                 } else {
                     row![
-                        iced::widget::image(self.deck_images.back.clone()).width(60),
-                        iced::widget::image(self.deck_images.back.clone()).width(60),
-                        iced::widget::image(self.deck_images.back.clone()).width(60),
-                        iced::widget::image(self.deck_images.back.clone()).width(60),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
                     ]
                 },
                 text(if is_dealer { "(M)" } else { "" })
@@ -95,17 +125,17 @@ impl MusArenaUi {
 
         let hands = container(
             column![
-                hand_row(&self.hands[0], true, self.dealer == 0),
+                hand_row(&self.hands[0], 100, true, self.dealer == 0),
                 row![
-                    hand_row(&self.hands[1], false, self.dealer == 1),
+                    hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    hand_row(&self.hands[3], false, self.dealer == 3)
+                    hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3)
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                hand_row(&self.hands[2], false, self.dealer == 2),
+                hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
             ]
             .align_x(Alignment::Center),
         )
@@ -131,17 +161,28 @@ impl MusArenaUi {
         .style(container::bordered_box)
         .width(300);
 
-        let actions = row(self.actions.iter().map(|action| {
-            button(
-                text(action.to_string())
+        let actions = if self.game_running {
+            row(self.actions.iter().map(|action| {
+                button(
+                    text(action.to_string())
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(120)
+                .height(40)
+                .on_press(GameEvent::ActionSelected(*action))
+                .into()
+            }))
+        } else {
+            row![button(
+                text("New game")
                     .align_x(Alignment::Center)
                     .align_y(Alignment::Center),
             )
-            .width(80)
+            .width(120)
             .height(40)
-            .on_press(GameEvent::ActionSelected(*action))
-            .into()
-        }))
+            .on_press(GameEvent::NewGame)]
+        }
         .spacing(10)
         .padding(10);
 
@@ -164,13 +205,14 @@ impl MusArenaUi {
     pub fn update(&mut self, message: GameEvent) {
         match message {
             GameEvent::ArenaMessage(mus_action) => match mus_action {
-                ArenaMessage::AgentInitialized(sender) => {
+                ArenaMessage::AgentInitialized(connection) => {
                     println!("Agent initialized...");
-                    self.to_agent = Some(sender);
+                    self.state = ArenaState::Connected(connection);
                 }
                 ArenaMessage::GameAction(mus_action) => match mus_action {
                     MusAction::GameStart(dealer_id) => {
                         self.dealer = dealer_id;
+                        self.game_running = true;
                     }
                     MusAction::DealHand(player_id, mano) => {
                         self.hands[player_id] = mano.clone();
@@ -184,16 +226,28 @@ impl MusArenaUi {
                     }
                 },
                 ArenaMessage::ActionRequested(actions) => self.actions = actions,
+                ArenaMessage::NewGameRequested => {
+                    if let ArenaState::Connected(_connection) = &mut self.state {
+                        self.game_running = false;
+                    }
+                }
             },
             GameEvent::ActionSelected(accion) => {
-                let _ = self.to_agent.as_mut().unwrap().try_send(accion);
+                if let ArenaState::Connected(connection) = &mut self.state {
+                    connection.pick_action(accion);
+                }
+            }
+            GameEvent::NewGame => {
+                if let ArenaState::Connected(connection) = &mut self.state {
+                    connection.new_game();
+                }
             }
         }
     }
 }
 
 fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage> {
-    iced::stream::channel(100, move |sender| async move {
+    iced::stream::channel(100, move |mut sender| async move {
         struct KibitzerGui {
             sender: mpsc::Sender<ArenaMessage>,
         }
@@ -210,16 +264,15 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
 
         struct AgentGui {
             sender: mpsc::Sender<ArenaMessage>,
-            receiver: mpsc::Receiver<Accion>,
+            receiver: mpsc::Receiver<ArenaCommand>,
             history: Arc<Mutex<Vec<Accion>>>,
         }
         impl AgentGui {
             fn new(
-                mut sender: mpsc::Sender<ArenaMessage>,
+                sender: mpsc::Sender<ArenaMessage>,
+                receiver: mpsc::Receiver<ArenaCommand>,
                 history: Arc<Mutex<Vec<Accion>>>,
             ) -> Self {
-                let (to_agent, receiver) = mpsc::channel(100);
-                let _ = sender.try_send(ArenaMessage::AgentInitialized(to_agent));
                 Self {
                     sender,
                     receiver,
@@ -241,15 +294,25 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
                 let _ = self
                     .sender
                     .try_send(ArenaMessage::ActionRequested(next_actions));
-                self.receiver.next().await.unwrap()
+                if let ArenaCommand::PickAction(action) = self.receiver.next().await.unwrap() {
+                    action
+                } else {
+                    Accion::Paso
+                }
             }
         }
+        let (to_agent, receiver_agent) = mpsc::channel(100);
+        let (to_arena, mut receiver_arena) = mpsc::channel(100);
+        let _ = sender.try_send(ArenaMessage::AgentInitialized(Connection {
+            to_agent,
+            to_arena,
+        }));
         let lance = strategy.strategy_config.game_config.lance;
         let mut arena = MusArena::new(lance);
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
         let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());
-        let agent_gui = AgentGui::new(sender.clone(), action_recorder.history());
+        let agent_gui = AgentGui::new(sender.clone(), receiver_agent, action_recorder.history());
 
         arena.agents.push(Box::new(agent_gui));
         arena.agents.push(Box::new(agent_musolver.clone()));
@@ -259,6 +322,10 @@ fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage
         arena.kibitzers.push(Box::new(action_recorder));
         loop {
             arena.start().await;
+            let _ = sender.send(ArenaMessage::NewGameRequested).await;
+            if let ArenaCommand::Terminate = receiver_arena.next().await.unwrap() {
+                break;
+            }
         }
     })
 }
