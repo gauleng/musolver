@@ -104,17 +104,17 @@ impl MusArenaUi {
 
         let hands = container(
             column![
-                self.hand_row(&self.hands[0], 100, true, self.dealer == 0),
+                self.hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
                 row![
-                    self.hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1),
+                    self.hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    self.hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3)
+                    self.hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1)
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                self.hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
+                self.hand_row(&self.hands[0], 100, true, self.dealer == 0),
             ]
             .align_x(Alignment::Center),
         )
