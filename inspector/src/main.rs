@@ -1,5 +1,5 @@
 use iced::{Element, Task, Theme};
-use screen::{ExplorerEvent, GameEvent, Loader, LoaderEvent, Screen};
+use screen::{ExplorerEvent, GameAction, GameEvent, LoaderEvent, Screen};
 
 mod screen;
 
@@ -17,7 +17,7 @@ struct Inspector {
 impl Inspector {
     fn new() -> Self {
         Self {
-            screen: Screen::Loader(Loader::new()),
+            screen: Screen::Loader(screen::Loader::new()),
         }
     }
 
@@ -57,7 +57,10 @@ impl Inspector {
             }
             Message::Game(game_event) => {
                 if let Screen::Game(game) = &mut self.screen {
-                    game.update(game_event);
+                    let action = game.update(game_event);
+                    if let Some(GameAction::OpenLoader) = action {
+                        self.screen = Screen::Loader(screen::Loader::new());
+                    }
                 }
                 Task::none()
             }

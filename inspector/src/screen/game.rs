@@ -29,6 +29,10 @@ impl Connection {
     fn new_game(&mut self) {
         let _ = self.to_arena.try_send(ArenaCommand::NewGame);
     }
+
+    fn terminate(&mut self) {
+        let _ = self.to_arena.try_send(ArenaCommand::Terminate);
+    }
 }
 
 enum ArenaState {
@@ -53,8 +57,13 @@ enum ArenaCommand {
 #[derive(Debug, Clone)]
 pub enum GameEvent {
     NewGame,
+    Close,
     ArenaMessage(ArenaMessage),
     ActionSelected(Accion),
+}
+
+pub enum GameAction {
+    OpenLoader,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -172,14 +181,24 @@ impl MusArenaUi {
                 .into()
             }))
         } else {
-            row![button(
-                text("New game")
-                    .align_x(Alignment::Center)
-                    .align_y(Alignment::Center),
-            )
-            .width(120)
-            .height(40)
-            .on_press(GameEvent::NewGame)]
+            row![
+                button(
+                    text("New game")
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(120)
+                .height(40)
+                .on_press(GameEvent::NewGame),
+                button(
+                    text("Close arena")
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(120)
+                .height(40)
+                .on_press(GameEvent::Close)
+            ]
         }
         .spacing(10)
         .padding(10);
@@ -252,53 +271,69 @@ impl MusArenaUi {
         })
     }
 
-    pub fn update(&mut self, message: GameEvent) {
+    pub fn update(&mut self, message: GameEvent) -> Option<GameAction> {
         match message {
             GameEvent::ArenaMessage(mus_action) => match mus_action {
                 ArenaMessage::AgentInitialized(connection) => {
                     println!("Agent initialized...");
                     self.state = ArenaState::Connected(connection);
+                    None
                 }
-                ArenaMessage::GameAction(mus_action) => match mus_action {
-                    MusAction::GameStart(dealer_id) => {
-                        self.dealer = dealer_id;
-                        self.game_running = true;
-                        self.players.iter_mut().for_each(|player| {
-                            player.last_action = None;
-                        });
+                ArenaMessage::GameAction(mus_action) => {
+                    match mus_action {
+                        MusAction::GameStart(dealer_id) => {
+                            self.dealer = dealer_id;
+                            self.game_running = true;
+                            self.players.iter_mut().for_each(|player| {
+                                player.last_action = None;
+                            });
+                        }
+                        MusAction::DealHand(player_id, mano) => {
+                            self.players[player_id].hand = mano.clone();
+                        }
+                        MusAction::Payoff(couple_id, tantos) => {
+                            self.scoreboard[couple_id] += tantos;
+                            self.arena_events.push(mus_action);
+                        }
+                        MusAction::LanceStart(lance) => {
+                            self.lance = Some(lance);
+                            self.arena_events.push(mus_action);
+                        }
+                        MusAction::PlayerAction(player_id, action) => {
+                            self.players[player_id].last_action = Some(action);
+                            self.arena_events.push(mus_action);
+                        }
                     }
-                    MusAction::DealHand(player_id, mano) => {
-                        self.players[player_id].hand = mano.clone();
-                    }
-                    MusAction::Payoff(couple_id, tantos) => {
-                        self.scoreboard[couple_id] += tantos;
-                        self.arena_events.push(mus_action);
-                    }
-                    MusAction::LanceStart(lance) => {
-                        self.lance = Some(lance);
-                        self.arena_events.push(mus_action);
-                    }
-                    MusAction::PlayerAction(player_id, action) => {
-                        self.players[player_id].last_action = Some(action);
-                        self.arena_events.push(mus_action);
-                    }
-                },
-                ArenaMessage::ActionRequested(actions) => self.actions = actions,
+                    None
+                }
+                ArenaMessage::ActionRequested(actions) => {
+                    self.actions = actions;
+                    None
+                }
                 ArenaMessage::NewGameRequested => {
                     if let ArenaState::Connected(_connection) = &mut self.state {
                         self.game_running = false;
                     }
+                    None
                 }
             },
             GameEvent::ActionSelected(accion) => {
                 if let ArenaState::Connected(connection) = &mut self.state {
                     connection.pick_action(accion);
                 }
+                None
             }
             GameEvent::NewGame => {
                 if let ArenaState::Connected(connection) = &mut self.state {
                     connection.new_game();
                 }
+                None
+            }
+            GameEvent::Close => {
+                if let ArenaState::Connected(connection) = &mut self.state {
+                    connection.terminate();
+                }
+                Some(GameAction::OpenLoader)
             }
         }
     }
