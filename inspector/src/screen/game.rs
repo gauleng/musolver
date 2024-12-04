@@ -104,17 +104,17 @@ impl MusArenaUi {
 
         let hands = container(
             column![
-                self.hand_row(&self.hands[2], 60, !self.game_running, self.dealer == 2),
+                self.hand_row(2, 240),
                 row![
-                    self.hand_row(&self.hands[3], 60, !self.game_running, self.dealer == 3),
+                    self.hand_row(3, 240),
                     container(text("Pot: "))
                         .width(Length::Fill)
                         .align_x(Alignment::Center),
-                    self.hand_row(&self.hands[1], 60, !self.game_running, self.dealer == 1)
+                    self.hand_row(1, 240),
                 ]
                 .align_y(Alignment::Center)
                 .height(100),
-                self.hand_row(&self.hands[0], 100, true, self.dealer == 0),
+                self.hand_row(0, 400),
             ]
             .align_x(Alignment::Center),
         )
@@ -183,11 +183,12 @@ impl MusArenaUi {
 
     fn hand_row(
         &self,
-        hand: &Mano,
-        card_width: u16,
-        visible: bool,
-        is_dealer: bool,
+        player_id: usize,
+        width: impl Into<Length>,
     ) -> iced::widget::Container<'_, GameEvent> {
+        let hand = &self.hands[player_id];
+        let is_dealer = player_id == self.dealer;
+        let visible = player_id == 0 || !self.game_running;
         let active = if let Some(lance) = self.lance {
             hand.jugada(&lance).is_some()
         } else {
@@ -201,21 +202,21 @@ impl MusArenaUi {
                         iced::widget::image(
                             self.deck_images.cards[carta.valor() as usize - 1][0].clone(),
                         )
-                        .width(card_width)
                         .into()
                     }))
                 } else {
                     row![
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
-                        iced::widget::image(self.deck_images.back.clone()).width(card_width),
+                        iced::widget::image(self.deck_images.back.clone()),
+                        iced::widget::image(self.deck_images.back.clone()),
+                        iced::widget::image(self.deck_images.back.clone()),
+                        iced::widget::image(self.deck_images.back.clone()),
                     ]
                 },
                 text(if is_dealer { "(M)" } else { "" })
             ]
             .align_y(Alignment::Center),
         )
+        .width(width)
         .padding(5)
         .style(if active {
             container::rounded_box
