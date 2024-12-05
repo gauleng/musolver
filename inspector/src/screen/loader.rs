@@ -4,11 +4,13 @@ use iced::{
     widget::{button, column, container, row, scrollable, text, text_input},
     Element,
     Length::{Fill, Shrink},
+    Task,
 };
 use musolver::solver::{BancoEstrategias, LanceGame, Strategy, StrategyConfig};
 
 #[derive(Debug, Clone)]
 pub enum LoaderEvent {
+    ListStrategies(Vec<(String, StrategyConfig)>),
     SearchText(String),
     LoadStrategy(String),
     PlayStrategy(String),
@@ -25,12 +27,17 @@ pub struct Loader {
 }
 
 impl Loader {
-    pub fn new() -> Self {
-        let strategies = BancoEstrategias::find(PathBuf::from("output").as_path());
-        Self {
-            search: "".to_string(),
-            strategies,
-        }
+    pub fn new() -> (Self, Task<LoaderEvent>) {
+        (
+            Self {
+                search: "".to_string(),
+                strategies: vec![],
+            },
+            Task::perform(
+                async { BancoEstrategias::find(PathBuf::from("output").as_path()) },
+                LoaderEvent::ListStrategies,
+            ),
+        )
     }
 
     pub fn view(&self) -> Element<LoaderEvent> {
@@ -95,6 +102,10 @@ impl Loader {
             LoaderEvent::PlayStrategy(path) => {
                 let strategy = Strategy::from_file(PathBuf::from(path).as_path());
                 Some(LoaderAction::OpenGame(strategy.unwrap()))
+            }
+            LoaderEvent::ListStrategies(list) => {
+                self.strategies = list;
+                None
             }
         }
     }

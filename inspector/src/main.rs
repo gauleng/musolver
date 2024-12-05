@@ -15,10 +15,14 @@ struct Inspector {
 }
 
 impl Inspector {
-    fn new() -> Self {
-        Self {
-            screen: Screen::Loader(screen::Loader::new()),
-        }
+    fn new() -> (Self, Task<Message>) {
+        let (screen, task) = screen::Loader::new();
+        (
+            Self {
+                screen: Screen::Loader(screen),
+            },
+            task.map(Message::Loader),
+        )
     }
 
     fn view(&self) -> Element<Message> {
@@ -59,7 +63,9 @@ impl Inspector {
                 if let Screen::Game(game) = &mut self.screen {
                     let action = game.update(game_event);
                     if let Some(GameAction::OpenLoader) = action {
-                        self.screen = Screen::Loader(screen::Loader::new());
+                        let (screen, task) = screen::Loader::new();
+                        self.screen = Screen::Loader(screen);
+                        return task.map(Message::Loader);
                     }
                 }
                 Task::none()
@@ -68,14 +74,8 @@ impl Inspector {
     }
 }
 
-impl Default for Inspector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 fn main() -> iced::Result {
     iced::application("Inspector", Inspector::update, Inspector::view)
         .theme(|_| Theme::GruvboxDark)
-        .run()
+        .run_with(Inspector::new)
 }
