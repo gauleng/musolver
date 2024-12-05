@@ -339,8 +339,10 @@ impl ActionPath {
         };
         let mano = &action_path.buckets.values().next().unwrap()[0];
         let strategy_node = action_path.strategy_node(mano, None);
-        action_path.append_action_picklists(&strategy_node.unwrap().0);
-        action_path.update_squares();
+        if let Some((actions, _)) = &strategy_node {
+            action_path.append_action_picklists(actions);
+            action_path.update_squares();
+        }
         action_path
     }
 
@@ -490,20 +492,31 @@ impl ActionPath {
                 self.selected_actions[level] = action.0.map(|_| action);
                 self.selected_actions.drain(level + 1..);
                 self.actions.drain(level + 1..);
-
-                if action.0.is_some() {
-                    let mano = &self.buckets.values().next().unwrap()[0];
-                    let strategy_node = self.strategy_node(mano, None);
-                    self.append_action_picklists(&strategy_node.unwrap().0);
-                }
             }
             ExplorerEvent::SetStrategy(strategy) => {
                 self.selected_strategy = Some(strategy);
             }
             ExplorerEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
             ExplorerEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
-            ExplorerEvent::SelectBucket(bucket_id) => self.hovered_square = bucket_id,
+            ExplorerEvent::SelectBucket(bucket_id) => {
+                self.hovered_square = bucket_id;
+                return;
+            }
         }
+        if let Some(None) = self.selected_actions.last() {
+            self.selected_actions.pop();
+            self.actions.pop();
+        }
+
+        let mano = &self.buckets.values().next().unwrap()[0];
+        let strategy_node = self.strategy_node(mano, None);
+        if let Some((actions, _)) = strategy_node {
+            self.append_action_picklists(&actions);
+        } else {
+            self.actions.clear();
+            self.selected_actions.clear();
+        }
+        self.update_squares();
         // let turn = self.selected_action_node().to_play();
         // self.view_mode = match self.selected_strategy {
         //     Some(HandConfiguration::DosManos) => ViewMode::OneHand,
@@ -525,7 +538,6 @@ impl ActionPath {
         //     }
         //     Some(HandConfiguration::SinLance) | None => ViewMode::OneHand,
         // };
-        self.update_squares();
     }
 
     pub fn view(&self) -> Element<ExplorerEvent> {
@@ -553,13 +565,15 @@ impl ActionPath {
         );
         top_row = top_row.push(pick_tantos_postre);
 
-        let pick_action1 = pick_list(&self.actions[0][..], self.selected_actions[0], |elem| {
-            ExplorerEvent::SetAction(0, elem)
-        })
-        .placeholder("Select an action");
-        top_row = top_row.push(pick_action1);
+        // if let [first_actions, ..] = &self.actions[..] {
+        //     let pick_action1 = pick_list(&first_actions[..], self.selected_actions[0], |elem| {
+        //         ExplorerEvent::SetAction(0, elem)
+        //     })
+        //     .placeholder("Select an action");
+        //     top_row = top_row.push(pick_action1);
+        // }
 
-        for level in 1..self.selected_actions.len() {
+        for level in 0..self.selected_actions.len() {
             let pick_action_n = pick_list(
                 &self.actions[level][..],
                 self.selected_actions[level],
