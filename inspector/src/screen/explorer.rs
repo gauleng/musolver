@@ -16,7 +16,7 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, Carta, CartaIter, Lance, Mano, RankingManos},
+    mus::{Accion, Baraja, Carta, CartaIter, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, LanceGame, Strategy,
@@ -249,6 +249,65 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
     }
 }
 
+pub struct Buckets {
+    buckets: HashMap<AbstractJugada, (Vec<Mano>, f64)>,
+    jugadas: Vec<AbstractJugada>,
+}
+
+impl Buckets {
+    pub fn new(strategy: &Strategy<LanceGame>) -> Self {
+        let one_hand_list = Self::one_hand_list(strategy);
+        let mut buckets = HashMap::new();
+        for (hand, hand_probability) in &one_hand_list {
+            if let Some(lance) = strategy.strategy_config.game_config.lance {
+                let jugada = match lance {
+                    Lance::Grande => AbstractGrande::abstract_hand(hand),
+                    Lance::Chica => AbstractChica::abstract_hand(hand),
+                    Lance::Pares => AbstractPares::abstract_hand(hand).unwrap(),
+                    Lance::Juego => AbstractJuego::abstract_hand(hand).unwrap(),
+                    Lance::Punto => AbstractPunto::abstract_hand(hand),
+                };
+                let entry = buckets.entry(jugada).or_insert((vec![], 0.));
+                entry.0.push(hand.to_owned());
+                entry.1 += hand_probability;
+            }
+        }
+        let mut jugadas: Vec<_> = buckets.keys().cloned().collect();
+        jugadas.sort();
+
+        Self { jugadas, buckets }
+    }
+
+    pub fn hands(&self, jugada: &AbstractJugada) -> Option<&Vec<Mano>> {
+        self.buckets.get(jugada).map(|(hands, _)| hands)
+    }
+
+    pub fn probability(&self, jugada: &AbstractJugada) -> Option<&f64> {
+        self.buckets.get(jugada).map(|(_, probability)| probability)
+    }
+
+    pub fn jugadas(&self) -> &Vec<AbstractJugada> {
+        &self.jugadas
+    }
+
+    pub fn first_hand(&self) -> &Mano {
+        &self.buckets.values().next().unwrap().0[0]
+    }
+
+    fn one_hand_list(s: &Strategy<LanceGame>) -> Vec<(Mano, f64)> {
+        let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4)
+            .map(|(cards, prob)| (Mano::new(cards), prob));
+        if let Some(lance) = &s.strategy_config.game_config.lance {
+            manos
+                .filter(|(hand, _)| hand.jugada(lance).is_some())
+                .sorted_by(|(a, _), (b, _)| lance.compara_manos(a, b))
+                .collect()
+        } else {
+            manos.collect()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ViewMode {
     OneHand = 0,
@@ -256,10 +315,8 @@ pub enum ViewMode {
 }
 
 pub struct ActionPath {
-    //pub one_hand_list: Vec<Mano>,
     pub strategy: Strategy<LanceGame>,
-    pub buckets: HashMap<AbstractJugada, Vec<Mano>>,
-    pub jugadas: Vec<AbstractJugada>,
+    pub buckets: Buckets,
 
     pub selected_tantos_mano: Option<u8>,
     pub tantos_mano: Vec<u8>,
@@ -277,32 +334,17 @@ pub struct ActionPath {
 
 impl ActionPath {
     pub fn new(strategy: Strategy<LanceGame>) -> Self {
-        let one_hand_list = ActionPath::one_hand_list(&strategy);
-        let mut buckets = HashMap::new();
-        for hand in &one_hand_list {
-            if let Some(lance) = strategy.strategy_config.game_config.lance {
-                let jugada = match lance {
-                    Lance::Grande => AbstractGrande::abstract_hand(hand),
-                    Lance::Chica => AbstractChica::abstract_hand(hand),
-                    Lance::Pares => AbstractPares::abstract_hand(hand).unwrap(),
-                    Lance::Juego => AbstractJuego::abstract_hand(hand).unwrap(),
-                    Lance::Punto => AbstractPunto::abstract_hand(hand),
-                };
-                let entry = buckets.entry(jugada).or_insert(vec![]);
-                entry.push(hand.to_owned());
-            }
-        }
-        let mut jugadas: Vec<_> = buckets.keys().cloned().collect();
-        jugadas.sort();
-        let mut one_hand_squares = Vec::with_capacity(jugadas.len());
-        let mut two_hands_squares = Vec::with_capacity(jugadas.len());
-        for (i, jugada) in jugadas.iter().enumerate() {
+        let buckets = Buckets::new(&strategy);
+        let n_jugadas = buckets.jugadas().len();
+        let mut one_hand_squares = Vec::with_capacity(n_jugadas);
+        let mut two_hands_squares = Vec::with_capacity(n_jugadas);
+        for (i, jugada) in buckets.jugadas().iter().enumerate() {
             one_hand_squares.push(
                 SquareData::new(jugada.to_string())
                     .on_hover(move || ExplorerEvent::SelectBucket(Some(i))),
             );
-            let mut row = Vec::with_capacity(one_hand_list.len());
-            for jugada2 in &jugadas {
+            let mut row = Vec::with_capacity(n_jugadas);
+            for jugada2 in buckets.jugadas() {
                 row.push(SquareData::new(format!("{},{}", jugada, jugada2)))
             }
             two_hands_squares.push(row);
@@ -324,7 +366,6 @@ impl ActionPath {
             one_hand_squares,
             two_hands_squares,
             buckets,
-            jugadas,
             view_mode: ViewMode::OneHand,
             strategy: strategy.to_owned(),
             selected_tantos_mano: Some(0),
@@ -337,36 +378,13 @@ impl ActionPath {
             strategies,
             hovered_square: None,
         };
-        let mano = &action_path.buckets.values().next().unwrap()[0];
+        let mano = &action_path.buckets.first_hand();
         let strategy_node = action_path.strategy_node(mano, None);
         if let Some((actions, _)) = &strategy_node {
             action_path.append_action_picklists(actions);
             action_path.update_squares();
         }
         action_path
-    }
-
-    fn one_hand_list(s: &Strategy<LanceGame>) -> Vec<Mano> {
-        let manos = CartaIter::new(&Carta::CARTAS_MUS, 4).map(Mano::new);
-        if let Some(lance) = &s.strategy_config.game_config.lance {
-            match lance {
-                musolver::mus::Lance::Pares => manos
-                    .filter(|m| m.pares().is_some())
-                    .sorted_by(|a, b| lance.compara_manos(a, b))
-                    .collect(),
-                musolver::mus::Lance::Punto => manos
-                    .filter(|m| m.valor_puntos() <= 30)
-                    .sorted_by(|a, b| lance.compara_manos(a, b))
-                    .collect(),
-                musolver::mus::Lance::Juego => manos
-                    .filter(|m| m.juego().is_some())
-                    .sorted_by(|a, b| lance.compara_manos(a, b))
-                    .collect(),
-                _ => manos.sorted_by(|a, b| lance.compara_manos(a, b)).collect(),
-            }
-        } else {
-            manos.collect()
-        }
     }
 
     fn append_action_picklists(&mut self, actions: &[Accion]) {
@@ -426,10 +444,11 @@ impl ActionPath {
         };
         if self.view_mode == ViewMode::OneHand {
             let action_probability: Vec<Option<_>> = self
-                .jugadas
+                .buckets
+                .jugadas()
                 .iter()
                 .map(|jugada| {
-                    let manos = self.buckets.get(jugada).unwrap();
+                    let manos = self.buckets.hands(jugada).unwrap();
                     let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos
                         .iter()
                         .filter_map(|hand| self.strategy_node(hand, None))
@@ -451,14 +470,14 @@ impl ActionPath {
                     }
                 });
         } else {
-            for column in 0..self.jugadas.len() {
-                for row in 0..self.jugadas.len() {
-                    let jugada1 = &self.jugadas[row];
-                    let jugada2 = &self.jugadas[column];
+            for column in 0..self.buckets.jugadas().len() {
+                for row in 0..self.buckets.jugadas().len() {
+                    let jugada1 = &self.buckets.jugadas()[row];
+                    let jugada2 = &self.buckets.jugadas()[column];
                     let (manos1, manos2) = self
                         .buckets
-                        .get(jugada1)
-                        .zip(self.buckets.get(jugada2))
+                        .hands(jugada1)
+                        .zip(self.buckets.hands(jugada2))
                         .unwrap();
                     let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
                         .iter()
@@ -508,7 +527,7 @@ impl ActionPath {
             self.actions.pop();
         }
 
-        let mano = &self.buckets.values().next().unwrap()[0];
+        let mano = &self.buckets.first_hand();
         let strategy_node = self.strategy_node(mano, None);
         if let Some((actions, _)) = strategy_node {
             self.append_action_picklists(&actions);
@@ -592,10 +611,15 @@ impl ActionPath {
             .map_or_else(
                 || column![text("-")],
                 |bucket_id| {
+                    let jugada = self.buckets.jugadas()[bucket_id];
+                    let bucket_probability = 100. * self.buckets.probability(&jugada).unwrap();
                     column![
-                        text!("{}", self.one_hand_squares[bucket_id].mano)
-                            .center()
-                            .size(20),
+                        text!(
+                            "{} ({bucket_probability:.1}%)",
+                            self.one_hand_squares[bucket_id].mano
+                        )
+                        .center()
+                        .size(20),
                         text!("Paso: {:.1}%", self.one_hand_squares[bucket_id].paso * 100.),
                         text!(
                             "Quiero: {:.1}%",
