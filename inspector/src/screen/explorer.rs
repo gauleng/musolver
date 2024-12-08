@@ -16,7 +16,7 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, Baraja, Carta, CartaIter, DistribucionCartaIter, Lance, Mano, RankingManos},
+    mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, LanceGame, Strategy,
