@@ -260,7 +260,7 @@ fn main() {
             Err(SolverError::InvalidStrategyPath(err, path)) => {
                 panic!("Cannot open strategy file: {}. ({})", path, err)
             }
-            Err(SolverError::StrategyParseJsonError(err)) => {
+            Err(SolverError::ParseStrategyJsonError(err)) => {
                 panic!("Cannot parse strategy file: {}", err)
             }
             Err(err) => {

@@ -146,7 +146,7 @@ impl<G: Game<P = usize, A = Accion> + Clone> Strategy<G> {
     }
 
     pub fn to_file(&self, path: &Path) -> Result<(), SolverError> {
-        let contents = serde_json::to_string(self).map_err(SolverError::StrategyParseJsonError)?;
+        let contents = serde_json::to_string(self).map_err(SolverError::ParseStrategyJsonError)?;
         fs::write(path, contents)
             .map_err(|err| SolverError::InvalidStrategyPath(err, path.display().to_string()))?;
         Ok(())
@@ -156,7 +156,7 @@ impl<G: Game<P = usize, A = Accion> + Clone> Strategy<G> {
         let contents = fs::read_to_string(path)
             .map_err(|err| SolverError::InvalidStrategyPath(err, path.display().to_string()))?;
         let n: Self =
-            serde_json::from_str(&contents).map_err(SolverError::StrategyParseJsonError)?;
+            serde_json::from_str(&contents).map_err(SolverError::ParseStrategyJsonError)?;
         Ok(n)
     }
 }

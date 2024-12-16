@@ -9,5 +9,5 @@ pub enum SolverError {
     NoCreateFolderPermission(#[source] std::io::Error, String),
 
     #[error("Cannot parse strategy file.")]
-    StrategyParseJsonError(#[from] serde_json::Error),
+    ParseStrategyJsonError(#[from] serde_json::Error),
 }
