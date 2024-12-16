@@ -51,7 +51,7 @@ impl BancoEstrategias {
         }
     }
 
-    pub fn find(path: &Path) -> Vec<(String, StrategyConfig)> {
+    pub fn find(path: impl AsRef<Path>) -> Vec<(String, StrategyConfig)> {
         let walker = WalkDir::new(path)
             .sort_by(|a, b| match (a.metadata(), b.metadata()) {
                 (Ok(metadata_a), Ok(metadata_b)) => {
@@ -97,7 +97,7 @@ impl BancoEstrategias {
         estrategia_path.push(format!("{:?}", l));
         estrategia_path.set_extension("json");
         println!("Loading {:?}", estrategia_path);
-        let strategy = Strategy::from_file(estrategia_path.as_path())?;
+        let strategy = Strategy::from_file(estrategia_path)?;
         // let cfr = self.estrategia_lance_mut(l).borrow_mut();
         // strategy.nodes.iter().for_each(|(info_set, probabilities)| {
         //     let node = Node::new(probabilities.len());
@@ -121,7 +121,7 @@ impl BancoEstrategias {
         estrategia_path.set_extension("json");
         let c = self.estrategia_lance(l);
         let strategy = Strategy::new(&c, trainer_config, game_config);
-        strategy.to_file(estrategia_path.as_path())
+        strategy.to_file(estrategia_path)
     }
 
     pub fn export(

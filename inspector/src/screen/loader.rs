@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use iced::{
     widget::{button, column, container, row, scrollable, text, text_input},
     Element,
@@ -34,7 +32,7 @@ impl Loader {
                 strategies: vec![],
             },
             Task::perform(
-                async { BancoEstrategias::find(PathBuf::from("output").as_path()) },
+                async { BancoEstrategias::find("output") },
                 LoaderEvent::ListStrategies,
             ),
         )
@@ -96,11 +94,11 @@ impl Loader {
                 None
             }
             LoaderEvent::LoadStrategy(path) => {
-                let strategy = Strategy::from_file(PathBuf::from(path).as_path());
+                let strategy = Strategy::from_file(path);
                 Some(LoaderAction::OpenExplorer(strategy.unwrap()))
             }
             LoaderEvent::PlayStrategy(path) => {
-                let strategy = Strategy::from_file(PathBuf::from(path).as_path());
+                let strategy = Strategy::from_file(path);
                 Some(LoaderAction::OpenGame(strategy.unwrap()))
             }
             LoaderEvent::ListStrategies(list) => {
