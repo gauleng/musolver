@@ -6,7 +6,7 @@ use crate::Game;
 
 #[derive(Debug)]
 pub struct GameNode<G, D> {
-    lance_game: G,
+    game: G,
     next_nodes: ArrayVec<usize, 16>,
     info_set_str: Option<ArrayString<64>>,
     data: D,
@@ -22,11 +22,11 @@ impl<G, D> GameNode<G, D> {
     }
 
     pub fn game_mut(&mut self) -> &mut G {
-        &mut self.lance_game
+        &mut self.game
     }
 
     pub fn game(&self) -> &G {
-        &self.lance_game
+        &self.game
     }
 
     pub fn info_set_str(&self) -> Option<&str> {
@@ -58,7 +58,7 @@ where
         let info_set_str = game.info_set_str(current_player);
         let mut game_nodes = Vec::with_capacity(512);
         game_nodes.push(GameNode {
-            lance_game: game,
+            game,
             next_nodes: ArrayVec::new(),
             info_set_str: ArrayString::from(&info_set_str).ok(),
             data: D::default(),
@@ -98,7 +98,7 @@ where
     }
 
     fn next_nodes(&mut self, idx: usize) -> Vec<usize> {
-        let game = &self.game_nodes[idx].lance_game;
+        let game = &self.game_nodes[idx].game;
         if game.is_terminal() {
             vec![]
         } else {
@@ -106,7 +106,7 @@ where
             actions
                 .iter()
                 .filter_map(|action| {
-                    let mut new_game = self.game_nodes[idx].lance_game.clone();
+                    let mut new_game = self.game_nodes[idx].game.clone();
                     new_game.act(*action);
                     let history_str = new_game.history_str();
                     match self.node_ids.get(&history_str) {
@@ -123,7 +123,7 @@ where
                             self.last_node_id += 1;
                             self.node_ids.insert(history_str, self.last_node_id);
                             self.game_nodes.push(GameNode {
-                                lance_game: new_game,
+                                game: new_game,
                                 next_nodes: ArrayVec::new(),
                                 info_set_str,
                                 data: D::default(),
