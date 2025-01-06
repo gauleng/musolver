@@ -1,10 +1,9 @@
-use arrayvec::{ArrayString, ArrayVec};
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, str::FromStr};
 
-use super::GameError;
+use super::{GameError, GameGraph};
 
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,101 +72,11 @@ impl<A> Node<A> {
     }
 }
 
-#[derive(Debug)]
-struct GameNode<G> {
-    lance_game: G,
-    next_nodes: ArrayVec<usize, 16>,
+#[derive(Debug, Default)]
+struct CfrData {
     reach_player: f64,
     reach_opponent: f64,
     utility: f64,
-    info_set_str: Option<ArrayString<64>>,
-}
-
-#[derive(Debug)]
-struct GameGraph<G> {
-    node_ids: HashMap<String, usize>,
-    last_node_id: usize,
-    game_nodes: Vec<GameNode<G>>,
-}
-
-impl<G> GameGraph<G>
-where
-    G: Game + Clone,
-    G::A: Copy,
-{
-    fn new(game: G) -> Self {
-        let history_str = game.history_str();
-        let node_ids = HashMap::from([(history_str, 0)]);
-        let current_player = game.current_player().unwrap();
-        let info_set_str = game.info_set_str(current_player);
-        let mut game_nodes = Vec::with_capacity(512);
-        game_nodes.push(GameNode {
-            lance_game: game,
-            next_nodes: ArrayVec::new(),
-            reach_player: 1.,
-            reach_opponent: 1.,
-            utility: 0.,
-            info_set_str: ArrayString::from(&info_set_str).ok(),
-        });
-
-        Self {
-            node_ids,
-            last_node_id: 0,
-            game_nodes,
-        }
-    }
-
-    fn inflate(&mut self) {
-        let mut game_list = vec![0];
-        while !game_list.is_empty() {
-            game_list = game_list
-                .drain(..)
-                .flat_map(|idx| self.next_nodes(idx))
-                .collect();
-        }
-    }
-
-    fn next_nodes(&mut self, idx: usize) -> Vec<usize> {
-        let game = &self.game_nodes[idx].lance_game;
-        if game.is_terminal() {
-            vec![]
-        } else {
-            let actions = game.actions();
-            actions
-                .iter()
-                .filter_map(|action| {
-                    let mut new_game = self.game_nodes[idx].lance_game.clone();
-                    new_game.act(*action);
-                    let history_str = new_game.history_str();
-                    match self.node_ids.get(&history_str) {
-                        Some(next_id) => {
-                            self.game_nodes[idx].next_nodes.push(*next_id);
-                            None
-                        }
-                        None => {
-                            let info_set_str =
-                                new_game.current_player().and_then(|current_player| {
-                                    ArrayString::<64>::from(&new_game.info_set_str(current_player))
-                                        .ok()
-                                });
-                            self.last_node_id += 1;
-                            self.node_ids.insert(history_str, self.last_node_id);
-                            self.game_nodes.push(GameNode {
-                                lance_game: new_game,
-                                next_nodes: ArrayVec::new(),
-                                reach_player: 0.,
-                                reach_opponent: 0.,
-                                utility: 0.,
-                                info_set_str,
-                            });
-                            self.game_nodes[idx].next_nodes.push(self.last_node_id);
-                            Some(self.last_node_id)
-                        }
-                    }
-                })
-                .collect()
-        }
-    }
 }
 
 /// Trait implemented by games that can be trained with the CFR algorithm, for players identified
@@ -298,16 +207,14 @@ where
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
                     game_graph
-                        .game_nodes
+                        .nodes()
                         .iter()
-                        .filter(|node| !node.lance_game.is_terminal())
+                        .filter(|node| !node.game().is_terminal())
                         .for_each(|non_terminal_node| {
-                            let info_set_str = non_terminal_node.info_set_str.unwrap();
+                            let info_set_str = non_terminal_node.info_set_str().unwrap();
                             self.nodes
                                 .entry(info_set_str.to_string())
-                                .or_insert_with(|| {
-                                    Node::new(non_terminal_node.lance_game.actions())
-                                });
+                                .or_insert_with(|| Node::new(non_terminal_node.game().actions()));
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         let player_id = game.player_id(player_idx);
@@ -416,62 +323,69 @@ where
         }
     }
 
-    fn fsicfr(&mut self, game_graph: &mut GameGraph<G>, player: G::P, round_weight: f64) -> f64
+    fn fsicfr(
+        &mut self,
+        game_graph: &mut GameGraph<G, CfrData>,
+        player: G::P,
+        round_weight: f64,
+    ) -> f64
     where
         G::P: Eq + Copy,
         G::A: Copy,
     {
-        game_graph.game_nodes[0].reach_player = 1.;
-        game_graph.game_nodes[0].reach_opponent = 1.;
-        for idx in 0..game_graph.game_nodes.len() {
-            let game_node = &mut game_graph.game_nodes[idx];
-            let lance_game = &mut game_node.lance_game;
+        game_graph.node_mut(0).data_mut().reach_player = 1.;
+        game_graph.node_mut(0).data_mut().reach_opponent = 1.;
+        for idx in 0..game_graph.num_nodes() {
+            let game_node = &mut game_graph.node(idx);
+            let lance_game = &mut game_node.game();
             if !lance_game.is_terminal() {
                 let current_player = lance_game.current_player().unwrap();
                 let info_set_str = game_node
-                    .info_set_str
+                    .info_set_str()
                     .expect("InfoSet must be valid in non terminal nodes.");
                 let node = self
                     .nodes
-                    .get(info_set_str.as_str())
+                    .get(info_set_str)
                     .expect("InfoSet should be preloaded before calling fsicfr.");
                 let strategy = node.strategy();
                 for (i, s) in strategy.iter().enumerate() {
-                    let child_idx = game_graph.game_nodes[idx].next_nodes[i];
+                    let child_idx = game_graph.node(idx).children()[i];
 
                     if current_player == player {
-                        game_graph.game_nodes[child_idx].reach_player +=
-                            s * game_graph.game_nodes[idx].reach_player;
-                        game_graph.game_nodes[child_idx].reach_opponent +=
-                            game_graph.game_nodes[idx].reach_opponent;
+                        game_graph.node_mut(child_idx).data_mut().reach_player +=
+                            s * game_graph.node(idx).data().reach_player;
+                        game_graph.node_mut(child_idx).data_mut().reach_opponent +=
+                            game_graph.node(idx).data().reach_opponent;
                     } else {
-                        game_graph.game_nodes[child_idx].reach_player +=
-                            game_graph.game_nodes[idx].reach_player;
-                        game_graph.game_nodes[child_idx].reach_opponent +=
-                            s * game_graph.game_nodes[idx].reach_opponent;
+                        game_graph.node_mut(child_idx).data_mut().reach_player +=
+                            game_graph.node(idx).data().reach_player;
+                        game_graph.node_mut(child_idx).data_mut().reach_opponent +=
+                            s * game_graph.node(idx).data().reach_opponent;
                     }
                 }
             }
         }
 
-        for idx in (0..game_graph.game_nodes.len()).rev() {
-            let lance_game = &mut game_graph.game_nodes[idx].lance_game;
+        for idx in (0..game_graph.num_nodes()).rev() {
+            let lance_game = &mut game_graph.node_mut(idx).game_mut();
             if lance_game.is_terminal() {
-                game_graph.game_nodes[idx].utility = lance_game.utility(player);
+                game_graph.node_mut(idx).data_mut().utility = lance_game.utility(player);
             } else {
                 let current_player = lance_game.current_player().unwrap();
-                let info_set_str = game_graph.game_nodes[idx]
-                    .info_set_str
+                let info_set_str = game_graph
+                    .node(idx)
+                    .info_set_str()
                     .expect("InfoSet must be valid in non terminal nodes.");
-                let node = self.nodes.get_mut(info_set_str.as_str()).unwrap();
+                let node = self.nodes.get_mut(info_set_str).unwrap();
                 let strategy = node.strategy();
 
-                let utility: Vec<f64> = game_graph.game_nodes[idx]
-                    .next_nodes
+                let utility: Vec<f64> = game_graph
+                    .node(idx)
+                    .children()
                     .iter()
-                    .map(|child_idx| game_graph.game_nodes[*child_idx].utility)
+                    .map(|child_idx| game_graph.node(*child_idx).data().utility)
                     .collect();
-                game_graph.game_nodes[idx].utility = strategy
+                game_graph.node_mut(idx).data_mut().utility = strategy
                     .iter()
                     .zip(utility.iter())
                     .map(|(s, u)| s * u)
@@ -482,19 +396,19 @@ where
                         .zip(utility.iter())
                         .for_each(|(r, u)| {
                             *r += round_weight
-                                * game_graph.game_nodes[idx].reach_opponent
-                                * (u - game_graph.game_nodes[idx].utility)
+                                * game_graph.node(idx).data().reach_opponent
+                                * (u - game_graph.node(idx).data().utility)
                         });
                     node.update_strategy_sum(
-                        round_weight * game_graph.game_nodes[idx].reach_player,
+                        round_weight * game_graph.node(idx).data().reach_player,
                     );
                     node.update_strategy();
                 }
             }
-            game_graph.game_nodes[idx].reach_player = 0.;
-            game_graph.game_nodes[idx].reach_opponent = 0.;
+            game_graph.node_mut(idx).data_mut().reach_player = 0.;
+            game_graph.node_mut(idx).data_mut().reach_opponent = 0.;
         }
-        game_graph.game_nodes[0].utility
+        game_graph.node(0).data().utility
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node<G::A>> {
