@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use crate::{
     mus::{Accion, Baraja, Carta, Lance, Mano, PartidaMus, Turno},
-    ActionNode, Game,
+    ActionNode, Game, NodeType,
 };
 
 use super::{BancoEstrategias, HandConfiguration, ManosNormalizadas};
@@ -104,7 +104,8 @@ impl<'a> MusGame<'a> {
 
 impl<'a> Game for MusGame<'a> {
     type P = usize;
-    type A = Accion;
+    type Action = Accion;
+    const N_PLAYERS: usize = 4;
 
     fn utility(&mut self, player: usize) -> f64 {
         let mut partida = self.partida.clone();
@@ -185,10 +186,6 @@ impl<'a> Game for MusGame<'a> {
         2
     }
 
-    fn player_id(&self, idx: usize) -> usize {
-        idx
-    }
-
     fn actions(&self) -> Vec<Accion> {
         todo!()
     }
@@ -197,7 +194,7 @@ impl<'a> Game for MusGame<'a> {
         todo!()
     }
 
-    fn current_player(&self) -> Option<usize> {
+    fn current_player(&self) -> NodeType {
         todo!()
     }
 
@@ -206,6 +203,10 @@ impl<'a> Game for MusGame<'a> {
     }
 
     fn history_str(&self) -> String {
+        todo!()
+    }
+
+    fn is_chance(&mut self) -> bool {
         todo!()
     }
 }

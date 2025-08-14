@@ -27,12 +27,12 @@ pub struct StrategyConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Strategy<G: Game<P = usize, A = Accion>> {
+pub struct Strategy<G: Game<P = usize, Action = Accion>> {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<String, (Vec<G::A>, Vec<f64>)>,
+    pub nodes: HashMap<String, (Vec<G::Action>, Vec<f64>)>,
 }
 
-impl<G: Game<P = usize, A = Accion> + Clone> Strategy<G> {
+impl<G: Game<P = usize, Action = Accion> + Clone> Strategy<G> {
     pub fn new(cfr: &Cfr<G>, trainer_config: &TrainerConfig, game_config: &GameConfig) -> Self {
         let nodes = cfr
             .nodes()

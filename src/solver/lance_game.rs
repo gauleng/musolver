@@ -8,7 +8,7 @@ use crate::{
         Accion, Apuesta, Baraja, DistribucionDobleCartaIter, EstadoLance, Juego, Lance, Mano,
         Pares, PartidaMus, Turno,
     },
-    Game,
+    Game, NodeType,
 };
 
 use super::{AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto};
@@ -393,7 +393,12 @@ impl LanceGame {
 
 impl Game for LanceGame {
     type P = usize;
-    type A = Accion;
+    type Action = Accion;
+    const N_PLAYERS: usize = 4;
+
+    fn is_chance(&mut self) -> bool {
+        self.estado_lance.is_none()
+    }
 
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
@@ -489,10 +494,6 @@ impl Game for LanceGame {
         output
     }
 
-    fn player_id(&self, idx: usize) -> usize {
-        idx
-    }
-
     fn num_players(&self) -> usize {
         4
     }
@@ -536,9 +537,15 @@ impl Game for LanceGame {
         self.estado_lance.as_ref().unwrap().turno().is_none()
     }
 
-    fn current_player(&self) -> Option<usize> {
-        match self.estado_lance.as_ref().unwrap().turno()? {
-            Turno::Jugador(player_id) | Turno::Pareja(player_id) => Some(player_id as usize),
+    fn current_player(&self) -> NodeType {
+        match &self.estado_lance {
+            None => NodeType::Chance,
+            Some(estado_lance) => match estado_lance.turno() {
+                None => NodeType::Terminal,
+                Some(Turno::Jugador(player_id)) | Some(Turno::Pareja(player_id)) => {
+                    NodeType::Player(player_id as usize)
+                }
+            },
         }
     }
 

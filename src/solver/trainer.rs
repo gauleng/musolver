@@ -20,7 +20,7 @@ impl Trainer {
     pub fn train<G>(&self, cfr: &mut Cfr<G>, game: &mut G, config: &TrainerConfig)
     where
         G: Game + Debug + Clone,
-        G::A: Eq + Copy,
+        G::Action: Eq + Copy,
         G::P: Eq + Copy,
     {
         use std::time::Instant;

@@ -6,7 +6,7 @@ use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
 use crate::{
     mus::{Accion, PartidaMus},
     solver::{LanceGame, Strategy},
-    Game,
+    Game, NodeType,
 };
 
 #[async_trait]
@@ -36,8 +36,7 @@ impl Agent for AgenteAleatorio {
         let actions = lance_game.actions();
         if actions.is_empty() {
             println!(
-                "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                history
+                "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."
             );
             return Accion::Paso;
         }
@@ -77,17 +76,17 @@ impl Agent for AgenteMusolver {
         for action in &history {
             lance_game.act(*action);
         }
-        let info_set_str = lance_game
-            .current_player()
-            .map(|current_player| lance_game.info_set_str(current_player))
-            .unwrap();
+        let current_player = match lance_game.current_player() {
+            NodeType::Player(current_player) => current_player,
+            _ => 0,
+        };
+        let info_set_str = lance_game.info_set_str(current_player);
         let action_probability = self.strategy.nodes.get(&info_set_str);
         if let Some((actions, probabilities)) = action_probability {
             Self::accion_aleatoria(actions, probabilities)
         } else {
             println!(
-                "ERROR: La lista de acciones no está en el árbol. {:?}. Se pasa por defecto.",
-                history
+                "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."
             );
             Accion::Paso
         }

@@ -79,38 +79,48 @@ struct CfrData {
     utility: f64,
 }
 
+pub enum NodeType {
+    Chance,
+    Player(usize),
+    Terminal,
+}
+
 /// Trait implemented by games that can be trained with the CFR algorithm, for players identified
 /// with P and possible actions A.
 pub trait Game {
-    type A;
+    type Action;
     type P;
+    const N_PLAYERS: usize;
 
     /// Number of players of the game.
     fn num_players(&self) -> usize;
 
-    /// Identifier for the player in position idx.
-    fn player_id(&self, idx: usize) -> Self::P;
-
-    /// Utility function for the player P after the actions considered in the history slice.
-    fn utility(&mut self, player: Self::P) -> f64;
+    // /// Identifier for the player in position idx.
+    //fn player_id(&self, idx: usize) -> Self::P;
+    //
+    // /// Utility function for the player P after the actions considered in the history slice.
+    fn utility(&mut self, player: usize) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.
-    fn info_set_str(&self, player: Self::P) -> String;
+    fn info_set_str(&self, player: usize) -> String;
 
     fn history_str(&self) -> String;
 
     /// Actions available in the current state of the game.
-    fn actions(&self) -> Vec<Self::A>;
+    fn actions(&self) -> Vec<Self::Action>;
 
     /// Indicates if the current state of the game is terminal.
     fn is_terminal(&self) -> bool;
 
     /// Player to play in the current state of the game.
-    fn current_player(&self) -> Option<Self::P>;
+    fn current_player(&self) -> NodeType;
 
     /// Advance the state with the given action for the current player.
-    fn act(&mut self, a: Self::A);
+    fn act(&mut self, a: Self::Action);
+
+    /// Returns true if the current state of the game is a chance node.
+    fn is_chance(&mut self) -> bool;
 
     /// Initializes the game with a random instance. This method is called by the external and
     /// chance sampling methods.
@@ -149,7 +159,7 @@ impl FromStr for CfrMethod {
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
 pub struct Cfr<G: Game> {
-    nodes: HashMap<String, Node<G::A>>,
+    nodes: HashMap<String, Node<G::Action>>,
 }
 
 impl<G> Cfr<G>
@@ -170,7 +180,7 @@ where
         mut iteration_callback: F,
     ) where
         G::P: Eq + Copy,
-        G::A: Eq + Copy,
+        G::Action: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
         let mut util = vec![0.; game.num_players()];
@@ -178,25 +188,20 @@ where
             match cfr_method {
                 CfrMethod::Cfr => {
                     for (player_idx, u) in util.iter_mut().enumerate() {
-                        let player_id = game.player_id(player_idx);
                         game.new_iter(|game, po| {
-                            *u += po * self.chance_sampling(game, player_id, 1., po);
+                            *u += po * self.chance_sampling(game, player_idx, 1., po);
                         });
                     }
                 }
                 CfrMethod::CfrPlus => todo!(),
                 CfrMethod::ChanceSampling => {
-                    game.new_random();
                     for (player_idx, u) in util.iter_mut().enumerate() {
-                        let player_id = game.player_id(player_idx);
-                        *u += self.chance_sampling(game, player_id, 1., 1.);
+                        *u += self.chance_sampling(game, player_idx, 1., 1.);
                     }
                 }
                 CfrMethod::ExternalSampling => {
-                    game.new_random();
                     for (player_idx, u) in util.iter_mut().enumerate() {
-                        let player_id = game.player_id(player_idx);
-                        *u += self.external_sampling(game, player_id);
+                        *u += self.external_sampling(game, player_idx);
                     }
                 }
                 CfrMethod::FsiCfr => {
@@ -217,8 +222,7 @@ where
                                 .or_insert_with(|| Node::new(non_terminal_node.game().actions()));
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
-                        let player_id = game.player_id(player_idx);
-                        *u += self.fsicfr(&mut game_graph, player_id, round_weight);
+                        *u += self.fsicfr(&mut game_graph, player_idx, round_weight);
                     }
                 }
             }
@@ -227,16 +231,23 @@ where
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling(&mut self, game: &mut G, player: <G as Game>::P, pi: f64, po: f64) -> f64
+    fn chance_sampling(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
     where
         G::P: Eq + Copy,
-        G::A: Eq + Copy,
+        G::Action: Eq + Copy,
     {
-        if game.is_terminal() {
-            return game.utility(player);
-        }
-        let current_player = game.current_player().unwrap();
-        let actions: Vec<<G as Game>::A> = game.actions();
+        let current_player = match game.current_player() {
+            NodeType::Chance => {
+                let mut new_game = game.clone();
+                new_game.new_random();
+                return self.chance_sampling(&mut new_game, player, pi, po);
+            }
+            NodeType::Player(current_player) => current_player,
+            NodeType::Terminal => {
+                return game.utility(player);
+            }
+        };
+        let actions: Vec<<G as Game>::Action> = game.actions();
         let info_set_str = game.info_set_str(current_player);
         let node = self
             .nodes
@@ -274,17 +285,24 @@ where
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling(&mut self, game: &mut G, player: <G as Game>::P) -> f64
+    fn external_sampling(&mut self, game: &mut G, player: usize) -> f64
     where
         G::P: Eq + Copy,
-        G::A: Eq + Copy,
+        G::Action: Eq + Copy,
     {
-        if game.is_terminal() {
-            return game.utility(player);
-        }
-        let current_player = game.current_player().unwrap();
+        let current_player = match game.current_player() {
+            NodeType::Chance => {
+                let mut new_game = game.clone();
+                new_game.new_random();
+                return self.external_sampling(&mut new_game, player);
+            }
+            NodeType::Player(current_player) => current_player,
+            NodeType::Terminal => {
+                return game.utility(player);
+            }
+        };
         let info_set_str = game.info_set_str(current_player);
-        let actions: Vec<<G as Game>::A> = game.actions();
+        let actions: Vec<<G as Game>::Action> = game.actions();
         if current_player == player {
             let util: Vec<f64> = actions
                 .iter()
@@ -326,20 +344,19 @@ where
     fn fsicfr(
         &mut self,
         game_graph: &mut GameGraph<G, CfrData>,
-        player: G::P,
+        player: usize,
         round_weight: f64,
     ) -> f64
     where
         G::P: Eq + Copy,
-        G::A: Copy,
+        G::Action: Copy,
     {
         game_graph.node_mut(0).data_mut().reach_player = 1.;
         game_graph.node_mut(0).data_mut().reach_opponent = 1.;
         for idx in 0..game_graph.num_nodes() {
             let game_node = &mut game_graph.node(idx);
             let lance_game = &mut game_node.game();
-            if !lance_game.is_terminal() {
-                let current_player = lance_game.current_player().unwrap();
+            if let NodeType::Player(current_player) = lance_game.current_player() {
                 let info_set_str = game_node
                     .info_set_str()
                     .expect("InfoSet must be valid in non terminal nodes.");
@@ -368,42 +385,45 @@ where
 
         for idx in (0..game_graph.num_nodes()).rev() {
             let lance_game = &mut game_graph.node_mut(idx).game_mut();
-            if lance_game.is_terminal() {
-                game_graph.node_mut(idx).data_mut().utility = lance_game.utility(player);
-            } else {
-                let current_player = lance_game.current_player().unwrap();
-                let info_set_str = game_graph
-                    .node(idx)
-                    .info_set_str()
-                    .expect("InfoSet must be valid in non terminal nodes.");
-                let node = self.nodes.get_mut(info_set_str).unwrap();
-                let strategy = node.strategy();
-
-                let utility: Vec<f64> = game_graph
-                    .node(idx)
-                    .children()
-                    .iter()
-                    .map(|child_idx| game_graph.node(*child_idx).data().utility)
-                    .collect();
-                game_graph.node_mut(idx).data_mut().utility = strategy
-                    .iter()
-                    .zip(utility.iter())
-                    .map(|(s, u)| s * u)
-                    .sum();
-                if current_player == player {
-                    node.regret_sum
-                        .iter_mut()
-                        .zip(utility.iter())
-                        .for_each(|(r, u)| {
-                            *r += round_weight
-                                * game_graph.node(idx).data().reach_opponent
-                                * (u - game_graph.node(idx).data().utility)
-                        });
-                    node.update_strategy_sum(
-                        round_weight * game_graph.node(idx).data().reach_player,
-                    );
-                    node.update_strategy();
+            match lance_game.current_player() {
+                NodeType::Terminal => {
+                    game_graph.node_mut(idx).data_mut().utility = lance_game.utility(player);
                 }
+                NodeType::Player(current_player) => {
+                    let info_set_str = game_graph
+                        .node(idx)
+                        .info_set_str()
+                        .expect("InfoSet must be valid in non terminal nodes.");
+                    let node = self.nodes.get_mut(info_set_str).unwrap();
+                    let strategy = node.strategy();
+
+                    let utility: Vec<f64> = game_graph
+                        .node(idx)
+                        .children()
+                        .iter()
+                        .map(|child_idx| game_graph.node(*child_idx).data().utility)
+                        .collect();
+                    game_graph.node_mut(idx).data_mut().utility = strategy
+                        .iter()
+                        .zip(utility.iter())
+                        .map(|(s, u)| s * u)
+                        .sum();
+                    if current_player == player {
+                        node.regret_sum
+                            .iter_mut()
+                            .zip(utility.iter())
+                            .for_each(|(r, u)| {
+                                *r += round_weight
+                                    * game_graph.node(idx).data().reach_opponent
+                                    * (u - game_graph.node(idx).data().utility)
+                            });
+                        node.update_strategy_sum(
+                            round_weight * game_graph.node(idx).data().reach_player,
+                        );
+                        node.update_strategy();
+                    }
+                }
+                NodeType::Chance => {}
             }
             game_graph.node_mut(idx).data_mut().reach_player = 0.;
             game_graph.node_mut(idx).data_mut().reach_opponent = 0.;
@@ -411,7 +431,7 @@ where
         game_graph.node(0).data().utility
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node<G::A>> {
+    pub fn nodes(&self) -> &HashMap<String, Node<G::Action>> {
         &self.nodes
     }
 
