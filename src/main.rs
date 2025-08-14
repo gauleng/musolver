@@ -74,7 +74,7 @@ fn main() {
     println!(
         "Simulando: {}",
         match trainer {
-            Trainer::LanceTrainer(lance) => format!("{:?}", lance),
+            Trainer::LanceTrainer(lance) => format!("{lance:?}"),
             Trainer::MusTrainer => "Partida completa".to_owned(),
         }
     );

@@ -39,7 +39,7 @@ impl Trainer {
                 pb.set_message(format!(
                     "Utility: {}",
                     util.iter()
-                        .map(|u| format!("{:.5}", u))
+                        .map(|u| format!("{u:.5}"))
                         .collect::<Vec<String>>()
                         .join(" "),
                 ));
@@ -52,6 +52,6 @@ impl Trainer {
         //         .expect("Error exportando estrategias.");
         // }
         let elapsed = now.elapsed();
-        println!("Elapsed: {:.2?}", elapsed);
+        println!("Elapsed: {elapsed:.2?}");
     }
 }
