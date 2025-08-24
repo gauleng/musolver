@@ -51,12 +51,13 @@ impl Display for Pares {
     }
 }
 
+#[derive(Hash, Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
 pub enum Jugada {
     Grande,
     Chica,
     Pares(Pares),
     Juego(Juego),
-    Punto,
+    Punto(u8),
 }
 
 /// Lances de una partida de mus.
@@ -149,7 +150,14 @@ impl Mano {
             Lance::Grande => Some(Jugada::Grande),
             Lance::Chica => Some(Jugada::Chica),
             Lance::Pares => self.pares().map(Jugada::Pares),
-            Lance::Punto => self.juego().map_or_else(|| Some(Jugada::Punto), |_| None),
+            Lance::Punto => {
+                let p = self.valor_puntos();
+                if p < 31 {
+                    Some(Jugada::Punto(self.valor_puntos()))
+                } else {
+                    None
+                }
+            }
             Lance::Juego => self.juego().map(Jugada::Juego),
         }
     }

@@ -185,9 +185,7 @@ where
                     info_set_str,
                     data: D::default(),
                 });
-                self.game_nodes[parent_idx]
-                    .next_nodes
-                    .push(self.last_node_id);
+                self.game_nodes[parent_idx].next_nodes.push(self.last_node_id);
                 Some(self.last_node_id)
             }
         }
