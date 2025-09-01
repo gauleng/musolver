@@ -189,10 +189,6 @@ impl<'a> Game for MusGame<'a> {
         todo!()
     }
 
-    fn is_terminal(&self) -> bool {
-        todo!()
-    }
-
     fn current_player(&self) -> NodeType {
         todo!()
     }
@@ -202,10 +198,6 @@ impl<'a> Game for MusGame<'a> {
     }
 
     fn history_str(&self) -> String {
-        todo!()
-    }
-
-    fn is_chance(&mut self) -> bool {
         todo!()
     }
 }

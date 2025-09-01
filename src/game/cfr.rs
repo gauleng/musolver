@@ -79,6 +79,7 @@ struct CfrData {
     utility: f64,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum NodeType {
     Chance,
     Player(usize),
@@ -94,10 +95,7 @@ pub trait Game {
     /// Number of players of the game.
     fn num_players(&self) -> usize;
 
-    // /// Identifier for the player in position idx.
-    //fn player_id(&self, idx: usize) -> Self::P;
-    //
-    // /// Utility function for the player P after the actions considered in the history slice.
+    /// Utility function for the player P after the actions considered in the history slice.
     fn utility(&mut self, player: usize) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
@@ -109,17 +107,11 @@ pub trait Game {
     /// Actions available in the current state of the game.
     fn actions(&self) -> Vec<Self::Action>;
 
-    /// Indicates if the current state of the game is terminal.
-    fn is_terminal(&self) -> bool;
-
     /// Player to play in the current state of the game.
     fn current_player(&self) -> NodeType;
 
     /// Advance the state with the given action for the current player.
     fn act(&mut self, a: Self::Action);
-
-    /// Returns true if the current state of the game is a chance node.
-    fn is_chance(&mut self) -> bool;
 
     /// Initializes the game with a random instance. This method is called by the external and
     /// chance sampling methods.
@@ -185,11 +177,12 @@ where
         for i in 0..iterations {
             match cfr_method {
                 CfrMethod::Cfr => {
-                    for (player_idx, u) in util.iter_mut().enumerate() {
-                        game.new_iter(|game, po| {
-                            *u += po * self.chance_sampling(game, player_idx, 1., po);
-                        });
-                    }
+                    todo!();
+                    // for (player_idx, u) in util.iter_mut().enumerate() {
+                    //     game.new_iter(|game, po| {
+                    //         *u += po * self.chance_sampling(game, player_idx, 1., po);
+                    //     });
+                    // }
                 }
                 CfrMethod::CfrPlus => todo!(),
                 CfrMethod::ChanceSampling => {
@@ -212,7 +205,7 @@ where
                     game_graph
                         .nodes()
                         .iter()
-                        .filter(|node| !node.game().is_terminal())
+                        .filter(|node| node.game().current_player() != NodeType::Terminal)
                         .for_each(|non_terminal_node| {
                             let info_set_str = non_terminal_node.info_set_str().unwrap();
                             self.nodes

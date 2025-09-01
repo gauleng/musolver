@@ -395,10 +395,6 @@ impl Game for LanceGame {
     type Action = Accion;
     const N_PLAYERS: usize = 4;
 
-    fn is_chance(&mut self) -> bool {
-        self.estado_lance.is_none()
-    }
-
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
         loop {
@@ -530,10 +526,6 @@ impl Game for LanceGame {
             acciones.retain(|a| a >= self.last_action.as_ref().unwrap());
         }
         acciones
-    }
-
-    fn is_terminal(&self) -> bool {
-        self.estado_lance.as_ref().unwrap().turno().is_none()
     }
 
     fn current_player(&self) -> NodeType {
