@@ -89,7 +89,6 @@ pub enum NodeType {
 /// with P and possible actions A.
 pub trait Game {
     type Action;
-    type P;
     const N_PLAYERS: usize;
 
     /// Number of players of the game.
@@ -179,7 +178,6 @@ where
         iterations: usize,
         mut iteration_callback: F,
     ) where
-        G::P: Eq + Copy,
         G::Action: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
@@ -233,7 +231,6 @@ where
     /// Chance sampling CFR algorithm.
     fn chance_sampling(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
     where
-        G::P: Eq + Copy,
         G::Action: Eq + Copy,
     {
         let current_player = match game.current_player() {
@@ -287,7 +284,6 @@ where
     /// External sampling CFR algorithm.
     fn external_sampling(&mut self, game: &mut G, player: usize) -> f64
     where
-        G::P: Eq + Copy,
         G::Action: Eq + Copy,
     {
         let current_player = match game.current_player() {
@@ -348,7 +344,6 @@ where
         round_weight: f64,
     ) -> f64
     where
-        G::P: Eq + Copy,
         G::Action: Copy,
     {
         game_graph.node_mut(0).data_mut().reach_player = 1.;

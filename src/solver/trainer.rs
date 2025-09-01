@@ -21,7 +21,6 @@ impl Trainer {
     where
         G: Game + Debug + Clone,
         G::Action: Eq + Copy,
-        G::P: Eq + Copy,
     {
         use std::time::Instant;
 

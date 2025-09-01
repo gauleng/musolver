@@ -103,7 +103,6 @@ impl<'a> MusGame<'a> {
 }
 
 impl<'a> Game for MusGame<'a> {
-    type P = usize;
     type Action = Accion;
     const N_PLAYERS: usize = 4;
 

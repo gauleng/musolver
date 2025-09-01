@@ -392,7 +392,6 @@ impl LanceGame {
 }
 
 impl Game for LanceGame {
-    type P = usize;
     type Action = Accion;
     const N_PLAYERS: usize = 4;
 
