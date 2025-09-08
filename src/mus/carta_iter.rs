@@ -11,8 +11,7 @@ fn binomial(n: usize, k: usize) -> usize {
 
 #[cfg(not(windows))]
 fn binomial(n: usize, k: usize) -> usize {
-use rug::Integer;
-    Integer::from(n).binomial(k).to_usize().unwrap()
+    rug::Integer::from(n).binomial(k).to_usize().unwrap()
 }
 
 /// Iterador de manos de cartas de mus.
