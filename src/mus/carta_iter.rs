@@ -4,7 +4,15 @@ use itertools::{CombinationsWithReplacement, Itertools};
 
 use super::Carta;
 
-use rug::Integer;
+#[cfg(windows)]
+fn binomial(n: usize, k: usize) -> usize {
+    num_integer::binomial(n, k)
+}
+
+#[cfg(not(windows))]
+fn binomial(n: usize, k: usize) -> usize {
+    rug::Integer::from(n).binomial(k).to_usize().unwrap()
+}
 
 /// Iterador de manos de cartas de mus.
 ///
@@ -60,10 +68,7 @@ impl CombinationsWithReplacementProb {
         let iter: CombinationsWithReplacement<Range<usize>> =
             (0..max_frequencies.len()).combinations_with_replacement(k);
         let num_elements: usize = max_frequencies.iter().sum();
-        let total_frequency = Integer::from(num_elements)
-            .binomial(k as u32)
-            .to_usize()
-            .unwrap();
+        let total_frequency = binomial(num_elements, k);
         CombinationsWithReplacementProb {
             iter,
             total_frequency,
@@ -94,11 +99,11 @@ impl Iterator for CombinationsWithReplacementProb {
                 .zip(self.max_frequencies.iter())
                 .filter(|(count, max_freq)| **count < **max_freq)
                 .map(|(count, max_freq)| {
-                    Integer::from(*max_freq).binomial((*max_freq - *count) as u32)
+                    binomial(*max_freq, *max_freq - *count)
                 })
                 .reduce(|acc, v| acc * v)
                 .unwrap();
-            return Some((indices, freq.to_f64() / self.total_frequency as f64));
+            return Some((indices, freq as f64 / self.total_frequency as f64));
         }
     }
 }
@@ -202,6 +207,7 @@ impl<'a> Iterator for DistribucionDobleCartaIter<'a> {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
