@@ -1,177 +1,93 @@
-use std::cell::RefCell;
+use arrayvec::{ArrayString, ArrayVec};
+use itertools::Itertools;
 
 use crate::{
-    mus::{Accion, Baraja, Carta, Lance, Mano, PartidaMus, Turno},
-    ActionNode, Game, NodeType,
+    mus::{Accion, Apuesta, Baraja, Carta, Lance, Mano, PartidaMus, Turno},
+    Game, NodeType,
 };
 
-use super::{BancoEstrategias, HandConfiguration, ManosNormalizadas};
+use super::ManosNormalizadas;
 
 #[derive(Debug, Clone)]
-pub struct MusGame<'a> {
-    manos_normalizadas: [String; 2],
-    tipo_estrategia: HandConfiguration,
-    partida: PartidaMus,
-    banco_estrategias: Option<RefCell<BancoEstrategias>>,
-    action_tree: Option<&'a ActionNode<usize, Accion>>,
-    switched: bool,
-    history: Vec<Accion>,
+pub struct MusGame {
+    tantos: [u8; 2],
+    partida: Option<PartidaMus>,
+    history_str: ArrayVec<ArrayString<4>, 14>,
+    info_set_prefix: [ArrayString<64>; 4],
+    last_action: Option<Accion>,
+    abstract_game: bool,
 }
 
-impl<'a> MusGame<'a> {
-    pub fn new(baraja: &mut Baraja, tantos: [u8; 2]) -> Self {
-        baraja.barajar();
-        let manos = Self::repartir_manos(baraja);
-        let partida = PartidaMus::new(manos, tantos);
-        let manos_normalizadas =
-            ManosNormalizadas::normalizar_mano(partida.manos(), &Lance::Grande);
-        let manos_normalizadas_str = manos_normalizadas.to_string_array();
-        let tipo_estrategia = manos_normalizadas.hand_configuration();
+impl MusGame {
+    pub fn new(tantos: [u8; 2], abstract_game: bool) -> Self {
         Self {
-            partida,
-            manos_normalizadas: manos_normalizadas_str,
-            tipo_estrategia,
-            banco_estrategias: None,
-            action_tree: None,
-            switched: false,
-            history: vec![],
+            partida: None,
+            tantos,
+            history_str: ArrayVec::new(),
+            info_set_prefix: [ArrayString::<64>::new(); 4],
+            last_action: None,
+            abstract_game,
         }
     }
 
-    fn from_partida_mus(partida: PartidaMus) -> Self {
-        let manos_normalizadas =
-            ManosNormalizadas::normalizar_mano(partida.manos(), &partida.lance_actual().unwrap());
-        let tantos = partida.tantos();
-        let pareja_mano = match partida.turno().unwrap() {
-            Turno::Jugador(id) | Turno::Pareja(id) => id,
-        } as usize;
-        let prefijo = format!("{}:{},", tantos[pareja_mano], tantos[1 - pareja_mano]);
-        let manos_normalizadas_str = manos_normalizadas.to_string_array();
-        let mut info_set = [prefijo.clone(), prefijo.clone()];
-        info_set[0].push_str(&manos_normalizadas_str[0]);
-        info_set[1].push_str(&manos_normalizadas_str[1]);
-        let tipo_estrategia = manos_normalizadas.hand_configuration();
+    fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
+        let tantos = *partida.tantos();
         Self {
-            partida,
-            manos_normalizadas: info_set,
-            tipo_estrategia,
-            banco_estrategias: None,
-            action_tree: None,
-            switched: false,
-            history: vec![],
+            partida: Some(partida),
+            tantos,
+            history_str: ArrayVec::new(),
+            info_set_prefix: [ArrayString::<64>::new(); 4],
+            last_action: None,
+            abstract_game,
         }
     }
 
-    fn repartir_manos(b: &Baraja) -> [Mano; 4] {
-        let mut c = b.primeras_n_cartas(16).iter();
-        core::array::from_fn(|_| {
-            let mut m = Vec::<Carta>::with_capacity(4);
-            for _ in 0..4 {
-                m.push(*c.next().unwrap());
-            }
-            Mano::new(m)
-        })
-    }
-
-    pub fn tipo_estrategia(&self) -> HandConfiguration {
-        self.tipo_estrategia
-    }
-
-    pub fn train(
-        &mut self,
-        b: BancoEstrategias,
-        action_tree: &'a ActionNode<usize, Accion>,
-    ) -> (BancoEstrategias, [f64; 2]) {
-        self.banco_estrategias = Some(RefCell::new(b));
-        self.action_tree = Some(action_tree);
-        let banco = self.banco_estrategias.as_ref().unwrap().borrow();
-        let cfr = banco.estrategia_lance_mut(Lance::Grande);
-        let c = cfr.take();
-        drop(banco);
-
-        let u = [
-            0.,
-            0., // c.chance_sampling(self, self.action_tree.as_ref().unwrap(), 0, 1., 1.),
-               // c.chance_sampling(self, self.action_tree.as_ref().unwrap(), 1, 1., 1.),
-        ];
-
-        let banco = self.banco_estrategias.as_ref().unwrap().take();
-        let cfr = banco.estrategia_lance_mut(Lance::Grande);
-        cfr.replace(c);
-        (banco, u)
+    fn info_set_prefix(
+        manos: &[Mano; 4],
+        tantos: &[u8; 2],
+        abstracto: bool,
+    ) -> [ArrayString<64>; 4] {
+        let info_set_prefix: [ArrayString<64>; 4] = core::array::from_fn(|i| {
+            ArrayString::<64>::from(&format!("{}:{},{},", tantos[0], tantos[1], manos[i])).unwrap()
+        });
+        info_set_prefix
     }
 }
 
-impl<'a> Game for MusGame<'a> {
+impl Game for MusGame {
     type Action = Accion;
     const N_PLAYERS: usize = 4;
 
     fn utility(&mut self, player: usize) -> f64 {
-        let mut partida = self.partida.clone();
-        self.history.iter().for_each(|&a| {
-            let _ = partida.actuar(a);
-        });
+        let tantos = self.partida.as_mut().unwrap().tantos();
 
-        if let Some(lance) = partida.lance_actual() {
-            let action_tree = self.action_tree.unwrap();
+        let payoff = [
+            tantos[0] as i8 - tantos[1] as i8,
+            tantos[1] as i8 - tantos[0] as i8,
+        ];
 
-            let mut trainer = MusGame::from_partida_mus(partida);
-            let banco = self.banco_estrategias.as_ref().unwrap().take();
-            let cfr = banco.estrategia_lance_mut(lance);
-            let c = cfr.take();
-            trainer.banco_estrategias = Some(RefCell::new(banco));
-            trainer.action_tree = Some(action_tree);
-            let mut acting_player = player;
-            trainer
-                .partida
-                .turno()
-                .iter()
-                .zip(self.partida.turno().iter())
-                .for_each(|(t, s)| {
-                    if *t != *s {
-                        trainer.switched = !self.switched;
-                        acting_player = 1 - acting_player;
-                    }
-                });
-            let u = 0.; //c.chance_sampling(&trainer, action_tree, acting_player, 1., 1.);
-
-            let banco = trainer.banco_estrategias.as_ref().unwrap().take();
-            let cfr = banco.estrategia_lance_mut(lance);
-            cfr.replace(c);
-            self.banco_estrategias.as_ref().unwrap().replace(banco);
-
-            u
-        } else {
-            let mut tantos = *partida.tantos();
-
-            let payoff = [
-                tantos[0] as i8 - tantos[1] as i8,
-                tantos[1] as i8 - tantos[0] as i8,
-            ];
-
-            if self.switched {
-                tantos.swap(0, 1);
-            }
-            // println!(
-            //     "Tantos para el jugador {}  con acciones {:?}: {}",
-            //     player, self.history, tantos[player]
-            // );
-            payoff[player] as f64
-        }
+        payoff[player] as f64
     }
 
     fn info_set_str(&self, player: usize) -> String {
-        let mut output = String::with_capacity(15 + self.history.len() + 1);
-        output.push_str(&self.manos_normalizadas[player]);
+        let mut output = String::with_capacity(15 + self.history_str.len() + 1);
+        output.push_str(&self.tantos[0].to_string());
+        output.push(':');
+        output.push_str(&self.tantos[1].to_string());
         output.push(',');
-        for i in self.history.iter() {
+        for i in self.history_str.iter() {
             output.push_str(&i.to_string());
         }
         output
     }
 
     fn new_random(&mut self) {
-        todo!()
+        let mut baraja = Baraja::baraja_mus();
+        baraja.barajar();
+        let manos = baraja.repartir_manos();
+        self.info_set_prefix = MusGame::info_set_prefix(&manos, &self.tantos, self.abstract_game);
+        let partida = PartidaMus::new(manos, self.tantos);
+        self.partida = Some(partida);
     }
 
     fn new_iter<F>(&mut self, _f: F)
@@ -182,19 +98,77 @@ impl<'a> Game for MusGame<'a> {
     }
 
     fn num_players(&self) -> usize {
-        2
+        4
     }
 
     fn actions(&self) -> Vec<Accion> {
-        todo!()
+        let partida = self.partida.as_ref().unwrap();
+        let turno = partida.turno().unwrap();
+        let ultimo_envite: Apuesta = partida.ultima_apuesta();
+        let mut acciones = match ultimo_envite {
+            Apuesta::Tantos(0) => vec![
+                Accion::Paso,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Tantos(2) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Tantos(4..=5) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+            _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+        };
+        if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
+            acciones.retain(|a| a >= self.last_action.as_ref().unwrap());
+        }
+        acciones
     }
 
     fn current_player(&self) -> NodeType {
-        todo!()
+        match &self.partida {
+            None => NodeType::Chance,
+            Some(estado_lance) => match estado_lance.turno() {
+                None => NodeType::Terminal,
+                Some(Turno::Jugador(player_id)) | Some(Turno::Pareja(player_id)) => {
+                    NodeType::Player(player_id as usize)
+                }
+            },
+        }
     }
 
-    fn act(&mut self, _a: Accion) {
-        todo!()
+    fn act(&mut self, a: Accion) {
+        self.last_action = Some(a);
+        let turno = self
+            .partida
+            .as_ref()
+            .expect("At least one EstadoLance must be available.")
+            .turno()
+            .unwrap();
+        match turno {
+            Turno::Pareja(2) | Turno::Pareja(3) => {
+                self.history_str.pop();
+            }
+            _ => {}
+        };
+        let action_str = match turno {
+            Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
+            _ => a.to_string(),
+        };
+        self.history_str
+            .push(ArrayString::<4>::from(&action_str).unwrap());
+        let _ = self.partida.as_mut().unwrap().actuar(a);
     }
 
     fn history_str(&self) -> String {
