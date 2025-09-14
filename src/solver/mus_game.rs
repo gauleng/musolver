@@ -3,6 +3,7 @@ use itertools::Itertools;
 
 use crate::{
     mus::{Accion, Apuesta, Baraja, Lance, Mano, PartidaMus, Turno},
+    solver::ManosNormalizadas,
     Game, NodeType,
 };
 
@@ -20,9 +21,6 @@ pub struct MusGame {
 
 impl MusGame {
     pub fn new(tantos: [u8; 2], abstract_game: bool) -> Self {
-        if abstract_game {
-            todo!("Abtract game not supported.")
-        }
         Self {
             partida: None,
             tantos,
@@ -37,7 +35,7 @@ impl MusGame {
 
     fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
         if abstract_game {
-            todo!("Abtract game not supported.")
+            todo!("From partida mus not supported.")
         }
         let tantos = *partida.tantos();
         Self {
@@ -71,10 +69,16 @@ impl MusGame {
     fn info_set_prefix(
         manos: &[Mano; 4],
         tantos: &[u8; 2],
-        abstracto: bool,
+        abstracto: Option<Lance>,
     ) -> [ArrayString<16>; 4] {
         let info_set_prefix: [ArrayString<16>; 4] = core::array::from_fn(|i| {
-            ArrayString::from(&format!("{}:{},{},", tantos[0], tantos[1], manos[i])).unwrap()
+            if let Some(lance) = abstracto {
+                let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(&manos[i], &lance);
+                ArrayString::from(&format!("{}:{},{},", tantos[0], tantos[1], mano_abstracta))
+                    .unwrap()
+            } else {
+                ArrayString::from(&format!("{}:{},{},", tantos[0], tantos[1], manos[i])).unwrap()
+            }
         });
         info_set_prefix
     }
@@ -106,7 +110,15 @@ impl Game for MusGame {
         let mut baraja = Baraja::baraja_mus();
         baraja.barajar();
         let manos = baraja.repartir_manos();
-        self.info_set_prefix = MusGame::info_set_prefix(&manos, &self.tantos, self.abstract_game);
+        self.info_set_prefix = MusGame::info_set_prefix(
+            &manos,
+            &self.tantos,
+            if self.abstract_game {
+                Some(Lance::Grande)
+            } else {
+                None
+            },
+        );
         (self.manos_pares, self.manos_juego) = MusGame::jugadas_manos(&manos);
         let partida = PartidaMus::new(manos, self.tantos);
         self.partida = Some(partida);
@@ -187,6 +199,17 @@ impl Game for MusGame {
         let _ = self.partida.as_mut().unwrap().actuar(a);
         let lance_siguiente = self.partida.as_mut().unwrap().lance_actual();
         if lance_previo != lance_siguiente {
+            if let Some(lance) = lance_siguiente {
+                self.info_set_prefix = MusGame::info_set_prefix(
+                    self.partida.as_ref().unwrap().manos(),
+                    &self.tantos,
+                    if self.abstract_game {
+                        Some(lance)
+                    } else {
+                        None
+                    },
+                );
+            }
             match lance_siguiente {
                 Some(Lance::Pares) => self.history_str.push_str(self.manos_pares.as_str()),
                 Some(Lance::Juego) => {
