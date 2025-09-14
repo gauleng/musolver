@@ -48,12 +48,12 @@ impl Agent for AgenteAleatorio {
 
 #[derive(Debug, Clone)]
 pub struct AgenteMusolver {
-    strategy: Strategy<LanceGame>,
+    strategy: Strategy,
     history: Arc<Mutex<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
-    pub fn new(strategy: Strategy<LanceGame>, history: Arc<Mutex<Vec<Accion>>>) -> Self {
+    pub fn new(strategy: Strategy, history: Arc<Mutex<Vec<Accion>>>) -> Self {
         Self { strategy, history }
     }
 
@@ -81,9 +81,10 @@ impl Agent for AgenteMusolver {
             _ => 0,
         };
         let info_set_str = lance_game.info_set_str(current_player);
+        let actions = lance_game.actions();
         let action_probability = self.strategy.nodes.get(&info_set_str);
-        if let Some((actions, probabilities)) = action_probability {
-            Self::accion_aleatoria(actions, probabilities)
+        if let Some(probabilities) = action_probability {
+            Self::accion_aleatoria(&actions, probabilities)
         } else {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."

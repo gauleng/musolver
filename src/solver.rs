@@ -1,7 +1,4 @@
 //! Estructuras específicas para el cálculo de estrategias para el juego del mus.
-mod banco_estrategias;
-pub use banco_estrategias::*;
-
 mod lance_game;
 pub use lance_game::*;
 

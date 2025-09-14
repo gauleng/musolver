@@ -1,10 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use musolver::{
-    mus::Lance,
-    solver::{BancoEstrategias, GameConfig, LanceGame, Trainer, TrainerConfig},
-    CfrMethod,
+    Cfr, CfrMethod, mus::Lance, solver::{GameConfig, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig}
 };
 
 use clap::Parser;
@@ -88,25 +86,32 @@ fn main() {
         lance: args.lance,
     };
 
-    let banco = BancoEstrategias::new();
+    let mut cfr = Cfr::new();
     match trainer {
         Trainer::LanceTrainer(lance) => {
             let mut lance_game = LanceGame::new(lance, tantos, game_config.abstract_game);
-            let mut cfr = banco.estrategia_lance_mut(lance).borrow_mut();
             trainer.train(&mut cfr, &mut lance_game, &trainer_config);
-            drop(cfr);
-
-            println!("Exportando estrategias...");
-            let curr_time = Utc::now();
-            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H:%M")));
-            banco
-                .export_estrategia(&output_path, lance, &trainer_config, &game_config)
-                .expect("Error exportando estrategias.");
         }
         Trainer::MusTrainer => {
-            banco
-                .export(&output_path, &trainer_config, &game_config)
-                .expect("Error exportando estrategias.");
+            let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
+            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
         }
     }
+    let curr_time = Utc::now();
+    output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
+    println!("Exportando estrategias a {output_path:?}...");
+    export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+        .expect("Error exportando estrategias.");
+}
+
+pub fn export_cfr(
+    path: &Path,
+    cfr: &Cfr,
+    trainer_config: &TrainerConfig,
+    game_config: &GameConfig,
+) -> Result<(), SolverError> {
+    let mut estrategia_path = PathBuf::from(path);
+    estrategia_path.set_extension("json");
+    let strategy = Strategy::new(cfr, trainer_config, game_config);
+    strategy.to_file(estrategia_path)
 }

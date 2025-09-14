@@ -27,19 +27,23 @@ pub struct StrategyConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Strategy<G: Game<Action = Accion>> {
+pub struct Strategy {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<String, (Vec<G::Action>, Vec<f64>)>,
+    pub nodes: HashMap<String,  Vec<f64>>,
 }
 
-impl<G: Game<Action = Accion> + Clone> Strategy<G> {
-    pub fn new(cfr: &Cfr<G>, trainer_config: &TrainerConfig, game_config: &GameConfig) -> Self {
+impl Strategy {
+    pub fn new(cfr: &Cfr, trainer_config: &TrainerConfig, game_config: &GameConfig) -> Self {
         let nodes = cfr
             .nodes()
             .iter()
             .map(|(info_set, node)| {
-                let actions = zip(node.actions().to_owned(), node.get_average_strategy()).collect();
-                (info_set.to_owned(), actions)
+                let avg_strategy:Vec<f64> = node
+                    .get_average_strategy()
+                    .into_iter()
+                    .map(|v| (v * 100.).round() / 100.)
+                    .collect();
+                (info_set.to_owned(), avg_strategy)
             })
             .collect();
         Self {
@@ -115,7 +119,7 @@ impl<G: Game<Action = Accion> + Clone> Strategy<G> {
                             .unwrap();
                             let info_set_str = lance_game.info_set_str(*acting_player);
                             let strategy = self.nodes.get(&info_set_str).unwrap();
-                            new_opponent_hands[idx_hands].2 = prob * strategy.1[idx_action];
+                            new_opponent_hands[idx_hands].2 = prob * strategy[idx_action];
                             weights[idx_action] += new_opponent_hands[idx_hands].2;
                         }
                     }

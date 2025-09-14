@@ -7,21 +7,18 @@ use super::{GameError, GameGraph};
 
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node<A> {
+pub struct Node {
     pub regret_sum: Vec<f64>,
     strategy: Vec<f64>,
     strategy_sum: Vec<f64>,
-    actions: Vec<A>,
 }
 
-impl<A> Node<A> {
-    pub fn new(actions: Vec<A>) -> Self {
-        let num_actions = actions.len();
+impl Node {
+    pub fn new(num_actions: usize) -> Self {
         Self {
             regret_sum: vec![0.; num_actions],
             strategy: vec![1. / num_actions as f64; num_actions],
             strategy_sum: vec![0.; num_actions],
-            actions,
         }
     }
 
@@ -65,10 +62,6 @@ impl<A> Node<A> {
     pub fn get_random_action(&self) -> usize {
         let dist = WeightedIndex::new(&self.strategy).unwrap();
         dist.sample(&mut rand::thread_rng())
-    }
-
-    pub fn actions(&self) -> &[A] {
-        &self.actions
     }
 }
 
@@ -149,27 +142,25 @@ impl FromStr for CfrMethod {
 
 /// Implementation of the CFR algorithm.
 #[derive(Debug, Clone)]
-pub struct Cfr<G: Game> {
-    nodes: HashMap<String, Node<G::Action>>,
+pub struct Cfr {
+    nodes: HashMap<String, Node>,
 }
 
-impl<G> Cfr<G>
-where
-    G: Game + Clone,
-{
+impl Cfr {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
         }
     }
 
-    pub fn train<F>(
+    pub fn train<G, F>(
         &mut self,
         game: &mut G,
         cfr_method: CfrMethod,
         iterations: usize,
         mut iteration_callback: F,
     ) where
+        G: Game + Clone,
         G::Action: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
@@ -210,7 +201,9 @@ where
                             let info_set_str = non_terminal_node.info_set_str().unwrap();
                             self.nodes
                                 .entry(info_set_str.to_string())
-                                .or_insert_with(|| Node::new(non_terminal_node.game().actions()));
+                                .or_insert_with(|| {
+                                    Node::new(non_terminal_node.game().actions().len())
+                                });
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.fsicfr(&mut game_graph, player_idx, round_weight);
@@ -222,8 +215,9 @@ where
     }
 
     /// Chance sampling CFR algorithm.
-    fn chance_sampling(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
+    fn chance_sampling<G>(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
     where
+        G: Game + Clone,
         G::Action: Eq + Copy,
     {
         let current_player = match game.current_player() {
@@ -242,7 +236,7 @@ where
         let node = self
             .nodes
             .entry(info_set_str.clone())
-            .or_insert_with(|| Node::new(actions.clone()));
+            .or_insert_with(|| Node::new(actions.len()));
         let strategy = node.strategy().clone();
 
         let util: Vec<f64> = actions
@@ -275,8 +269,9 @@ where
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling(&mut self, game: &mut G, player: usize) -> f64
+    fn external_sampling<G>(&mut self, game: &mut G, player: usize) -> f64
     where
+        G: Game + Clone,
         G::Action: Eq + Copy,
     {
         let current_player = match game.current_player() {
@@ -304,7 +299,7 @@ where
             let node = self
                 .nodes
                 .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.clone()));
+                .or_insert_with(|| Node::new(actions.len()));
             let strategy = node.update_strategy();
 
             let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
@@ -317,7 +312,7 @@ where
             let node = self
                 .nodes
                 .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.clone()));
+                .or_insert_with(|| Node::new(actions.len()));
 
             node.update_strategy();
             node.update_strategy_sum(1.);
@@ -330,13 +325,14 @@ where
         }
     }
 
-    fn fsicfr(
+    fn fsicfr<G>(
         &mut self,
         game_graph: &mut GameGraph<G, CfrData>,
         player: usize,
         round_weight: f64,
     ) -> f64
     where
+        G: Game + Clone,
         G::Action: Copy,
     {
         game_graph.node_mut(0).data_mut().reach_player = 1.;
@@ -419,7 +415,7 @@ where
         game_graph.node(0).data().utility
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node<G::Action>> {
+    pub fn nodes(&self) -> &HashMap<String, Node> {
         &self.nodes
     }
 
@@ -430,10 +426,7 @@ where
     }
 }
 
-impl<G> Default for Cfr<G>
-where
-    G: Game + Clone,
-{
+impl Default for Cfr {
     fn default() -> Self {
         Self::new()
     }
