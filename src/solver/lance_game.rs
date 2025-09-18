@@ -489,10 +489,6 @@ impl Game for LanceGame {
         output
     }
 
-    fn num_players(&self) -> usize {
-        4
-    }
-
     fn actions(&self) -> Vec<Accion> {
         let partida = self.estado_lance.as_ref().unwrap();
         let turno = partida.turno().unwrap();

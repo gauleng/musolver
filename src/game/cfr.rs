@@ -85,9 +85,6 @@ pub trait Game {
     type Action;
     const N_PLAYERS: usize;
 
-    /// Number of players of the game.
-    fn num_players(&self) -> usize;
-
     /// Utility function for the player P after the actions considered in the history slice.
     fn utility(&mut self, player: usize) -> f64;
 
@@ -164,7 +161,7 @@ impl Cfr {
         G::Action: Eq + Copy,
         F: FnMut(&usize, &[f64]),
     {
-        let mut util = vec![0.; game.num_players()];
+        let mut util = vec![0.; G::N_PLAYERS];
         for i in 0..iterations {
             match cfr_method {
                 CfrMethod::Cfr => {

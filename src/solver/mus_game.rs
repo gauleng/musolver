@@ -131,10 +131,6 @@ impl Game for MusGame {
         todo!()
     }
 
-    fn num_players(&self) -> usize {
-        4
-    }
-
     fn actions(&self) -> Vec<Accion> {
         let partida = self.partida.as_ref().unwrap();
         let turno = partida.turno().unwrap();
