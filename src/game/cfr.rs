@@ -97,17 +97,16 @@ pub trait Game {
     /// Actions available in the current state of the game.
     fn actions(&self) -> Vec<Self::Action>;
 
-    /// Player to play in the current state of the game.
+    // Returns if the current node is a chance, terminal or player node.
     fn current_player(&self) -> NodeType;
 
     /// Advance the state with the given action for the current player.
     fn act(&mut self, a: Self::Action);
 
-    /// Initializes the game with a random instance. This method is called by the external and
-    /// chance sampling methods.
+    /// Picks a random action in chance nodes.
     fn new_random(&mut self);
 
-    /// Iterates all the possible games.
+    /// Iterates over all available actions in chance nodes.
     fn new_iter<F>(&mut self, f: F)
     where
         F: FnMut(&mut Self, f64);
