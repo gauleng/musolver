@@ -7,12 +7,20 @@ fn main() {
     cfr.train(
         &mut rps,
         musolver::CfrMethod::FsiCfr,
-        1000,
+        10000,
         |_player, _utility| {},
     );
 
-    let strategy1 = cfr.nodes()["0"].get_average_strategy();
-    let strategy2 = cfr.nodes()["1"].get_average_strategy();
+    let strategy1: Vec<(_, _)> = rps
+        .actions()
+        .into_iter()
+        .zip(cfr.nodes()["0"].get_average_strategy())
+        .collect();
+    let strategy2: Vec<(_, _)> = rps
+        .actions()
+        .into_iter()
+        .zip(cfr.nodes()["1"].get_average_strategy())
+        .collect();
     println!("Strategy player 1: {strategy1:?}");
     println!("Strategy player 2: {strategy2:?}");
 }
