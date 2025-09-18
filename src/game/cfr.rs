@@ -187,7 +187,6 @@ impl Cfr {
                     let round_size = 1_000_000;
                     let round_number = (1 + (i / round_size)) as f64;
                     let round_weight = round_number / (round_number + 1.);
-                    game.new_random();
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
                     game_graph
