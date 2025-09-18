@@ -255,7 +255,7 @@ pub struct Buckets {
 }
 
 impl Buckets {
-    pub fn new(strategy: &Strategy<LanceGame>) -> Self {
+    pub fn new(strategy: &Strategy) -> Self {
         let one_hand_list = Self::one_hand_list(strategy);
         let mut buckets = HashMap::new();
         for (hand, hand_probability) in &one_hand_list {
@@ -294,7 +294,7 @@ impl Buckets {
         &self.buckets.values().next().unwrap().0[0]
     }
 
-    fn one_hand_list(s: &Strategy<LanceGame>) -> Vec<(Mano, f64)> {
+    fn one_hand_list(s: &Strategy) -> Vec<(Mano, f64)> {
         let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4)
             .map(|(cards, prob)| (Mano::new(cards), prob));
         if let Some(lance) = &s.strategy_config.game_config.lance {
@@ -315,7 +315,7 @@ pub enum ViewMode {
 }
 
 pub struct ActionPath {
-    pub strategy: Strategy<LanceGame>,
+    pub strategy: Strategy,
     pub buckets: Buckets,
 
     pub selected_tantos_mano: Option<u8>,
@@ -333,7 +333,7 @@ pub struct ActionPath {
 }
 
 impl ActionPath {
-    pub fn new(strategy: Strategy<LanceGame>) -> Self {
+    pub fn new(strategy: Strategy) -> Self {
         let buckets = Buckets::new(&strategy);
         let n_jugadas = buckets.jugadas().len();
         let mut one_hand_squares = Vec::with_capacity(n_jugadas);
@@ -417,10 +417,12 @@ impl ActionPath {
             &[],
             abstract_game_lance,
         );
-        self.strategy
-            .nodes
-            .get(&(info_set + &lance_game.history_str()))
-            .cloned()
+        Some(lance_game.actions()).zip(
+            self.strategy
+                .nodes
+                .get(&(info_set + &lance_game.history_str()))
+                .cloned(),
+        )
     }
 
     fn update_squares(&mut self) {

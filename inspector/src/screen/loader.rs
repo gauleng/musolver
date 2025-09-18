@@ -4,7 +4,7 @@ use iced::{
     Length::{Fill, Shrink},
     Task,
 };
-use musolver::solver::{BancoEstrategias, LanceGame, Strategy, StrategyConfig};
+use musolver::solver::{Strategy, StrategyConfig};
 
 #[derive(Debug, Clone)]
 pub enum LoaderEvent {
@@ -15,8 +15,8 @@ pub enum LoaderEvent {
 }
 
 pub enum LoaderAction {
-    OpenExplorer(Strategy<LanceGame>),
-    OpenGame(Strategy<LanceGame>),
+    OpenExplorer(Strategy),
+    OpenGame(Strategy),
 }
 
 pub struct Loader {
@@ -32,7 +32,7 @@ impl Loader {
                 strategies: vec![],
             },
             Task::perform(
-                async { BancoEstrategias::find("output") },
+                async { Strategy::find("output") },
                 LoaderEvent::ListStrategies,
             ),
         )

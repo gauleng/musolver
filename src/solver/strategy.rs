@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fs::{self},
     iter::zip,
@@ -6,6 +7,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use walkdir::WalkDir;
 
 use crate::{
     mus::{Accion, Lance, Mano, PartidaMus},
@@ -29,7 +31,7 @@ pub struct StrategyConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<String,  Vec<f64>>,
+    pub nodes: HashMap<String, Vec<f64>>,
 }
 
 impl Strategy {
@@ -38,7 +40,7 @@ impl Strategy {
             .nodes()
             .iter()
             .map(|(info_set, node)| {
-                let avg_strategy:Vec<f64> = node
+                let avg_strategy: Vec<f64> = node
                     .get_average_strategy()
                     .into_iter()
                     .map(|v| (v * 100.).round() / 100.)
@@ -164,5 +166,42 @@ impl Strategy {
         let n: Self =
             serde_json::from_str(&contents).map_err(SolverError::ParseStrategyJsonError)?;
         Ok(n)
+    }
+
+    pub fn find(path: impl AsRef<Path>) -> Vec<(String, StrategyConfig)> {
+        let walker = WalkDir::new(path)
+            .sort_by(|a, b| match (a.metadata(), b.metadata()) {
+                (Ok(metadata_a), Ok(metadata_b)) => {
+                    match (metadata_a.modified(), metadata_b.modified()) {
+                        (Ok(modified_a), Ok(modified_b)) => modified_a.cmp(&modified_b),
+                        _ => Ordering::Less,
+                    }
+                }
+                _ => Ordering::Less,
+            })
+            .into_iter();
+        let mut result = Vec::new();
+        for entry in walker.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext != "json" {
+                    continue;
+                }
+                let contents = match fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                #[derive(Debug, Deserialize)]
+                struct MockStrategy {
+                    strategy_config: StrategyConfig,
+                }
+                let mock_strategy: MockStrategy = match serde_json::from_str(&contents) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                result.push((path.display().to_string(), mock_strategy.strategy_config));
+            }
+        }
+        result
     }
 }

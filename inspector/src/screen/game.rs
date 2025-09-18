@@ -86,7 +86,7 @@ pub struct MusArenaUi {
 }
 
 impl MusArenaUi {
-    pub fn new(strategy: Strategy<LanceGame>) -> (Self, Task<GameEvent>) {
+    pub fn new(strategy: Strategy) -> (Self, Task<GameEvent>) {
         let task = Task::run(setup_arena(strategy), GameEvent::ArenaMessage);
         (
             Self {
@@ -339,7 +339,7 @@ impl MusArenaUi {
     }
 }
 
-fn setup_arena(strategy: Strategy<LanceGame>) -> impl Stream<Item = ArenaMessage> {
+fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
     iced::stream::channel(100, move |mut sender| async move {
         struct KibitzerGui {
             sender: mpsc::Sender<ArenaMessage>,
