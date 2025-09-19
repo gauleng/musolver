@@ -97,7 +97,6 @@ impl Game for Rps {
         self.history.push(a);
         self.turn = match self.turn {
             Some(0) => Some(1),
-            Some(1) => None,
             _ => None,
         };
     }

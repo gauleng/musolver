@@ -79,8 +79,101 @@ pub enum NodeType {
     Terminal,
 }
 
-/// Trait implemented by games that can be trained with the CFR algorithm, for players identified
-/// with P and possible actions A.
+/// Trait implemented by games that can be trained with the CFR algorithm.
+///
+/// There are two bound types, `N_PLAYERS` with the number of players of the game,
+/// and `Action`, with the available actions.
+///
+/// For example, for the Rock, Paper, Scissors game, the following actions are available:
+///
+///```
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// enum RpsAction {
+///    Rock,
+///    Paper,
+///    Scissors,
+/// }
+/// ```
+///
+/// The game can be implemented as follows:
+/// ```
+/// # #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// # enum RpsAction {
+/// #   Rock,
+/// #   Paper,
+/// #   Scissors,
+/// # }
+/// #[derive(Debug, Clone)]
+/// struct Rps {
+///    history: Vec<RpsAction>,
+///    turn: Option<usize>,
+/// }
+/// use musolver::Game;
+///
+/// impl Game for Rps {
+///    type Action = RpsAction;
+///    const N_PLAYERS: usize = 2;
+///
+///    fn utility(&mut self, player: usize) -> f64 {
+///        let (action1, action2) = (&self.history[0], &self.history[1]);
+///        let payoff = match (action1, action2) {
+///            (RpsAction::Rock, RpsAction::Scissors) => 1.,
+///            (RpsAction::Rock, RpsAction::Paper) => -1.,
+///            (RpsAction::Paper, RpsAction::Scissors) => -1.,
+///            (RpsAction::Paper, RpsAction::Rock) => 1.,
+///            (RpsAction::Scissors, RpsAction::Rock) => -1.,
+///            (RpsAction::Scissors, RpsAction::Paper) => 1.,
+///            _ => 0.,
+///        };
+///        if player == 0 {
+///            payoff
+///        } else {
+///            -payoff
+///        }
+///    }
+///
+///    fn info_set_str(&self, player: usize) -> String {
+///        player.to_string()
+///    }
+///
+///    fn actions(&self) -> Vec<Self::Action> {
+///        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+///    }
+///
+///    fn current_player(&self) -> musolver::NodeType {
+///        self.turn.map_or_else(
+///            || musolver::NodeType::Terminal,
+///            |turn| musolver::NodeType::Player(turn),
+///        )
+///    }
+///
+///    fn act(&mut self, a: Self::Action) {
+///        self.history.push(a);
+///        self.turn = match self.turn {
+///            Some(0) => Some(1),
+///            _ => None,
+///        };
+///    }
+///
+///    # fn history_str(&self) -> String {
+///    #     self.history
+///    #         .iter()
+///    #         .map(|action| format!("{action:?}"))
+///    #         .collect::<Vec<String>>()
+///    #         .join(",")
+///    # }
+///    #
+///    # fn new_random(&mut self) {
+///    # }
+///
+///    # fn new_iter<F>(&mut self, _f: F)
+///    # where
+///    #     F: FnMut(&mut Self, f64),
+///    # {
+///    # }
+///    // ...rest of implementation
+/// }
+/// ```
 pub trait Game {
     type Action;
     const N_PLAYERS: usize;
@@ -136,7 +229,19 @@ impl FromStr for CfrMethod {
     }
 }
 
-/// Implementation of the CFR algorithm.
+/// Implementation of the CFR algorithm. It works on types that implement the trait `Game`.
+///
+/// ```ignore
+///    let mut rps = Rps::new();
+///    let mut cfr = Cfr::new();
+///
+///    cfr.train(
+///        &mut rps,
+///        musolver::CfrMethod::FsiCfr,
+///        10000,
+///        |_player, _utility| {},
+///    );
+/// ```
 #[derive(Debug, Clone)]
 pub struct Cfr {
     nodes: HashMap<String, Node>,

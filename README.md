@@ -106,8 +106,8 @@ impl Game for RPS {
         player.to_string()
     }
 
-    fn actions(&self) -> Vec<Move> {
-        vec![Move::Rock, Move::Paper, Move::Scissors]
+    fn actions(&self) -> Vec<Self::Action> {
+        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
     }
 
     fn current_player(&self) -> musolver::NodeType {
@@ -121,7 +121,6 @@ impl Game for RPS {
         self.history.push(a);
         self.turn = match self.turn {
             Some(0) => Some(1),
-            Some(1) => None,
             _ => None,
         };
     }
