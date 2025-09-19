@@ -43,7 +43,7 @@ fn main() {
 fn probabilidades_rivales(frecuencias: [(Carta, u8); 8], lance: &Lance) -> Vec<(Jugada, f64)> {
     let mut probabilidades: Vec<(Mano, f64)> = DistribucionCartaIter::new(&frecuencias, 4)
         .map(|(cartas, freq)| (Mano::new(cartas), freq))
-        .filter(|(mano, _)| mano.jugada(lance).is_some() && mano.pares().is_some())
+        .filter(|(mano, _)| mano.jugada(lance).is_some())
         .collect();
     probabilidades.sort_by(|a, b| lance.compara_manos(&a.0, &b.0));
     let probabilidades_jugadas: Vec<(Jugada, f64)> = probabilidades
