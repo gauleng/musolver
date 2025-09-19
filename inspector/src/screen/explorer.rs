@@ -1,27 +1,28 @@
 use std::{collections::HashMap, fmt::Display, iter::zip};
 
 use iced::{
+    Color, Element,
+    Length::{self, Fill},
+    Pixels, Point, Renderer, Size, Theme,
     alignment::{
         Horizontal,
         Vertical::{self, Top},
     },
     mouse,
     widget::{
+        Canvas, Column, Container, Row,
         canvas::{self, Stroke, Text},
-        column, pick_list, row, scrollable, text, Canvas, Column, Container, Row,
+        column, pick_list, row, scrollable, text,
     },
-    Color, Element,
-    Length::{self, Fill},
-    Pixels, Point, Renderer, Size, Theme,
 };
 use itertools::Itertools;
 use musolver::{
+    Game,
     mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         HandConfiguration, InfoSet, LanceGame, Strategy,
     },
-    Game,
 };
 
 #[derive(Clone, Debug)]

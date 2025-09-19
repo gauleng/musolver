@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
+use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 
 use crate::{
+    Game, NodeType,
     mus::{Accion, PartidaMus},
     solver::{LanceGame, Strategy},
-    Game, NodeType,
 };
 
 #[async_trait]

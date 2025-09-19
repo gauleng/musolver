@@ -2,9 +2,9 @@ use arrayvec::ArrayString;
 use itertools::Itertools;
 
 use crate::{
+    Game, NodeType,
     mus::{Accion, Apuesta, Baraja, Lance, Mano, PartidaMus, Turno},
     solver::ManosNormalizadas,
-    Game, NodeType,
 };
 
 #[derive(Debug, Clone)]

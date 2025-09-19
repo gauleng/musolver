@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use musolver::{
     mus::{Baraja, Lance},
     solver::{InfoSet, ManosNormalizadas},

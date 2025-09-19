@@ -63,11 +63,7 @@ impl Game for Rps {
             (RpsAction::Scissors, RpsAction::Paper) => 1.,
             _ => 0.,
         };
-        if player == 0 {
-            payoff
-        } else {
-            -payoff
-        }
+        if player == 0 { payoff } else { -payoff }
     }
 
     fn info_set_str(&self, player: usize) -> String {

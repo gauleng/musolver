@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::{
-    mus::{Accion, Lance, Mano, PartidaMus},
     ActionNode, Cfr, Game,
+    mus::{Accion, Lance, Mano, PartidaMus},
 };
 
 use super::{LanceGame, SolverError, TrainerConfig};

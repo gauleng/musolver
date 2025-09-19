@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use crate::{mus::Lance, Cfr, CfrMethod, Game};
+use crate::{Cfr, CfrMethod, Game, mus::Lance};
 
 pub enum Trainer {
     LanceTrainer(Lance),

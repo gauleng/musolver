@@ -4,11 +4,11 @@ use arrayvec::{ArrayString, ArrayVec};
 use itertools::Itertools;
 
 use crate::{
+    Game, NodeType,
     mus::{
         Accion, Apuesta, Baraja, DistribucionDobleCartaIter, EstadoLance, Juego, Lance, Mano,
         Pares, PartidaMus, Turno,
     },
-    Game, NodeType,
 };
 
 use super::{AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto};
@@ -226,11 +226,7 @@ impl<'a> ManosNormalizadas<'a> {
     }
 
     pub fn pareja_mano(&self) -> usize {
-        if self.idx_hands[0].0 % 2 == 0 {
-            0
-        } else {
-            1
-        }
+        if self.idx_hands[0].0 % 2 == 0 { 0 } else { 1 }
     }
 }
 

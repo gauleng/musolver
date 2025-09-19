@@ -223,11 +223,7 @@ impl Lance {
 
     /// Tantos extra recibidos por ganar el lance. Es 1 para el lance de punto y 0 para el resto.
     pub fn bonus(&self) -> u8 {
-        if let Lance::Punto = self {
-            1
-        } else {
-            0
-        }
+        if let Lance::Punto = self { 1 } else { 0 }
     }
 
     fn hay_lance_jugadas<T>(&self, manos: &[Option<T>]) -> bool {

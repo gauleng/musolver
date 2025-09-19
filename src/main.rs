@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use musolver::{
-    Cfr, CfrMethod, mus::Lance, solver::{GameConfig, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig}
+    Cfr, CfrMethod,
+    mus::Lance,
+    solver::{GameConfig, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig},
 };
 
 use clap::Parser;
@@ -46,7 +48,9 @@ struct Args {
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
     let t: Vec<&str> = s.split(":").collect();
     if t.len() != 2 {
-        Err(format!("Formato de los tantos incorecto ({s}). Deben indicarse separados por dos puntos, por ejemplo 5:23."))
+        Err(format!(
+            "Formato de los tantos incorecto ({s}). Deben indicarse separados por dos puntos, por ejemplo 5:23."
+        ))
     } else {
         let tantos1: u8 = t[0]
             .parse()

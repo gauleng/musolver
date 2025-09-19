@@ -371,7 +371,7 @@ mod tests {
         let _ = partida.actuar(Accion::Paso); // Pareja 0
         let _ = partida.actuar(Accion::Paso);
         assert_eq!(partida.tantos(), &[29, 34]); // Pareja 1 + 2
-                                                 // Chica
+        // Chica
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
@@ -384,13 +384,13 @@ mod tests {
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2));
         let _ = partida.actuar(Accion::Quiero); // Jugador 1
-                                                // 40, 34. Ganará la pareja 0 4 tantos al final más 1 de par y 2 de medias. Total 7.
+        // 40, 34. Ganará la pareja 0 4 tantos al final más 1 de par y 2 de medias. Total 7.
 
         // Juego
         let _ = partida.actuar(Accion::Envido(2)); // Jugador 1
         let _ = partida.actuar(Accion::Envido(2)); // Jugador 0
         let _ = partida.actuar(Accion::Quiero); // Jugador 1
-                                                // 40, 40. anará la pareja 1 4 tantos al final, más 2 de juego. Total 6.
+        // 40, 40. anará la pareja 1 4 tantos al final, más 2 de juego. Total 6.
         assert_eq!(partida.tantos(), &[40, 0]);
 
         let manos = [

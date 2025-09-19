@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
-use super::mus_error::MusError;
 use super::Carta;
+use super::mus_error::MusError;
 
 /// Representación de una mano de cartas, no específicamente de mus. Internamente es un vector de
 /// Carta.

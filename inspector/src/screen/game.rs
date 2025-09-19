@@ -2,18 +2,18 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use iced::{
-    futures::{channel::mpsc, SinkExt, Stream, StreamExt},
-    widget::{button, column, container, row, scrollable, text},
     Alignment, Element, Length, Task,
+    futures::{SinkExt, Stream, StreamExt, channel::mpsc},
+    widget::{button, column, container, row, scrollable, text},
 };
 use image::GenericImageView;
 use musolver::{
+    Game,
     mus::{
-        arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
         Accion, Lance, Mano,
+        arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
     solver::{LanceGame, Strategy},
-    Game,
 };
 
 #[derive(Debug, Clone)]
@@ -122,11 +122,9 @@ impl MusArenaUi {
     }
 
     pub fn view(&self) -> Element<GameEvent> {
-        let scoreboard = container(row![text(format!(
-            "{} - {}",
-            self.scoreboard[0], self.scoreboard[1]
-        ))
-        .size(40)])
+        let scoreboard = container(row![
+            text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)
+        ])
         .style(container::rounded_box)
         .padding(10);
 

@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use musolver::{mus::Lance, solver::LanceGame, Cfr, CfrMethod};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use musolver::{Cfr, CfrMethod, mus::Lance, solver::LanceGame};
 
 fn bench_chance_sampling_grande(c: &mut Criterion) {
     c.bench_function("chance_sampling grande", |b| {

@@ -1,8 +1,8 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_input},
     Element,
     Length::{Fill, Shrink},
     Task,
+    widget::{button, column, container, row, scrollable, text, text_input},
 };
 use musolver::solver::{Strategy, StrategyConfig};
 

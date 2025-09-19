@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use musolver::{
-    mus::{Accion, Baraja, Lance, PartidaMus},
     ActionNode,
+    mus::{Accion, Baraja, Lance, PartidaMus},
 };
 
 fn walk_tree(p: &PartidaMus, a: &ActionNode<usize, Accion>, history: &[Accion]) {

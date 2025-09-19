@@ -7,8 +7,8 @@
  */
 
 use crate::game::bimatrix_game::*;
-use ndarray::prelude::*;
 use ndarray::Zip;
+use ndarray::prelude::*;
 
 struct Tableau {
     basis: Vec<isize>,
