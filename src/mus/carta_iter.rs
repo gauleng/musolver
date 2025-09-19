@@ -11,7 +11,7 @@ fn binomial(n: usize, k: usize) -> usize {
 
 #[cfg(not(windows))]
 fn binomial(n: usize, k: usize) -> usize {
-    rug::Integer::from(n).binomial(k).to_usize().unwrap()
+    rug::Integer::from(n).binomial(k as u32).to_usize().unwrap()
 }
 
 /// Iterador de manos de cartas de mus.
@@ -98,9 +98,7 @@ impl Iterator for CombinationsWithReplacementProb {
                 .iter()
                 .zip(self.max_frequencies.iter())
                 .filter(|(count, max_freq)| **count < **max_freq)
-                .map(|(count, max_freq)| {
-                    binomial(*max_freq, *max_freq - *count)
-                })
+                .map(|(count, max_freq)| binomial(*max_freq, *max_freq - *count))
                 .reduce(|acc, v| acc * v)
                 .unwrap();
             return Some((indices, freq as f64 / self.total_frequency as f64));
