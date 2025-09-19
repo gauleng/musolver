@@ -220,16 +220,15 @@ impl Game for MusGame {
     }
 
     fn history_str(&self) -> String {
-        let turno = self
-            .partida
-            .as_ref()
-            .expect("At least one EstadoLance must be available.")
-            .turno();
-        match turno {
-            Some(Turno::Pareja(2 | 3)) => {
-                format!("{}{}*", self.history_str, self.last_action.unwrap())
+        if let Some(partida) = self.partida.as_ref() {
+            match partida.turno() {
+                Some(Turno::Pareja(2 | 3)) => {
+                    format!("{}{}*", self.history_str, self.last_action.unwrap())
+                }
+                _ => self.history_str.to_string(),
             }
-            _ => self.history_str.to_string(),
+        } else {
+            "".into()
         }
     }
 }

@@ -296,7 +296,10 @@ impl Cfr {
                     game_graph
                         .nodes()
                         .iter()
-                        .filter(|node| node.game().current_player() != NodeType::Terminal)
+                        .filter(|node| {
+                            node.game().current_player() != NodeType::Terminal
+                                && node.game().current_player() != NodeType::Chance
+                        })
                         .for_each(|non_terminal_node| {
                             let info_set_str = non_terminal_node.info_set_str().unwrap();
                             self.nodes
