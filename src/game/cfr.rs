@@ -357,15 +357,15 @@ impl Cfr {
             .collect();
         let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-        if let Some(node) = self.nodes.get_mut(&info_set_str) {
-            if current_player == player {
-                node.regret_sum
-                    .iter_mut()
-                    .zip(util.iter())
-                    .for_each(|(r, u)| *r += po * (u - node_util));
-                node.update_strategy_sum(pi);
-                node.update_strategy();
-            }
+        if let Some(node) = self.nodes.get_mut(&info_set_str)
+            && current_player == player
+        {
+            node.regret_sum
+                .iter_mut()
+                .zip(util.iter())
+                .for_each(|(r, u)| *r += po * (u - node_util));
+            node.update_strategy_sum(pi);
+            node.update_strategy();
         }
 
         node_util
@@ -442,39 +442,49 @@ impl Cfr {
         game_graph.node_mut(0).data_mut().reach_opponent = 1.;
         for idx in 0..game_graph.num_nodes() {
             let game_node = &mut game_graph.node(idx);
-            let lance_game = &mut game_node.game();
-            if let NodeType::Player(current_player) = lance_game.current_player() {
-                let info_set_str = game_node
-                    .info_set_str()
-                    .expect("InfoSet must be valid in non terminal nodes.");
-                let node = self
-                    .nodes
-                    .get(info_set_str)
-                    .expect("InfoSet should be preloaded before calling fsicfr.");
-                let strategy = node.strategy();
-                for (i, s) in strategy.iter().enumerate() {
-                    let child_idx = game_graph.node(idx).children()[i];
+            let game = &mut game_node.game();
+            match game.current_player() {
+                NodeType::Player(current_player) => {
+                    let info_set_str = game_node
+                        .info_set_str()
+                        .expect("InfoSet must be valid in non terminal nodes.");
+                    let node = self
+                        .nodes
+                        .get(info_set_str)
+                        .expect("InfoSet should be preloaded before calling fsicfr.");
+                    let strategy = node.strategy();
+                    for (i, s) in strategy.iter().enumerate() {
+                        let child_idx = game_graph.node(idx).children()[i];
 
-                    if current_player == player {
-                        game_graph.node_mut(child_idx).data_mut().reach_player +=
-                            s * game_graph.node(idx).data().reach_player;
-                        game_graph.node_mut(child_idx).data_mut().reach_opponent +=
-                            game_graph.node(idx).data().reach_opponent;
-                    } else {
-                        game_graph.node_mut(child_idx).data_mut().reach_player +=
-                            game_graph.node(idx).data().reach_player;
-                        game_graph.node_mut(child_idx).data_mut().reach_opponent +=
-                            s * game_graph.node(idx).data().reach_opponent;
+                        if current_player == player {
+                            game_graph.node_mut(child_idx).data_mut().reach_player +=
+                                s * game_graph.node(idx).data().reach_player;
+                            game_graph.node_mut(child_idx).data_mut().reach_opponent +=
+                                game_graph.node(idx).data().reach_opponent;
+                        } else {
+                            game_graph.node_mut(child_idx).data_mut().reach_player +=
+                                game_graph.node(idx).data().reach_player;
+                            game_graph.node_mut(child_idx).data_mut().reach_opponent +=
+                                s * game_graph.node(idx).data().reach_opponent;
+                        }
                     }
                 }
+                NodeType::Chance => {
+                    let child_idx = game_graph.node(idx).children()[0];
+                    game_graph.node_mut(child_idx).data_mut().reach_player +=
+                        game_graph.node(idx).data().reach_player;
+                    game_graph.node_mut(child_idx).data_mut().reach_opponent +=
+                        game_graph.node(idx).data().reach_opponent;
+                }
+                _ => {}
             }
         }
 
         for idx in (0..game_graph.num_nodes()).rev() {
-            let lance_game = &mut game_graph.node_mut(idx).game_mut();
-            match lance_game.current_player() {
+            let game = &mut game_graph.node_mut(idx).game_mut();
+            match game.current_player() {
                 NodeType::Terminal => {
-                    game_graph.node_mut(idx).data_mut().utility = lance_game.utility(player);
+                    game_graph.node_mut(idx).data_mut().utility = game.utility(player);
                 }
                 NodeType::Player(current_player) => {
                     let info_set_str = game_graph
@@ -510,7 +520,11 @@ impl Cfr {
                         node.update_strategy();
                     }
                 }
-                NodeType::Chance => {}
+                NodeType::Chance => {
+                    let child_idx = game_graph.node(idx).children()[0];
+                    game_graph.node_mut(idx).data_mut().utility =
+                        game_graph.node_mut(child_idx).data_mut().utility;
+                }
             }
             game_graph.node_mut(idx).data_mut().reach_player = 0.;
             game_graph.node_mut(idx).data_mut().reach_opponent = 0.;
