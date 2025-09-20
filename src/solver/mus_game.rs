@@ -209,6 +209,11 @@ impl Game for MusGame {
             }
             match lance_siguiente {
                 Some(Lance::Pares) => self.history_str.push_str(self.manos_pares.as_str()),
+                Some(Lance::Punto) => {
+                    if lance_previo != Some(Lance::Pares) {
+                        self.history_str.push_str(self.manos_pares.as_str());
+                    }
+                }
                 Some(Lance::Juego) => {
                     if lance_previo != Some(Lance::Pares) {
                         self.history_str.push_str(self.manos_pares.as_str());
