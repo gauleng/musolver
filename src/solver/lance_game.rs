@@ -407,6 +407,7 @@ impl Game for LanceGame {
                     self.abstract_game,
                 );
                 self.pareja_mano = turno_inicial;
+                self.history_str.push(ArrayString::from("M").unwrap());
                 break;
             }
         }

@@ -122,6 +122,7 @@ impl Game for MusGame {
         (self.manos_pares, self.manos_juego) = MusGame::jugadas_manos(&manos);
         let partida = PartidaMus::new(manos, self.tantos);
         self.partida = Some(partida);
+        self.history_str.push('M');
     }
 
     fn new_iter<F>(&mut self, _f: F)
