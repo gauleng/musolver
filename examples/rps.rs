@@ -101,6 +101,11 @@ impl Game for Rps {
         todo!()
     }
 
+    fn reset(&mut self) {
+        self.history.clear();
+        self.turn = Some(0);
+    }
+
     fn new_iter<F>(&mut self, _f: F)
     where
         F: FnMut(&mut Self, f64),

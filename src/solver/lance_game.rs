@@ -413,6 +413,14 @@ impl Game for LanceGame {
         }
     }
 
+    fn reset(&mut self) {
+        self.estado_lance = None;
+        self.info_set_prefix = None;
+        self.pareja_mano = 0;
+        self.last_action = None;
+        self.history_str.clear();
+    }
+
     fn new_iter<F>(&mut self, mut f: F)
     where
         F: FnMut(&mut Self, f64),

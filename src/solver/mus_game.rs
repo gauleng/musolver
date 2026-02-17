@@ -125,6 +125,15 @@ impl Game for MusGame {
         self.history_str.push('M');
     }
 
+    fn reset(&mut self) {
+        self.partida = None;
+        self.history_str.clear();
+        self.info_set_prefix = [ArrayString::new(); 4];
+        self.last_action = None;
+        self.manos_pares.clear();
+        self.manos_juego.clear();
+    }
+
     fn new_iter<F>(&mut self, _f: F)
     where
         F: FnMut(&mut Self, f64),

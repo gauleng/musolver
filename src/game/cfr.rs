@@ -199,6 +199,9 @@ pub trait Game {
     /// Picks a random action in chance nodes.
     fn new_random(&mut self);
 
+    /// Resets the game to its initial state.
+    fn reset(&mut self);
+
     /// Iterates over all available actions in chance nodes.
     fn new_iter<F>(&mut self, f: F)
     where
@@ -267,6 +270,8 @@ impl Cfr {
     {
         let mut util = vec![0.; G::N_PLAYERS];
         for i in 0..iterations {
+            game.reset();
+            
             match cfr_method {
                 CfrMethod::Cfr => {
                     todo!();
