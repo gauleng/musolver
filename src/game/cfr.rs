@@ -271,7 +271,7 @@ impl Cfr {
         let mut util = vec![0.; G::N_PLAYERS];
         for i in 0..iterations {
             game.reset();
-            
+
             match cfr_method {
                 CfrMethod::Cfr => {
                     todo!();
@@ -293,9 +293,6 @@ impl Cfr {
                     }
                 }
                 CfrMethod::FsiCfr => {
-                    let round_size = 1_000_000;
-                    let round_number = (1 + (i / round_size)) as f64;
-                    let round_weight = round_number / (round_number + 1.);
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
                     game_graph
@@ -314,11 +311,23 @@ impl Cfr {
                                 });
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
-                        *u += self.fsicfr(&mut game_graph, player_idx, round_weight);
+                        *u += self.fsicfr(&mut game_graph, player_idx);
                     }
                 }
             }
+            let round_size = 1_000_000;
+            if iterations > 0 && i.is_multiple_of(round_size) {
+                let block = (i / round_size) as f64;
+                self.discount(block / (block + 1.));
+            }
             iteration_callback(&i, &util.iter().map(|u| u / i as f64).collect::<Vec<f64>>());
+        }
+    }
+
+    fn discount(&mut self, weight: f64) {
+        for value in self.nodes.values_mut() {
+            value.regret_sum.iter_mut().for_each(|r| *r *= weight);
+            value.strategy_sum.iter_mut().for_each(|r| *r *= weight);
         }
     }
 
@@ -437,7 +446,7 @@ impl Cfr {
         &mut self,
         game_graph: &mut GameGraph<G, CfrData>,
         player: usize,
-        round_weight: f64,
+        //round_weight: f64,
     ) -> f64
     where
         G: Game + Clone,
@@ -515,13 +524,10 @@ impl Cfr {
                             .iter_mut()
                             .zip(utility.iter())
                             .for_each(|(r, u)| {
-                                *r += round_weight
-                                    * game_graph.node(idx).data().reach_opponent
+                                *r += game_graph.node(idx).data().reach_opponent
                                     * (u - game_graph.node(idx).data().utility)
                             });
-                        node.update_strategy_sum(
-                            round_weight * game_graph.node(idx).data().reach_player,
-                        );
+                        node.update_strategy_sum(game_graph.node(idx).data().reach_player);
                         node.update_strategy();
                     }
                 }
