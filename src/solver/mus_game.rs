@@ -145,30 +145,40 @@ impl Game for MusGame {
         let partida = self.partida.as_ref().unwrap();
         let turno = partida.turno().unwrap();
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        let mut acciones = match ultimo_envite {
-            Apuesta::Tantos(0) => vec![
-                Accion::Paso,
-                Accion::Envido(2),
-                //Accion::Envido(5),
-                //Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(2) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(2),
-                //Accion::Envido(5),
-                //Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(4..=5) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-            _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+        let tantos = partida.tantos();
+        let max_tantos = tantos[0].max(tantos[1]);
+        let mut acciones = if max_tantos >= 38 {
+            match ultimo_envite {
+                Apuesta::Tantos(0) => vec![Accion::Paso, Accion::Ordago],
+                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+            }
+        } else {
+            match ultimo_envite {
+                Apuesta::Tantos(0) => vec![
+                    Accion::Paso,
+                    Accion::Envido(2),
+                    Accion::Envido(5),
+                    Accion::Envido(10),
+                    Accion::Ordago,
+                ],
+                Apuesta::Tantos(2) => vec![
+                    Accion::Paso,
+                    Accion::Quiero,
+                    Accion::Envido(2),
+                    Accion::Envido(5),
+                    Accion::Envido(10),
+                    Accion::Ordago,
+                ],
+                Apuesta::Tantos(4..=5) => vec![
+                    Accion::Paso,
+                    Accion::Quiero,
+                    Accion::Envido(10),
+                    Accion::Ordago,
+                ],
+                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
+                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+            }
         };
         if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
             acciones.retain(|a| a >= self.last_action.as_ref().unwrap());
