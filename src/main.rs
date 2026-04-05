@@ -85,7 +85,7 @@ fn main() {
             (None, true) => GameType::MusGameTwoHands,
         },
     };
-    println!("Musolver 0.1");
+    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!(
         "Simulando: {}",
         match game_config.game_type {
