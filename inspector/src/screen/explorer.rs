@@ -21,7 +21,7 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        HandConfiguration, InfoSet, LanceGame, Strategy,
+        GameType, HandConfiguration, InfoSet, LanceGame, Strategy,
     },
 };
 
@@ -260,7 +260,7 @@ impl Buckets {
         let one_hand_list = Self::one_hand_list(strategy);
         let mut buckets = HashMap::new();
         for (hand, hand_probability) in &one_hand_list {
-            if let Some(lance) = strategy.strategy_config.game_config.lance {
+            if let GameType::LanceGame(lance) = strategy.strategy_config.game_config.game_type {
                 let jugada = match lance {
                     Lance::Grande => AbstractGrande::abstract_hand(hand),
                     Lance::Chica => AbstractChica::abstract_hand(hand),
@@ -298,7 +298,7 @@ impl Buckets {
     fn one_hand_list(s: &Strategy) -> Vec<(Mano, f64)> {
         let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4)
             .map(|(cards, prob)| (Mano::new(cards), prob));
-        if let Some(lance) = &s.strategy_config.game_config.lance {
+        if let GameType::LanceGame(lance) = &s.strategy_config.game_config.game_type {
             manos
                 .filter(|(hand, _)| hand.jugada(lance).is_some())
                 .sorted_by(|(a, _), (b, _)| lance.compara_manos(a, b))
@@ -350,8 +350,8 @@ impl ActionPath {
             }
             two_hands_squares.push(row);
         }
-        let strategies = match strategy.strategy_config.game_config.lance {
-            Some(lance) => match lance {
+        let strategies = match strategy.strategy_config.game_config.game_type {
+            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => match lance {
                 Lance::Grande | Lance::Chica | Lance::Punto => vec![HandConfiguration::CuatroManos],
                 _ => vec![
                     HandConfiguration::DosManos,
@@ -361,7 +361,7 @@ impl ActionPath {
                     HandConfiguration::CuatroManos,
                 ],
             },
-            None => todo!(),
+            _ => todo!(),
         };
         let mut action_path = Self {
             one_hand_squares,
@@ -398,14 +398,17 @@ impl ActionPath {
     fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
         let tipo_estrategia = self.selected_strategy.unwrap();
         let history: Vec<Accion> = self.selected_history();
-        let lance = self.strategy.strategy_config.game_config.lance;
+        let lance = match self.strategy.strategy_config.game_config.game_type {
+            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => lance,
+            GameType::MusGame | GameType::MusGameTwoHands => todo!(),
+        };
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
             self.selected_tantos_postre.unwrap_or_default(),
         ];
-        let abstract_game_lance = if abstract_game { lance } else { None };
-        let mut lance_game = LanceGame::new(lance.unwrap(), tantos, abstract_game);
+        let abstract_game_lance = if abstract_game { Some(lance) } else { None };
+        let mut lance_game = LanceGame::new(lance, tantos, abstract_game);
         lance_game.new_with_configuration(tipo_estrategia);
         for action in &history {
             lance_game.act(*action);

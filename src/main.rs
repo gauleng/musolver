@@ -4,7 +4,9 @@ use chrono::Utc;
 use musolver::{
     Cfr, CfrMethod,
     mus::Lance,
-    solver::{GameConfig, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig},
+    solver::{
+        GameConfig, GameType, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig,
+    },
 };
 
 use clap::Parser;
@@ -25,11 +27,6 @@ struct Args {
     #[arg(short, long, value_parser = parse_tantos)]
     tantos: Option<[u8; 2]>,
 
-    /// Ruta al fichero con el árbol de acciones a considerar en el cálculo del equilibrio. Por
-    /// defecto: config/action_tree.json
-    #[arg(short, long)]
-    action_tree: Option<String>,
-
     /// Variante de CFR a utilizar. Por defecto: chance-sampling
     #[arg(short, long, value_enum)]
     method: Option<CfrMethod>,
@@ -43,6 +40,11 @@ struct Args {
     /// y punto el valor de la jugada.
     #[arg(long)]
     abstract_game: bool,
+
+    /// Se calcula la estrategia asumiendo que cada pareja conoce las dos manos y solo hay una
+    /// acción por pareja.
+    #[arg(long)]
+    two_hands: bool,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -66,40 +68,47 @@ fn main() {
     let args = Args::parse();
 
     let tantos = args.tantos.unwrap_or_default();
-    let trainer = args
-        .lance
-        .map_or_else(|| Trainer::MusTrainer, Trainer::LanceTrainer);
+    let trainer = Trainer {};
     let method = args.method.unwrap_or(CfrMethod::ChanceSampling);
     let mut output_path = PathBuf::from(args.output.unwrap_or_else(|| "output/".to_string()));
 
-    println!("Musolver 0.1");
-    println!(
-        "Simulando: {}",
-        match trainer {
-            Trainer::LanceTrainer(lance) => format!("{lance:?}"),
-            Trainer::MusTrainer => "Partida completa".to_owned(),
-        }
-    );
-    println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
     let trainer_config = TrainerConfig {
         iterations: args.iter,
         method,
     };
     let game_config = GameConfig {
         abstract_game: args.abstract_game,
-        lance: args.lance,
+        game_type: match (args.lance, args.two_hands) {
+            (Some(lance), false) => GameType::LanceGame(lance),
+            (Some(lance), true) => GameType::LanceGameTwoHands(lance),
+            (None, false) => GameType::MusGame,
+            (None, true) => GameType::MusGameTwoHands,
+        },
     };
+    println!("Musolver 0.1");
+    println!(
+        "Simulando: {}",
+        match game_config.game_type {
+            GameType::LanceGame(lance) => format!("{lance:?}"),
+            GameType::MusGame => "Partida completa".to_owned(),
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGameTwoHands => todo!(),
+        }
+    );
+    println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
     let mut cfr = Cfr::new();
-    match trainer {
-        Trainer::LanceTrainer(lance) => {
+    match game_config.game_type {
+        GameType::LanceGame(lance) => {
             let mut lance_game = LanceGame::new(lance, tantos, game_config.abstract_game);
             trainer.train(&mut cfr, &mut lance_game, &trainer_config);
         }
-        Trainer::MusTrainer => {
+        GameType::MusGame => {
             let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
             trainer.train(&mut cfr, &mut mus_game, &trainer_config);
         }
+        GameType::LanceGameTwoHands(_) => todo!(),
+        GameType::MusGameTwoHands => todo!(),
     }
     let curr_time = Utc::now();
     output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));

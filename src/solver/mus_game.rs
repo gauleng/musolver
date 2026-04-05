@@ -33,7 +33,7 @@ impl MusGame {
         }
     }
 
-    fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
+    /*fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
         if abstract_game {
             todo!("From partida mus not supported.")
         }
@@ -48,7 +48,7 @@ impl MusGame {
             manos_juego: ArrayString::new(),
             abstract_game,
         }
-    }
+    }*/
 
     fn jugadas_manos(manos: &[Mano; 4]) -> (ArrayString<4>, ArrayString<4>) {
         let manos_pares = manos

@@ -13,7 +13,7 @@ use musolver::{
         Accion, Lance, Mano,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
-    solver::{LanceGame, Strategy},
+    solver::{GameType, LanceGame, Strategy},
 };
 
 #[derive(Debug, Clone)]
@@ -398,7 +398,11 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             to_agent,
             to_arena,
         }));
-        let lance = strategy.strategy_config.game_config.lance;
+
+        let lance = match strategy.strategy_config.game_config.game_type {
+            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => Some(lance),
+            GameType::MusGame | GameType::MusGameTwoHands => None,
+        };
         let mut arena = MusArena::new(lance);
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();

@@ -57,7 +57,7 @@ impl Loader {
                                     "{:?} - {} iterations - {:?}",
                                     strategy_config.trainer_config.method,
                                     strategy_config.trainer_config.iterations,
-                                    strategy_config.game_config.lance
+                                    strategy_config.game_config.game_type
                                 )
                             ]
                             .width(Fill),

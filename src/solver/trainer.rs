@@ -3,12 +3,9 @@ use std::fmt::Debug;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use crate::{Cfr, CfrMethod, Game, mus::Lance};
+use crate::{Cfr, CfrMethod, Game};
 
-pub enum Trainer {
-    LanceTrainer(Lance),
-    MusTrainer,
-}
+pub struct Trainer {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainerConfig {

@@ -226,7 +226,11 @@ impl<'a> ManosNormalizadas<'a> {
     }
 
     pub fn pareja_mano(&self) -> usize {
-        if self.idx_hands[0].0 % 2 == 0 { 0 } else { 1 }
+        if self.idx_hands[0].0.is_multiple_of(2) {
+            0
+        } else {
+            1
+        }
     }
 }
 
