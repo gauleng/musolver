@@ -5,7 +5,8 @@ use musolver::{
     Cfr, CfrMethod,
     mus::Lance,
     solver::{
-        GameConfig, GameType, LanceGame, MusGame, SolverError, Strategy, Trainer, TrainerConfig,
+        GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, SolverError, Strategy, Trainer,
+        TrainerConfig,
     },
 };
 
@@ -90,9 +91,9 @@ fn main() {
         "Simulando: {}",
         match game_config.game_type {
             GameType::LanceGame(lance) => format!("{lance:?}"),
-            GameType::MusGame => "Partida completa".to_owned(),
+            GameType::MusGame => "Partida completa".into(),
             GameType::LanceGameTwoHands(_) => todo!(),
-            GameType::MusGameTwoHands => todo!(),
+            GameType::MusGameTwoHands => "Partida completa (two hands)".into(),
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
@@ -108,7 +109,10 @@ fn main() {
             trainer.train(&mut cfr, &mut mus_game, &trainer_config);
         }
         GameType::LanceGameTwoHands(_) => todo!(),
-        GameType::MusGameTwoHands => todo!(),
+        GameType::MusGameTwoHands => {
+            let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
+            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
+        }
     }
     let curr_time = Utc::now();
     output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
