@@ -171,6 +171,9 @@ pub enum NodeType {
 ///    #     F: FnMut(&mut Self, f64),
 ///    # {
 ///    # }
+///    #
+///    # fn reset(&mut self) {
+///    # }
 ///    // ...rest of implementation
 /// }
 /// ```

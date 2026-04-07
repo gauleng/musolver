@@ -21,7 +21,8 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameType, HandConfiguration, InfoSet, LanceGame, Strategy,
+        GameType, HandConfiguration, InfoSet, LanceGame, MusGame, MusGameTwoHands,
+        MusGameTwoPlayers, Strategy,
     },
 };
 
@@ -32,6 +33,8 @@ pub enum ExplorerEvent {
     SetTantosMano(u8),
     SetTantosPostre(u8),
     SelectBucket(Option<usize>),
+    SetPares(HayJugada),
+    SetJuego(HayJugada),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -42,6 +45,32 @@ impl Display for OptionalAction {
         match self.0 {
             Some(a) => write!(f, "{}", a),
             None => write!(f, ""),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HayJugada {
+    TwoPlayers(bool, bool),
+    FourPlayers(bool, bool, bool, bool),
+}
+
+impl Display for HayJugada {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TwoPlayers(a, b) => {
+                write!(f, "{}{}", if *a { 1 } else { 0 }, if *b { 1 } else { 0 })
+            }
+            Self::FourPlayers(a, b, c, d) => {
+                write!(
+                    f,
+                    "{}{}{}{}",
+                    if *a { 1 } else { 0 },
+                    if *b { 1 } else { 0 },
+                    if *c { 1 } else { 0 },
+                    if *d { 1 } else { 0 }
+                )
+            }
         }
     }
 }
@@ -271,6 +300,11 @@ impl Buckets {
                 let entry = buckets.entry(jugada).or_insert((vec![], 0.));
                 entry.0.push(hand.to_owned());
                 entry.1 += hand_probability;
+            } else {
+                let jugada = AbstractGrande::abstract_hand(hand);
+                let entry = buckets.entry(jugada).or_insert((vec![], 0.));
+                entry.0.push(hand.to_owned());
+                entry.1 += hand_probability;
             }
         }
         let mut jugadas: Vec<_> = buckets.keys().cloned().collect();
@@ -331,6 +365,10 @@ pub struct ActionPath {
     pub one_hand_squares: Vec<SquareData<ExplorerEvent>>,
     pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
     pub hovered_square: Option<usize>,
+    pub jugadas_pares: Vec<HayJugada>,
+    pub jugadas_juego: Vec<HayJugada>,
+    pub selected_pares: Option<HayJugada>,
+    pub selected_juego: Option<HayJugada>,
 }
 
 impl ActionPath {
@@ -350,7 +388,8 @@ impl ActionPath {
             }
             two_hands_squares.push(row);
         }
-        let strategies = match strategy.strategy_config.game_config.game_type {
+        let game_type = strategy.strategy_config.game_config.game_type;
+        let strategies = match game_type {
             GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => match lance {
                 Lance::Grande | Lance::Chica | Lance::Punto => vec![HandConfiguration::CuatroManos],
                 _ => vec![
@@ -361,13 +400,39 @@ impl ActionPath {
                     HandConfiguration::CuatroManos,
                 ],
             },
+            _ => vec![],
+        };
+
+        let (jugadas_pares, selected_pares) = match game_type {
+            GameType::MusGameTwoPlayers => (
+                vec![
+                    HayJugada::TwoPlayers(false, false),
+                    HayJugada::TwoPlayers(true, false),
+                    HayJugada::TwoPlayers(false, true),
+                    HayJugada::TwoPlayers(true, true),
+                ],
+                Some(HayJugada::TwoPlayers(true, true)),
+            ),
+            _ => todo!(),
+        };
+        let (jugadas_juego, selected_juego) = match game_type {
+            GameType::MusGameTwoPlayers => (
+                vec![
+                    HayJugada::TwoPlayers(false, false),
+                    HayJugada::TwoPlayers(true, true),
+                ],
+                Some(HayJugada::TwoPlayers(true, true)),
+            ),
             _ => todo!(),
         };
         let mut action_path = Self {
             one_hand_squares,
             two_hands_squares,
             buckets,
-            view_mode: ViewMode::OneHand,
+            view_mode: match game_type {
+                GameType::MusGameTwoHands => ViewMode::TwoHands,
+                _ => ViewMode::OneHand,
+            },
             strategy: strategy.to_owned(),
             selected_tantos_mano: Some(0),
             tantos_mano: Vec::from_iter(0..40),
@@ -378,9 +443,19 @@ impl ActionPath {
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
             hovered_square: None,
+            jugadas_pares,
+            jugadas_juego,
+            selected_pares,
+            selected_juego,
         };
         let mano = &action_path.buckets.first_hand();
-        let strategy_node = action_path.strategy_node(mano, None);
+        let strategy_node = match game_type {
+            GameType::LanceGame(_) | GameType::MusGame | GameType::MusGameTwoPlayers => {
+                action_path.strategy_node(mano, None)
+            }
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGameTwoHands => action_path.strategy_node(mano, Some(mano)),
+        };
         if let Some((actions, _)) = &strategy_node {
             action_path.append_action_picklists(actions);
             action_path.update_squares();
@@ -396,37 +471,85 @@ impl ActionPath {
     }
 
     fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
-        let tipo_estrategia = self.selected_strategy.unwrap();
+        let game_type = self.strategy.strategy_config.game_config.game_type;
         let history: Vec<Accion> = self.selected_history();
-        let lance = match self.strategy.strategy_config.game_config.game_type {
-            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => lance,
-            GameType::MusGame | GameType::MusGameTwoHands => todo!(),
-        };
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
             self.selected_tantos_postre.unwrap_or_default(),
         ];
-        let abstract_game_lance = if abstract_game { Some(lance) } else { None };
-        let mut lance_game = LanceGame::new(lance, tantos, abstract_game);
-        lance_game.new_with_configuration(tipo_estrategia);
-        for action in &history {
-            lance_game.act(*action);
+        match game_type {
+            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => {
+                let tipo_estrategia = self.selected_strategy.unwrap();
+                let abstract_game_lance = if abstract_game { Some(lance) } else { None };
+                let mut lance_game = LanceGame::new(lance, tantos, abstract_game);
+                lance_game.new_with_configuration(tipo_estrategia);
+                for action in &history {
+                    lance_game.act(*action);
+                }
+                let info_set = InfoSet::str(
+                    &tipo_estrategia,
+                    &tantos,
+                    mano1,
+                    mano2,
+                    &[],
+                    abstract_game_lance,
+                );
+                Some(lance_game.actions()).zip(
+                    self.strategy
+                        .nodes
+                        .get(&(info_set + &lance_game.history_str()))
+                        .cloned(),
+                )
+            }
+            GameType::MusGame => {
+                let mut mus_game = MusGame::new(tantos, abstract_game);
+                let info_set = format!("{}:{},{},", tantos[0], tantos[1], mano1);
+                mus_game.new_random();
+                for action in &history {
+                    mus_game.act(*action);
+                }
+                Some(mus_game.actions()).zip(
+                    self.strategy
+                        .nodes
+                        .get(&(info_set + &mus_game.history_str()))
+                        .cloned(),
+                )
+            }
+            GameType::MusGameTwoHands => {
+                let mut mus_game = MusGameTwoHands::new(tantos, abstract_game);
+                let info_set = format!("{}:{},{},{},", tantos[0], tantos[1], mano1, mano2.unwrap());
+                mus_game.new_random();
+                for action in &history {
+                    mus_game.act(*action);
+                }
+                Some(mus_game.actions()).zip(
+                    self.strategy
+                        .nodes
+                        .get(&(info_set + &mus_game.history_str()))
+                        .cloned(),
+                )
+            }
+            GameType::MusGameTwoPlayers => {
+                let mut mus_game = MusGameTwoPlayers::new(tantos, abstract_game);
+                let info_set = format!("{}:{},{},", tantos[0], tantos[1], mano1);
+                mus_game.new_random();
+                for action in &history {
+                    mus_game.act(*action);
+                }
+                println!(
+                    "{:?} {:?}",
+                    mus_game.actions(),
+                    info_set.clone() + &mus_game.history_str()
+                );
+                Some(mus_game.actions()).zip(
+                    self.strategy
+                        .nodes
+                        .get(&(info_set + &mus_game.history_str()))
+                        .cloned(),
+                )
+            }
         }
-        let info_set = InfoSet::str(
-            &tipo_estrategia,
-            &tantos,
-            mano1,
-            mano2,
-            &[],
-            abstract_game_lance,
-        );
-        Some(lance_game.actions()).zip(
-            self.strategy
-                .nodes
-                .get(&(info_set + &lance_game.history_str()))
-                .cloned(),
-        )
     }
 
     fn update_squares(&mut self) {
@@ -527,6 +650,8 @@ impl ActionPath {
                 self.hovered_square = bucket_id;
                 return;
             }
+            ExplorerEvent::SetPares(hay_jugada) => self.selected_pares = Some(hay_jugada),
+            ExplorerEvent::SetJuego(hay_jugada) => self.selected_juego = Some(hay_jugada),
         }
         if let Some(None) = self.selected_actions.last() {
             self.selected_actions.pop();
@@ -534,7 +659,14 @@ impl ActionPath {
         }
 
         let mano = &self.buckets.first_hand();
-        let strategy_node = self.strategy_node(mano, None);
+        let game_type = self.strategy.strategy_config.game_config.game_type;
+        let strategy_node = match game_type {
+            GameType::LanceGame(_) | GameType::MusGame | GameType::MusGameTwoPlayers => {
+                self.strategy_node(mano, None)
+            }
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGameTwoHands => self.strategy_node(mano, Some(mano)),
+        };
         if let Some((actions, _)) = strategy_node {
             self.append_action_picklists(&actions);
         } else {
@@ -565,49 +697,11 @@ impl ActionPath {
         // };
     }
 
-    pub fn view(&self) -> Element<ExplorerEvent> {
-        let mut top_row = Row::new();
-
-        let pick_strategy = pick_list(
-            &self.strategies[..],
-            self.selected_strategy,
-            ExplorerEvent::SetStrategy,
-        )
-        .placeholder("Select a strategy");
-        top_row = top_row.push(pick_strategy);
-
-        let pick_tantos_mano = pick_list(
-            &self.tantos_mano[..],
-            self.selected_tantos_mano,
-            ExplorerEvent::SetTantosMano,
-        );
-        top_row = top_row.push(pick_tantos_mano);
-
-        let pick_tantos_postre = pick_list(
-            &self.tantos_postre[..],
-            self.selected_tantos_postre,
-            ExplorerEvent::SetTantosPostre,
-        );
-        top_row = top_row.push(pick_tantos_postre);
-
-        // if let [first_actions, ..] = &self.actions[..] {
-        //     let pick_action1 = pick_list(&first_actions[..], self.selected_actions[0], |elem| {
-        //         ExplorerEvent::SetAction(0, elem)
-        //     })
-        //     .placeholder("Select an action");
-        //     top_row = top_row.push(pick_action1);
-        // }
-
-        for level in 0..self.selected_actions.len() {
-            let pick_action_n = pick_list(
-                &self.actions[level][..],
-                self.selected_actions[level],
-                move |elem| ExplorerEvent::SetAction(level, elem),
-            )
-            .placeholder("Select an action");
-            top_row = top_row.push(pick_action_n);
-        }
-        top_row = top_row.width(Fill).align_y(Top).spacing(10);
+    pub fn view(&self) -> Element<'_, ExplorerEvent> {
+        let top_row = match self.strategy.strategy_config.game_config.game_type {
+            GameType::LanceGame(_) | GameType::LanceGameTwoHands(_) => self.nav_bar_lance_game(),
+            _ => self.nav_bar_mus_game(),
+        };
 
         let legend =
             Container::new(Canvas::new(Legend::default()).width(700).height(60)).padding(20);
@@ -680,5 +774,99 @@ impl ActionPath {
         let layout = column![top_row, legend, scrollable_matrix].align_x(Horizontal::Center);
 
         layout.into()
+    }
+
+    fn nav_bar_lance_game(&self) -> Row<'_, ExplorerEvent> {
+        let mut top_row = Row::new();
+
+        let pick_strategy = pick_list(
+            &self.strategies[..],
+            self.selected_strategy,
+            ExplorerEvent::SetStrategy,
+        )
+        .placeholder("Select a strategy");
+        top_row = top_row.push(pick_strategy);
+
+        let pick_tantos_mano = pick_list(
+            &self.tantos_mano[..],
+            self.selected_tantos_mano,
+            ExplorerEvent::SetTantosMano,
+        );
+        top_row = top_row.push(pick_tantos_mano);
+
+        let pick_tantos_postre = pick_list(
+            &self.tantos_postre[..],
+            self.selected_tantos_postre,
+            ExplorerEvent::SetTantosPostre,
+        );
+        top_row = top_row.push(pick_tantos_postre);
+
+        for level in 0..self.selected_actions.len() {
+            let pick_action_n = pick_list(
+                &self.actions[level][..],
+                self.selected_actions[level],
+                move |elem| ExplorerEvent::SetAction(level, elem),
+            )
+            .placeholder("Select an action");
+            top_row = top_row.push(pick_action_n);
+        }
+        top_row = top_row.width(Fill).align_y(Top).spacing(10);
+        top_row
+    }
+
+    fn nav_bar_mus_game(&self) -> Row<'_, ExplorerEvent> {
+        let mut top_row = Row::new();
+
+        let pick_tantos_mano = column![
+            text("Tantos mano").size(14),
+            pick_list(
+                &self.tantos_mano[..],
+                self.selected_tantos_mano,
+                ExplorerEvent::SetTantosMano,
+            )
+        ];
+        top_row = top_row.push(pick_tantos_mano);
+
+        let pick_tantos_postre = column![
+            text("Tantos postre").size(14),
+            pick_list(
+                &self.tantos_postre[..],
+                self.selected_tantos_postre,
+                ExplorerEvent::SetTantosPostre,
+            )
+        ];
+        top_row = top_row.push(pick_tantos_postre);
+
+        let pick_pares = column![
+            text("Pares").size(14),
+            pick_list(
+                &self.jugadas_pares[..],
+                self.selected_pares,
+                ExplorerEvent::SetPares,
+            )
+        ];
+        top_row = top_row.push(pick_pares);
+
+        let pick_juego = column![
+            text("Juego").size(14),
+            pick_list(
+                &self.jugadas_juego[..],
+                self.selected_juego,
+                ExplorerEvent::SetJuego,
+            )
+        ];
+        top_row = top_row.push(pick_juego);
+
+        for level in 0..self.selected_actions.len() {
+            let pick_action_n = pick_list(
+                &self.actions[level][..],
+                self.selected_actions[level],
+                move |elem| ExplorerEvent::SetAction(level, elem),
+            )
+            .placeholder("Select an action");
+            top_row = top_row.push(pick_action_n);
+        }
+        top_row = top_row.width(Fill).align_y(Top).spacing(10);
+        top_row
     }
 }

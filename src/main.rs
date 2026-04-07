@@ -5,12 +5,18 @@ use musolver::{
     Cfr, CfrMethod,
     mus::Lance,
     solver::{
-        GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, SolverError, Strategy, Trainer,
-        TrainerConfig,
+        GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers, SolverError,
+        Strategy, Trainer, TrainerConfig,
     },
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(Parser, Clone, Debug, ValueEnum)]
+enum MusVariant {
+    TwoHands = 0,
+    TwoPlayers = 1,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -45,7 +51,7 @@ struct Args {
     /// Se calcula la estrategia asumiendo que cada pareja conoce las dos manos y solo hay una
     /// acción por pareja.
     #[arg(long)]
-    two_hands: bool,
+    variant: Option<MusVariant>,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -79,11 +85,11 @@ fn main() {
     };
     let game_config = GameConfig {
         abstract_game: args.abstract_game,
-        game_type: match (args.lance, args.two_hands) {
-            (Some(lance), false) => GameType::LanceGame(lance),
-            (Some(lance), true) => GameType::LanceGameTwoHands(lance),
-            (None, false) => GameType::MusGame,
-            (None, true) => GameType::MusGameTwoHands,
+        game_type: match (args.lance, args.variant) {
+            (Some(lance), _) => GameType::LanceGame(lance),
+            (None, None) => GameType::MusGame,
+            (None, Some(MusVariant::TwoHands)) => GameType::MusGameTwoHands,
+            (None, Some(MusVariant::TwoPlayers)) => GameType::MusGameTwoPlayers,
         },
     };
     println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
@@ -94,6 +100,7 @@ fn main() {
             GameType::MusGame => "Partida completa".into(),
             GameType::LanceGameTwoHands(_) => todo!(),
             GameType::MusGameTwoHands => "Partida completa (two hands)".into(),
+            GameType::MusGameTwoPlayers => "Partida completa (two players)".into(),
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
@@ -111,6 +118,10 @@ fn main() {
         GameType::LanceGameTwoHands(_) => todo!(),
         GameType::MusGameTwoHands => {
             let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
+            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
+        }
+        GameType::MusGameTwoPlayers => {
+            let mut mus_game = MusGameTwoPlayers::new(tantos, game_config.abstract_game);
             trainer.train(&mut cfr, &mut mus_game, &trainer_config);
         }
     }

@@ -25,7 +25,7 @@ impl Inspector {
         )
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         match &self.screen {
             Screen::Loader(loader) => loader.view().map(Message::Loader),
             Screen::Explorer(action_path) => action_path.view().map(Message::Explorer),

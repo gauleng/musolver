@@ -121,7 +121,7 @@ impl MusArenaUi {
         )
     }
 
-    pub fn view(&self) -> Element<GameEvent> {
+    pub fn view(&self) -> Element<'_, GameEvent> {
         let scoreboard = container(row![
             text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)
         ])
@@ -401,7 +401,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
 
         let lance = match strategy.strategy_config.game_config.game_type {
             GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => Some(lance),
-            GameType::MusGame | GameType::MusGameTwoHands => None,
+            GameType::MusGame | GameType::MusGameTwoHands | GameType::MusGameTwoPlayers => None,
         };
         let mut arena = MusArena::new(lance);
         let kibitzer = KibitzerGui::new(sender.clone());

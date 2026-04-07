@@ -38,7 +38,7 @@ impl Loader {
         )
     }
 
-    pub fn view(&self) -> Element<LoaderEvent> {
+    pub fn view(&self) -> Element<'_, LoaderEvent> {
         let search = text_input("Search strategy", &self.search).on_input(LoaderEvent::SearchText);
 
         let strategy_list: Element<_> = {

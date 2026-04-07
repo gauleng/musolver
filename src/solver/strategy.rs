@@ -12,12 +12,13 @@ use crate::{Cfr, mus::Lance};
 
 use super::{SolverError, TrainerConfig};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum GameType {
     LanceGame(Lance),
     LanceGameTwoHands(Lance),
     MusGame,
     MusGameTwoHands,
+    MusGameTwoPlayers,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
