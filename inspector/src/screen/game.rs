@@ -10,7 +10,7 @@ use image::GenericImageView;
 use musolver::{
     Game,
     mus::{
-        Accion, Lance, Mano,
+        Accion, CuatroJugadores, Lance, Mano,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
     solver::{GameType, LanceGame, Strategy},
@@ -348,7 +348,11 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             }
         }
         impl Kibitzer for KibitzerGui {
-            fn record(&mut self, _partida_mus: &musolver::mus::PartidaMus, action: MusAction) {
+            fn record(
+                &mut self,
+                _partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
+                action: MusAction,
+            ) {
                 let _ = self.sender.try_send(ArenaMessage::GameAction(action));
             }
         }
@@ -375,7 +379,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
         impl Agent for AgentGui {
             async fn actuar(
                 &mut self,
-                partida_mus: &musolver::mus::PartidaMus,
+                partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
             ) -> musolver::mus::Accion {
                 let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
                 for action in self.history.lock().unwrap().iter() {

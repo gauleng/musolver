@@ -1,4 +1,4 @@
-use crate::mus::{Accion, Baraja, Lance, Mano, PartidaMus, Turno};
+use crate::mus::{Accion, Baraja, CuatroJugadores, Lance, Mano, PartidaMus, Turno};
 
 use super::{Agent, Kibitzer};
 
@@ -23,7 +23,7 @@ pub enum MusAction {
 pub struct MusArena {
     pub agents: Vec<Box<dyn Agent + Send>>,
     pub kibitzers: Vec<Box<dyn Kibitzer + Send>>,
-    partida_mus: PartidaMus,
+    partida_mus: PartidaMus<CuatroJugadores>,
     lance: Option<Lance>,
     order: [usize; 4],
 }
@@ -39,17 +39,18 @@ impl MusArena {
         }
     }
 
-    fn new_partida(lance: Option<Lance>) -> PartidaMus {
+    fn new_partida(lance: Option<Lance>) -> PartidaMus<CuatroJugadores> {
         let mut baraja = Baraja::baraja_mus();
         match lance {
             None => {
                 let manos = baraja.repartir_manos();
-                PartidaMus::new(manos, [0, 0])
+                PartidaMus::<CuatroJugadores>::new(manos, [0, 0])
             }
             Some(lance) => loop {
                 baraja.barajar();
                 let manos = baraja.repartir_manos();
-                let posible_partida_mus = PartidaMus::new_partida_lance(lance, manos, [0, 0]);
+                let posible_partida_mus =
+                    PartidaMus::<CuatroJugadores>::new_partida_lance(lance, manos, [0, 0]);
                 if let Some(partida_mus) = posible_partida_mus {
                     return partida_mus;
                 }

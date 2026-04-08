@@ -6,8 +6,8 @@ use itertools::Itertools;
 use crate::{
     Game, NodeType,
     mus::{
-        Accion, Apuesta, Baraja, DistribucionDobleCartaIter, EstadoLance, Juego, Lance, Mano,
-        Pares, PartidaMus, Turno,
+        Accion, Apuesta, Baraja, CuatroJugadores, DistribucionDobleCartaIter, EstadoLance, Juego,
+        Lance, Mano, Pares, PartidaMus, Turno,
     },
 };
 
@@ -300,7 +300,7 @@ impl<'a> Display for InfoSet<'a> {
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
-    estado_lance: Option<EstadoLance>,
+    estado_lance: Option<EstadoLance<CuatroJugadores>>,
     info_set_prefix: Option<[ArrayString<64>; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
@@ -331,24 +331,32 @@ impl LanceGame {
             HandConfiguration::DosManos => vec![0, 1],
             HandConfiguration::SinLance => vec![0, 2],
         };
-        let estado_lance =
-            EstadoLance::con_jugadores(&self.lance, &jugadores, [0, 0], 0, PartidaMus::MAX_TANTOS);
+        let estado_lance = EstadoLance::<CuatroJugadores>::con_jugadores(
+            &self.lance,
+            &jugadores,
+            [0, 0],
+            0,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         self.pareja_mano = match estado_lance.turno().unwrap() {
             Turno::Pareja(idx) | Turno::Jugador(idx) => idx as usize,
         };
         self.estado_lance = Some(estado_lance);
     }
 
-    pub fn from_partida_mus(partida_mus: &PartidaMus, abstract_game: bool) -> Option<Self> {
+    pub fn from_partida_mus(
+        partida_mus: &PartidaMus<CuatroJugadores>,
+        abstract_game: bool,
+    ) -> Option<Self> {
         let lance = partida_mus.lance_actual()?;
         Some(Self {
             lance,
             tantos: *partida_mus.tantos(),
             abstract_game,
-            estado_lance: Some(EstadoLance::new(
+            estado_lance: Some(EstadoLance::<CuatroJugadores>::new(
                 &lance,
                 partida_mus.manos(),
-                PartidaMus::MAX_TANTOS,
+                PartidaMus::<CuatroJugadores>::MAX_TANTOS,
             )),
             info_set_prefix: LanceGame::info_set_prefix(
                 &lance,
@@ -401,7 +409,11 @@ impl Game for LanceGame {
             baraja.barajar();
             let manos = baraja.repartir_manos();
             let turno_inicial = self.lance.turno_inicial(&manos);
-            let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
+            let intento_partida = EstadoLance::<CuatroJugadores>::new(
+                &self.lance,
+                &manos,
+                PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            );
             if intento_partida.turno().is_some() {
                 self.estado_lance = Some(intento_partida);
                 self.info_set_prefix = LanceGame::info_set_prefix(
@@ -449,7 +461,11 @@ impl Game for LanceGame {
                     Mano::new(mano2_pareja2),
                 ];
                 let turno_inicial = self.lance.turno_inicial(&manos);
-                let intento_partida = EstadoLance::new(&self.lance, &manos, PartidaMus::MAX_TANTOS);
+                let intento_partida = EstadoLance::<CuatroJugadores>::new(
+                    &self.lance,
+                    &manos,
+                    PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+                );
                 if intento_partida.turno().is_some() {
                     self.estado_lance = Some(intento_partida);
                     self.info_set_prefix = LanceGame::info_set_prefix(
@@ -470,15 +486,15 @@ impl Game for LanceGame {
         let ganador = estado_lance.resolver_lance();
         let tantos_ganador = match estado_lance.tantos_apostados() {
             Apuesta::Tantos(t) => t,
-            Apuesta::Ordago => PartidaMus::MAX_TANTOS,
+            Apuesta::Ordago => PartidaMus::<CuatroJugadores>::MAX_TANTOS,
         } + estado_lance.tantos_mano()[ganador as usize];
         let mut tantos = self.tantos;
         if self.pareja_mano == 1 {
             tantos.swap(0, 1);
         }
         tantos[ganador as usize] += tantos_ganador;
-        if tantos[ganador as usize] >= PartidaMus::MAX_TANTOS {
-            tantos[ganador as usize] = PartidaMus::MAX_TANTOS;
+        if tantos[ganador as usize] >= PartidaMus::<CuatroJugadores>::MAX_TANTOS {
+            tantos[ganador as usize] = PartidaMus::<CuatroJugadores>::MAX_TANTOS;
             tantos[1 - ganador as usize] = 0;
         }
         let payoff = [

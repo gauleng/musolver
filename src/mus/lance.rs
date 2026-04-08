@@ -286,15 +286,24 @@ impl Lance {
     /// Devuelve un bool indicando si el lance tiene envites. Para ello es necesario que al menos
     /// un jugador de cada pareja tenga jugada.
     pub fn se_juega(&self, manos: &[Mano]) -> bool {
+        assert!(manos.len() == 4 || manos.len() == 2);
         match self {
             Lance::Grande | Lance::Chica => true,
             Lance::Pares => {
-                (manos[0].pares().is_some() || manos[2].pares().is_some())
-                    && (manos[1].pares().is_some() || manos[3].pares().is_some())
+                if manos.len() == 2 {
+                    manos[0].pares().is_some() && manos[1].pares().is_some()
+                } else {
+                    (manos[0].pares().is_some() || manos[2].pares().is_some())
+                        && (manos[1].pares().is_some() || manos[3].pares().is_some())
+                }
             }
             Lance::Juego => {
-                (manos[0].juego().is_some() || manos[2].juego().is_some())
-                    && (manos[1].juego().is_some() || manos[3].juego().is_some())
+                if manos.len() == 2 {
+                    manos[0].juego().is_some() && manos[1].juego().is_some()
+                } else {
+                    (manos[0].juego().is_some() || manos[2].juego().is_some())
+                        && (manos[1].juego().is_some() || manos[3].juego().is_some())
+                }
             }
             Lance::Punto => !self.hay_lance_jugadas(&self.jugadas(manos, |m| m.juego())),
         }
@@ -330,7 +339,7 @@ pub enum Turno {
 /// los cuatro jugadores participan en el lance, denotando el jugador mano como 0 y el jugador
 /// postre como 3, el orden de juego es: 0-2-1-3.
 #[derive(Debug, Clone)]
-pub struct EstadoLance {
+pub struct EstadoLance<T> {
     bote: [Apuesta; 2],
     turno: Option<Turno>,
     ultimo_envite: u8,
@@ -339,13 +348,20 @@ pub struct EstadoLance {
     ganador: Option<u8>,
     jugador_mejor_mano: u8,
     tantos_mano: [u8; 2],
-
+    tipo_partida: T,
     idx_turno: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct DosJugadores {}
+
+#[derive(Debug, Clone)]
+pub struct CuatroJugadores {
     idx_parejas: [(Option<Turno>, Option<Turno>); 2],
     accion_pareja: Option<Accion>,
 }
 
-impl EstadoLance {
+impl EstadoLance<CuatroJugadores> {
     pub fn con_jugadores(
         lance: &Lance,
         jugadores: &[u8],
@@ -390,8 +406,10 @@ impl EstadoLance {
             jugador_mejor_mano,
             tantos_mano,
             idx_turno,
-            idx_parejas,
-            accion_pareja: None,
+            tipo_partida: CuatroJugadores {
+                idx_parejas,
+                accion_pareja: None,
+            },
         }
     }
 
@@ -425,7 +443,7 @@ impl EstadoLance {
             lance.tantos_mano(&manos[0]) + lance.tantos_mano(&manos[2]) + lance.bonus(),
             lance.tantos_mano(&manos[1]) + lance.tantos_mano(&manos[3]) + lance.bonus(),
         ];
-        EstadoLance::con_jugadores(
+        Self::con_jugadores(
             lance,
             &idx_activos,
             tantos_mano,
@@ -439,13 +457,13 @@ impl EstadoLance {
     /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
     pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
         self.turno().ok_or(MusError::AccionNoValida)?;
-        let idx_pareja_activa = &self.idx_parejas[self.idx_turno as usize];
-        if idx_pareja_activa.1.is_some() && self.accion_pareja.is_none() {
-            self.accion_pareja = Some(a);
+        let idx_pareja_activa = &self.tipo_partida.idx_parejas[self.idx_turno as usize];
+        if idx_pareja_activa.1.is_some() && self.tipo_partida.accion_pareja.is_none() {
+            self.tipo_partida.accion_pareja = Some(a);
             self.turno = idx_pareja_activa.1;
             return Ok(self.turno);
         }
-        let apuesta_maxima = Some(a).max(self.accion_pareja).unwrap();
+        let apuesta_maxima = Some(a).max(self.tipo_partida.accion_pareja).unwrap();
         match apuesta_maxima {
             Accion::Paso => {}
             Accion::Quiero => self.bote[0] = self.bote[1],
@@ -461,11 +479,105 @@ impl EstadoLance {
             self.turno = None;
             return Ok(None);
         }
-        self.accion_pareja = None;
-        self.turno = self.idx_parejas[self.idx_turno as usize].0;
+        self.tipo_partida.accion_pareja = None;
+        self.turno = self.tipo_partida.idx_parejas[self.idx_turno as usize].0;
         Ok(self.turno)
     }
+}
 
+impl EstadoLance<DosJugadores> {
+    pub fn con_jugadores(
+        lance: &Lance,
+        jugadores: &[u8],
+        tantos_mano: [u8; 2],
+        jugador_mejor_mano: u8,
+        apuesta_maxima: u8,
+    ) -> Self {
+        let turno = if jugadores.len() < 2 {
+            None
+        } else {
+            Some(Turno::Jugador(0))
+        };
+        Self {
+            bote: [Apuesta::Tantos(0), Apuesta::Tantos(0)],
+            turno,
+            ultimo_envite: 0,
+            apuesta_maxima,
+            apuesta_minima: lance.apuesta_minima(),
+            ganador: None,
+            jugador_mejor_mano,
+            tantos_mano,
+            idx_turno: 0,
+            tipo_partida: DosJugadores {},
+        }
+    }
+
+    /// Crea un nuevo estado lance.
+    pub fn new(lance: &Lance, manos: &[Mano; 2], apuesta_maxima: u8) -> Self {
+        let idx_activos: Vec<_> = match lance {
+            Lance::Pares => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| mano.pares().map(|_| idx as u8))
+                .collect(),
+            Lance::Juego => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| mano.juego().map(|_| idx as u8))
+                .collect(),
+            Lance::Punto => manos
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, mano)| {
+                    if mano.juego().is_some() {
+                        None
+                    } else {
+                        Some(idx as u8)
+                    }
+                })
+                .collect(),
+            _ => vec![0, 1, 2, 3],
+        };
+        let tantos_mano = [
+            lance.tantos_mano(&manos[0]) + lance.bonus(),
+            lance.tantos_mano(&manos[1]) + lance.bonus(),
+        ];
+        Self::con_jugadores(
+            lance,
+            &idx_activos,
+            tantos_mano,
+            lance.mejor_mano(manos) as u8,
+            apuesta_maxima,
+        )
+    }
+
+    /// Efectúa la acción para el jugador del turno actual.
+    /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
+    /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
+    pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
+        self.turno().ok_or(MusError::AccionNoValida)?;
+
+        match a {
+            Accion::Paso => {}
+            Accion::Quiero => self.bote[0] = self.bote[1],
+            _ => {
+                self.procesar_envite(a)?;
+            }
+        }
+        self.idx_turno = 1 - self.idx_turno;
+        if self.idx_turno == self.ultimo_envite {
+            if self.bote[0] != self.bote[1] {
+                self.ganador = Some(self.idx_turno);
+            }
+            self.turno = None;
+            return Ok(None);
+        }
+        self.turno = Some(Turno::Jugador(self.idx_turno as u8));
+        Ok(self.turno)
+    }
+}
+
+impl<T> EstadoLance<T> {
     fn procesar_envite(&mut self, a: Accion) -> Result<(), MusError> {
         let ultima_apuesta = match self.bote[1] {
             Apuesta::Tantos(t) => t,
@@ -552,7 +664,11 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Grande,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -577,7 +693,11 @@ mod tests_estado_lance {
             "RR11".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), None);
         assert_eq!(partida.resolver_lance(), 1);
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(0));
@@ -589,7 +709,11 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "R111".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -606,7 +730,11 @@ mod tests_estado_lance {
             "R111".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -626,7 +754,11 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
         ];
         // Cuatro participantes, envite del jugador 0.
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Grande,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -645,7 +777,11 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Cuatro participantes, envite del jugador 1.
-        let mut partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Grande,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -664,7 +800,11 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Tres participantes con envite inicial de la pareja.
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -679,7 +819,11 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(1));
 
         // Revocación.
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Paso).unwrap(),
@@ -698,7 +842,11 @@ mod tests_estado_lance {
         assert_eq!(partida.tantos_apostados(), Apuesta::Tantos(2));
 
         // Doble revocación
-        let mut partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let mut partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
             partida.actuar(Accion::Envido(2)).unwrap(),
@@ -733,13 +881,29 @@ mod tests_estado_lance {
             "RRR1".parse().unwrap(),
             "RRR1".parse().unwrap(),
         ];
-        let partida = EstadoLance::new(&Lance::Grande, &manos, PartidaMus::MAX_TANTOS);
+        let partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Grande,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.tantos_mano(), &[0, 0]);
-        let partida = EstadoLance::new(&Lance::Pares, &manos, PartidaMus::MAX_TANTOS);
+        let partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Pares,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.tantos_mano(), &[4, 4]);
-        let partida = EstadoLance::new(&Lance::Juego, &manos, PartidaMus::MAX_TANTOS);
+        let partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Juego,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.tantos_mano(), &[3, 6]);
-        let partida = EstadoLance::new(&Lance::Punto, &manos, PartidaMus::MAX_TANTOS);
+        let partida = EstadoLance::<CuatroJugadores>::new(
+            &Lance::Punto,
+            &manos,
+            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+        );
         assert_eq!(partida.tantos_mano(), &[1, 1]);
     }
 }

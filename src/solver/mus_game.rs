@@ -3,14 +3,14 @@ use itertools::Itertools;
 
 use crate::{
     Game, NodeType,
-    mus::{Accion, Apuesta, Baraja, Lance, Mano, PartidaMus, Turno},
+    mus::{Accion, Apuesta, Baraja, CuatroJugadores, DosJugadores, Lance, Mano, PartidaMus, Turno},
     solver::ManosNormalizadas,
 };
 
 #[derive(Debug, Clone)]
 pub struct MusGame {
     tantos: [u8; 2],
-    partida: Option<PartidaMus>,
+    partida: Option<PartidaMus<CuatroJugadores>>,
     history_str: ArrayString<64>,
     info_set_prefix: [ArrayString<16>; 4],
     last_action: Option<Accion>,
@@ -120,7 +120,7 @@ impl Game for MusGame {
             },
         );
         (self.manos_pares, self.manos_juego) = MusGame::jugadas_manos(&manos);
-        let partida = PartidaMus::new(manos, self.tantos);
+        let partida = PartidaMus::<CuatroJugadores>::new(manos, self.tantos);
         self.partida = Some(partida);
         self.history_str.push('M');
     }
@@ -256,7 +256,7 @@ impl Game for MusGame {
 #[derive(Debug, Clone)]
 pub struct MusGameTwoHands {
     tantos: [u8; 2],
-    partida: Option<PartidaMus>,
+    partida: Option<PartidaMus<CuatroJugadores>>,
     history_str: ArrayString<64>,
     info_set_prefix: [ArrayString<16>; 2],
     manos_pares: ArrayString<4>,
@@ -343,7 +343,7 @@ impl Game for MusGameTwoHands {
             },
         );
         (self.manos_pares, self.manos_juego) = MusGame::jugadas_manos(&manos);
-        let partida = PartidaMus::new(manos, self.tantos);
+        let partida = PartidaMus::<CuatroJugadores>::new(manos, self.tantos);
         self.partida = Some(partida);
         self.history_str.push('M');
     }
@@ -458,7 +458,7 @@ impl Game for MusGameTwoHands {
 #[derive(Debug, Clone)]
 pub struct MusGameTwoPlayers {
     tantos: [u8; 2],
-    partida: Option<PartidaMus>,
+    partida: Option<PartidaMus<DosJugadores>>,
     history_str: ArrayString<64>,
     info_set_prefix: [ArrayString<16>; 2],
     manos_pares: ArrayString<2>,
@@ -480,12 +480,7 @@ impl MusGameTwoPlayers {
     }
 
     pub fn new_with_hands(manos: &[Mano; 2], tantos: [u8; 2], abstract_game: bool) -> Self {
-        let manos = [
-            manos[0].clone(),
-            manos[1].clone(),
-            manos[0].clone(),
-            manos[1].clone(),
-        ];
+        let manos = [manos[0].clone(), manos[1].clone()];
         let info_set_prefix = MusGameTwoPlayers::info_set_prefix(
             &manos,
             &tantos,
@@ -496,7 +491,7 @@ impl MusGameTwoPlayers {
             },
         );
         let (manos_pares, manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
-        let partida = Some(PartidaMus::new(manos, tantos));
+        let partida = Some(PartidaMus::<DosJugadores>::new(manos, tantos));
         let history_str = ArrayString::<64>::from("M").unwrap();
         Self {
             partida,
@@ -509,12 +504,12 @@ impl MusGameTwoPlayers {
         }
     }
 
-    fn jugadas_manos(manos: &[Mano; 4]) -> (ArrayString<2>, ArrayString<2>) {
-        let manos_pares = manos[0..2]
+    fn jugadas_manos(manos: &[Mano; 2]) -> (ArrayString<2>, ArrayString<2>) {
+        let manos_pares = manos
             .iter()
             .map(|m| if m.pares().is_some() { '1' } else { '0' })
             .join("");
-        let manos_juego = manos[0..2]
+        let manos_juego = manos
             .iter()
             .map(|m| if m.juego().is_some() { '1' } else { '0' })
             .join("");
@@ -526,7 +521,7 @@ impl MusGameTwoPlayers {
     }
 
     fn info_set_prefix(
-        manos: &[Mano; 4],
+        manos: &[Mano; 2],
         tantos: &[u8; 2],
         abstracto: Option<Lance>,
     ) -> [ArrayString<16>; 2] {
@@ -568,9 +563,8 @@ impl Game for MusGameTwoPlayers {
     fn new_random(&mut self) {
         let mut baraja = Baraja::baraja_mus();
         baraja.barajar();
-        let mut manos = baraja.repartir_manos();
-        manos[2] = manos[0].clone();
-        manos[3] = manos[1].clone();
+        let manos = baraja.repartir_manos();
+        let manos = [manos[0].clone(), manos[1].clone()];
         self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
             &manos,
             &self.tantos,
@@ -581,7 +575,7 @@ impl Game for MusGameTwoPlayers {
             },
         );
         (self.manos_pares, self.manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
-        let partida = PartidaMus::new(manos, self.tantos);
+        let partida = PartidaMus::<DosJugadores>::new(manos, self.tantos);
         self.partida = Some(partida);
         self.history_str.push('M');
     }
