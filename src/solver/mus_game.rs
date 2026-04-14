@@ -504,6 +504,10 @@ impl MusGameTwoPlayers {
         }
     }
 
+    pub fn mus_game(&self) -> Option<&PartidaMus<DosJugadores>> {
+        self.partida.as_ref()
+    }
+
     fn jugadas_manos(manos: &[Mano; 2]) -> (ArrayString<2>, ArrayString<2>) {
         let manos_pares = manos
             .iter()
@@ -728,5 +732,31 @@ mod tests {
         game.act(Accion::Paso);
 
         assert_eq!(game.info_set_str(0), "38:37,R775,Mpppop1000");
+    }
+
+    #[test]
+    fn two_players_actions() {
+        let manos = [
+            Mano::from_str("RRR5").unwrap(),
+            Mano::from_str("RCC1").unwrap(),
+        ];
+        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [35, 35], false);
+        game.act(Accion::Envido(2));
+        game.act(Accion::Envido(2));
+        assert_eq!(
+            game.actions(),
+            vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(10),
+                Accion::Ordago,
+            ]
+        );
+        game.act(Accion::Quiero);
+        game.act(Accion::Envido(10));
+        assert_eq!(
+            game.actions(),
+            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
+        );
     }
 }

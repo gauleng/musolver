@@ -318,7 +318,7 @@ impl Cfr {
                     }
                 }
             }
-            let round_size = 10_000_000;
+            let round_size = 1_000_000;
             if iterations > 0 && i.is_multiple_of(round_size) {
                 let block = (i / round_size) as f64;
                 self.discount(block / (block + 1.));

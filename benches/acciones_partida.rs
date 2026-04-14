@@ -3,10 +3,10 @@ use std::path::Path;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use musolver::{
     ActionNode,
-    mus::{Accion, Baraja, Lance, PartidaMus},
+    mus::{Accion, Baraja, CuatroJugadores, Lance, PartidaMus},
 };
 
-fn walk_tree(p: &PartidaMus, a: &ActionNode<usize, Accion>, history: &[Accion]) {
+fn walk_tree(p: &PartidaMus<CuatroJugadores>, a: &ActionNode<usize, Accion>, history: &[Accion]) {
     match a {
         ActionNode::Terminal => {
             let mut new_partida = p.clone();
@@ -31,7 +31,9 @@ fn bench_acciones_partida(c: &mut Criterion) {
                 let mut baraja = Baraja::baraja_mus();
                 baraja.barajar();
                 let manos = baraja.repartir_manos();
-                let partida = PartidaMus::new_partida_lance(Lance::Grande, manos, [0, 0]).unwrap();
+                let partida =
+                    PartidaMus::<CuatroJugadores>::new_partida_lance(Lance::Grande, manos, [0, 0])
+                        .unwrap();
                 let action_tree: ActionNode<usize, Accion> =
                     ActionNode::from_file(Path::new("config/action_tree.json"))
                         .expect("Error cargando árbol.");
