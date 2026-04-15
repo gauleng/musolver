@@ -74,58 +74,58 @@ impl ActionPath {
         let (jugadas_pares, selected_pares) = match game_type {
             GameType::MusGameTwoPlayers => (
                 vec![
-                    HayJugada::TwoPlayers(false, false),
-                    HayJugada::TwoPlayers(true, false),
-                    HayJugada::TwoPlayers(false, true),
-                    HayJugada::TwoPlayers(true, true),
+                    HayJugada::TwoPlayers([false, false]),
+                    HayJugada::TwoPlayers([true, false]),
+                    HayJugada::TwoPlayers([false, true]),
+                    HayJugada::TwoPlayers([true, true]),
                 ],
-                Some(HayJugada::TwoPlayers(true, true)),
+                Some(HayJugada::TwoPlayers([true, true])),
             ),
             GameType::MusGame => (
                 vec![
-                    HayJugada::FourPlayers(true, true, true, true),
-                    HayJugada::FourPlayers(true, true, true, false),
-                    HayJugada::FourPlayers(true, true, false, true),
-                    HayJugada::FourPlayers(true, false, true, true),
-                    HayJugada::FourPlayers(false, true, true, true),
-                    HayJugada::FourPlayers(true, true, false, false),
-                    HayJugada::FourPlayers(true, false, true, false),
-                    HayJugada::FourPlayers(true, false, false, true),
-                    HayJugada::FourPlayers(false, true, true, false),
-                    HayJugada::FourPlayers(false, true, false, true),
-                    HayJugada::FourPlayers(false, false, true, true),
-                    HayJugada::FourPlayers(true, false, false, false),
-                    HayJugada::FourPlayers(false, true, false, false),
-                    HayJugada::FourPlayers(false, false, true, false),
-                    HayJugada::FourPlayers(false, false, false, true),
-                    HayJugada::FourPlayers(false, false, false, false),
+                    HayJugada::FourPlayers([true, true, true, true]),
+                    HayJugada::FourPlayers([true, true, true, false]),
+                    HayJugada::FourPlayers([true, true, false, true]),
+                    HayJugada::FourPlayers([true, false, true, true]),
+                    HayJugada::FourPlayers([false, true, true, true]),
+                    HayJugada::FourPlayers([true, true, false, false]),
+                    HayJugada::FourPlayers([true, false, true, false]),
+                    HayJugada::FourPlayers([true, false, false, true]),
+                    HayJugada::FourPlayers([false, true, true, false]),
+                    HayJugada::FourPlayers([false, true, false, true]),
+                    HayJugada::FourPlayers([false, false, true, true]),
+                    HayJugada::FourPlayers([true, false, false, false]),
+                    HayJugada::FourPlayers([false, true, false, false]),
+                    HayJugada::FourPlayers([false, false, true, false]),
+                    HayJugada::FourPlayers([false, false, false, true]),
+                    HayJugada::FourPlayers([false, false, false, false]),
                 ],
-                Some(HayJugada::FourPlayers(true, true, true, true)),
+                Some(HayJugada::FourPlayers([true, true, true, true])),
             ),
             _ => todo!(),
         };
         let (jugadas_juego, selected_juego) = match game_type {
             GameType::MusGameTwoPlayers => (
                 vec![
-                    HayJugada::TwoPlayers(false, false),
-                    HayJugada::TwoPlayers(true, true),
+                    HayJugada::TwoPlayers([false, false]),
+                    HayJugada::TwoPlayers([true, true]),
                 ],
-                Some(HayJugada::TwoPlayers(true, true)),
+                Some(HayJugada::TwoPlayers([true, true])),
             ),
             GameType::MusGame => (
                 vec![
-                    HayJugada::FourPlayers(true, true, true, true),
-                    HayJugada::FourPlayers(true, true, true, false),
-                    HayJugada::FourPlayers(true, true, false, true),
-                    HayJugada::FourPlayers(true, false, true, true),
-                    HayJugada::FourPlayers(false, true, true, true),
-                    HayJugada::FourPlayers(true, true, false, false),
-                    HayJugada::FourPlayers(true, false, false, true),
-                    HayJugada::FourPlayers(false, true, true, false),
-                    HayJugada::FourPlayers(false, false, true, true),
-                    HayJugada::FourPlayers(false, false, false, false),
+                    HayJugada::FourPlayers([true, true, true, true]),
+                    HayJugada::FourPlayers([true, true, true, false]),
+                    HayJugada::FourPlayers([true, true, false, true]),
+                    HayJugada::FourPlayers([true, false, true, true]),
+                    HayJugada::FourPlayers([false, true, true, true]),
+                    HayJugada::FourPlayers([true, true, false, false]),
+                    HayJugada::FourPlayers([true, false, false, true]),
+                    HayJugada::FourPlayers([false, true, true, false]),
+                    HayJugada::FourPlayers([false, false, true, true]),
+                    HayJugada::FourPlayers([false, false, false, false]),
                 ],
-                Some(HayJugada::FourPlayers(true, true, true, true)),
+                Some(HayJugada::FourPlayers([true, true, true, true])),
             ),
             _ => todo!(),
         };
@@ -133,7 +133,7 @@ impl ActionPath {
         let mut action_path = Self {
             one_hand_squares: vec![],
             two_hands_squares: vec![],
-            buckets: Buckets::new(&Lance::Grande),
+            buckets: Buckets::new(&Lance::Grande, None),
             view_mode: match game_type {
                 GameType::MusGameTwoHands => ViewMode::TwoHands,
                 _ => ViewMode::OneHand,
@@ -242,7 +242,6 @@ impl ActionPath {
                     mus_game.act(*action);
                 }
                 let info_set = mus_game.info_set_str(turno as usize);
-                println!("{:?} {:?}", mus_game.actions(), info_set);
                 Some(mus_game.actions()).zip(self.strategy.nodes.get(&info_set).cloned())
             }
         }
@@ -321,7 +320,16 @@ impl ActionPath {
     fn update_squares(&mut self) {
         let (lance, turn, actions) = self.game_state();
         if let musolver::NodeType::Player(player) = turn {
-            self.buckets = Buckets::new(&lance);
+            let has_pares = if lance == Lance::Juego || lance == Lance::Punto {
+                match self.selected_pares {
+                    Some(HayJugada::TwoPlayers(v)) => Some(v[player]),
+                    Some(HayJugada::FourPlayers(v)) => Some(v[player]),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            self.buckets = Buckets::new(&lance, has_pares);
 
             match self.view_mode {
                 ViewMode::OneHand => {
@@ -658,13 +666,13 @@ impl ActionPath {
 
     fn selected_example_hands(&self) -> Vec<Mano> {
         let (pares, juego) = (self.selected_pares, self.selected_juego);
-        let manos = match (pares, juego) {
-            (Some(HayJugada::TwoPlayers(p1, p2)), Some(HayJugada::TwoPlayers(j1, j2))) => {
+        match (pares, juego) {
+            (Some(HayJugada::TwoPlayers([p1, p2])), Some(HayJugada::TwoPlayers([j1, j2]))) => {
                 vec![Self::example_hand(p1, j1), Self::example_hand(p2, j2)]
             }
             (
-                Some(HayJugada::FourPlayers(p1, p2, p3, p4)),
-                Some(HayJugada::FourPlayers(j1, j2, j3, j4)),
+                Some(HayJugada::FourPlayers([p1, p2, p3, p4])),
+                Some(HayJugada::FourPlayers([j1, j2, j3, j4])),
             ) => {
                 vec![
                     Self::example_hand(p1, j1),
@@ -676,8 +684,7 @@ impl ActionPath {
             _ => {
                 vec![]
             }
-        };
-        manos
+        }
     }
 }
 
@@ -706,17 +713,17 @@ impl Display for OptionalAction {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum HayJugada {
-    TwoPlayers(bool, bool),
-    FourPlayers(bool, bool, bool, bool),
+    TwoPlayers([bool; 2]),
+    FourPlayers([bool; 4]),
 }
 
 impl Display for HayJugada {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TwoPlayers(a, b) => {
+            Self::TwoPlayers([a, b]) => {
                 write!(f, "{}{}", if *a { 1 } else { 0 }, if *b { 1 } else { 0 })
             }
-            Self::FourPlayers(a, b, c, d) => {
+            Self::FourPlayers([a, b, c, d]) => {
                 write!(
                     f,
                     "{}{}{}{}",
@@ -940,11 +947,12 @@ pub struct Buckets {
 }
 
 impl Buckets {
-    pub fn new(lance: &Lance) -> Self {
+    pub fn new(lance: &Lance, has_pares: Option<bool>) -> Self {
         let one_hand_list = Self::one_hand_list(lance);
         let mut buckets = HashMap::new();
         one_hand_list
             .iter()
+            .filter(|(hand, _)| has_pares.is_none_or(|required| hand.pares().is_some() == required))
             .filter_map(|(hand, probability)| match lance {
                 Lance::Grande => Some((AbstractGrande::abstract_hand(hand), (hand, probability))),
                 Lance::Chica => Some((AbstractChica::abstract_hand(hand), (hand, probability))),
@@ -973,10 +981,6 @@ impl Buckets {
 
     pub fn jugadas(&self) -> &Vec<AbstractJugada> {
         &self.jugadas
-    }
-
-    pub fn first_hand(&self) -> &Mano {
-        &self.buckets.values().next().unwrap().0[0]
     }
 
     fn one_hand_list(lance: &Lance) -> Vec<(Mano, f64)> {
