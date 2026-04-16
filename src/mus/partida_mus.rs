@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use arrayvec::ArrayVec;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -54,7 +55,7 @@ impl ModalidadMus for CuatroJugadores {
 #[derive(Debug, Clone)]
 pub struct PartidaMus<T: ModalidadMus> {
     manos: T::N,
-    lances: Vec<(Lance, Option<ResultadoLance>)>,
+    lances: ArrayVec<(Lance, Option<ResultadoLance>), 4>,
     tantos: [u8; 2],
     idx_lance: usize,
     estado_lance: Option<EstadoLance<T>>,
@@ -68,7 +69,7 @@ impl PartidaMus<CuatroJugadores> {
     /// Recibe también los tantos con los que comienzan la partida
     /// cada una de las parejas.
     pub fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
-        let mut lances = Vec::with_capacity(4);
+        let mut lances = ArrayVec::new();
         lances.push((Lance::Grande, None));
         lances.push((Lance::Chica, None));
         if Lance::Pares.hay_lance(&manos) {
@@ -99,7 +100,8 @@ impl PartidaMus<CuatroJugadores> {
     /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
     /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
     pub fn new_partida_lance(lance: Lance, manos: [Mano; 4], tantos: [u8; 2]) -> Option<Self> {
-        let lances = vec![(lance, None)];
+        let mut lances = ArrayVec::<(Lance, Option<_>), 4>::new();
+        lances.push((lance, None));
         let mut p = Self {
             manos,
             lances,
@@ -195,7 +197,7 @@ impl PartidaMus<DosJugadores> {
     /// Recibe también los tantos con los que comienzan la partida
     /// cada una de las parejas.
     pub fn new(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
-        let mut lances = Vec::with_capacity(4);
+        let mut lances = ArrayVec::new();
         lances.push((Lance::Grande, None));
         lances.push((Lance::Chica, None));
         if Lance::Pares.hay_lance(&manos) {
@@ -226,7 +228,8 @@ impl PartidaMus<DosJugadores> {
     /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
     /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
     pub fn new_partida_lance(lance: Lance, manos: [Mano; 2], tantos: [u8; 2]) -> Option<Self> {
-        let lances = vec![(lance, None)];
+        let mut lances = ArrayVec::<(Lance, Option<_>), 4>::new();
+        lances.push((lance, None));
         let mut p = Self {
             manos,
             lances,

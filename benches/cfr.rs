@@ -1,5 +1,9 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use musolver::{Cfr, CfrMethod, mus::Lance, solver::LanceGame};
+use musolver::{
+    Cfr, CfrMethod,
+    mus::Lance,
+    solver::{LanceGame, MusGameTwoPlayers},
+};
 
 fn bench_chance_sampling_grande(c: &mut Criterion) {
     c.bench_function("chance_sampling grande", |b| {
@@ -63,11 +67,29 @@ fn bench_external_sampling_juego(c: &mut Criterion) {
         )
     });
 }
+
+fn bench_external_sampling_mus_two_players(c: &mut Criterion) {
+    c.bench_function("external_sampling mus two_players", |b| {
+        b.iter_batched(
+            || {
+                let game = MusGameTwoPlayers::new([38, 38], false);
+                let cfr = Cfr::new();
+                (cfr, game)
+            },
+            |(mut cfr, mut game)| {
+                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group!(
     benches,
     bench_chance_sampling_grande,
     bench_chance_sampling_juego,
     bench_external_sampling_grande,
     bench_external_sampling_juego,
+    bench_external_sampling_mus_two_players,
 );
 criterion_main!(benches);

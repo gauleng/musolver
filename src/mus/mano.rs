@@ -1,22 +1,24 @@
 use std::str::FromStr;
 
+use arrayvec::ArrayVec;
+
 use super::Carta;
 use super::mus_error::MusError;
 
 /// Representación de una mano de cartas, no específicamente de mus. Internamente es un vector de
 /// Carta.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Default)]
-pub struct Mano(Vec<Carta>);
+pub struct Mano(ArrayVec<Carta, 4>);
 
 impl Mano {
     // Cards in hand are always sorted by value.
     pub fn new(cartas: Vec<Carta>) -> Self {
-        let mut m = Mano(cartas);
+        let mut m = Mano(ArrayVec::from_iter(cartas));
         m.0.sort_by(|a, b| b.cmp(a));
         m
     }
 
-    pub fn cartas(&self) -> &Vec<Carta> {
+    pub fn cartas(&self) -> &[Carta] {
         &self.0
     }
 
