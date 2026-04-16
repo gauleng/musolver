@@ -3,7 +3,10 @@ use itertools::Itertools;
 
 use crate::{
     Game, NodeType,
-    mus::{Accion, Apuesta, Baraja, CuatroJugadores, DosJugadores, Lance, Mano, PartidaMus, Turno},
+    mus::{
+        Accion, Apuesta, Baraja, CuatroJugadores, DistribucionDobleCartaIter, DosJugadores, Lance,
+        Mano, PartidaMus, Turno,
+    },
     solver::ManosNormalizadas,
 };
 
@@ -33,6 +36,36 @@ impl MusGame {
         }
     }
 
+    pub fn new_with_hands(manos: &[Mano; 4], tantos: [u8; 2], abstract_game: bool) -> Self {
+        let manos = [
+            manos[0].clone(),
+            manos[1].clone(),
+            manos[2].clone(),
+            manos[3].clone(),
+        ];
+        let info_set_prefix = MusGame::info_set_prefix(
+            &manos,
+            &tantos,
+            if abstract_game {
+                Some(Lance::Grande)
+            } else {
+                None
+            },
+        );
+        let (manos_pares, manos_juego) = MusGame::jugadas_manos(&manos);
+        let partida = Some(PartidaMus::<CuatroJugadores>::new(manos, tantos));
+        let history_str = ArrayString::<64>::from("M").unwrap();
+        Self {
+            partida,
+            tantos,
+            history_str,
+            info_set_prefix,
+            manos_pares,
+            manos_juego,
+            abstract_game,
+            last_action: None,
+        }
+    }
     /*fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
         if abstract_game {
             todo!("From partida mus not supported.")
@@ -134,11 +167,25 @@ impl Game for MusGame {
         self.manos_juego.clear();
     }
 
-    fn new_iter<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut Self, f64),
-    {
-        todo!()
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+            move |(mano1, mano2, prob)| {
+                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                    move |(mano3, mano4, prob2)| {
+                        let manos = [
+                            Mano::new(mano1.to_owned()),
+                            Mano::new(mano2.to_owned()),
+                            Mano::new(mano3),
+                            Mano::new(mano4),
+                        ];
+                        (
+                            Self::new_with_hands(&manos, self.tantos, self.abstract_game),
+                            prob * prob2,
+                        )
+                    },
+                )
+            },
+        )
     }
 
     fn actions(&self) -> Vec<Accion> {
@@ -277,6 +324,36 @@ impl MusGameTwoHands {
         }
     }
 
+    pub fn new_with_hands(manos: &[Mano; 4], tantos: [u8; 2], abstract_game: bool) -> Self {
+        let manos = [
+            manos[0].clone(),
+            manos[1].clone(),
+            manos[2].clone(),
+            manos[3].clone(),
+        ];
+        let info_set_prefix = MusGameTwoHands::info_set_prefix(
+            &manos,
+            &tantos,
+            if abstract_game {
+                Some(Lance::Grande)
+            } else {
+                None
+            },
+        );
+        let (manos_pares, manos_juego) = MusGame::jugadas_manos(&manos);
+        let partida = Some(PartidaMus::<CuatroJugadores>::new(manos, tantos));
+        let history_str = ArrayString::<64>::from("M").unwrap();
+        Self {
+            partida,
+            tantos,
+            history_str,
+            info_set_prefix,
+            manos_pares,
+            manos_juego,
+            abstract_game,
+        }
+    }
+
     fn info_set_prefix(
         manos: &[Mano; 4],
         tantos: &[u8; 2],
@@ -356,11 +433,25 @@ impl Game for MusGameTwoHands {
         self.manos_juego.clear();
     }
 
-    fn new_iter<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut Self, f64),
-    {
-        todo!()
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+            move |(mano1, mano2, prob)| {
+                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                    move |(mano3, mano4, prob2)| {
+                        let manos = [
+                            Mano::new(mano1.to_owned()),
+                            Mano::new(mano2.to_owned()),
+                            Mano::new(mano3),
+                            Mano::new(mano4),
+                        ];
+                        (
+                            Self::new_with_hands(&manos, self.tantos, self.abstract_game),
+                            prob * prob2,
+                        )
+                    },
+                )
+            },
+        )
     }
 
     fn actions(&self) -> Vec<Accion> {
@@ -592,11 +683,19 @@ impl Game for MusGameTwoPlayers {
         self.manos_juego.clear();
     }
 
-    fn new_iter<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut Self, f64),
-    {
-        todo!()
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+            |(mano1, mano2, probability)| {
+                (
+                    Self::new_with_hands(
+                        &[Mano::new(mano1), Mano::new(mano2)],
+                        self.tantos,
+                        self.abstract_game,
+                    ),
+                    probability,
+                )
+            },
+        )
     }
 
     fn actions(&self) -> Vec<Accion> {

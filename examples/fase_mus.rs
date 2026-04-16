@@ -152,10 +152,7 @@ impl Game for FaseMus {
         self.manos = None;
     }
 
-    fn new_iter<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut Self, f64),
-    {
-        todo!()
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        std::iter::empty()
     }
 }

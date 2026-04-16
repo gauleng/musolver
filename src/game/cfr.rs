@@ -177,7 +177,7 @@ pub enum NodeType {
 ///    // ...rest of implementation
 /// }
 /// ```
-pub trait Game {
+pub trait Game: Sized {
     type Action;
     const N_PLAYERS: usize;
 
@@ -206,9 +206,7 @@ pub trait Game {
     fn reset(&mut self);
 
     /// Iterates over all available actions in chance nodes.
-    fn new_iter<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Self, f64);
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)>;
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

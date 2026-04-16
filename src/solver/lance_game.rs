@@ -437,49 +437,84 @@ impl Game for LanceGame {
         self.history_str.clear();
     }
 
-    fn new_iter<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut Self, f64),
-    {
-        let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4);
-        let mut frecuencia_baraja_2 = Baraja::FREC_BARAJA_MUS;
-        while let Some((mano1_pareja1, mano2_pareja1, probabilidad_pareja1)) = iter.next() {
-            let manos_pareja1 = [Mano::new(mano1_pareja1), Mano::new(mano2_pareja1)];
-            let frequencies2 = iter.current_frequencies();
-            frecuencia_baraja_2
-                .iter_mut()
-                .zip(frequencies2.iter())
-                .for_each(|(carta, f2)| {
-                    carta.1 = *f2 as u8;
-                });
-            let iter2 = DistribucionDobleCartaIter::new(&frecuencia_baraja_2, 4);
-            for (mano1_pareja2, mano2_pareja2, probabilidad_pareja2) in iter2 {
-                let manos = [
-                    manos_pareja1[0].clone(),
-                    Mano::new(mano1_pareja2),
-                    manos_pareja1[1].clone(),
-                    Mano::new(mano2_pareja2),
-                ];
-                let turno_inicial = self.lance.turno_inicial(&manos);
-                let intento_partida = EstadoLance::<CuatroJugadores>::new(
-                    &self.lance,
-                    &manos,
-                    PartidaMus::<CuatroJugadores>::MAX_TANTOS,
-                );
-                if intento_partida.turno().is_some() {
-                    self.estado_lance = Some(intento_partida);
-                    self.info_set_prefix = LanceGame::info_set_prefix(
-                        &self.lance,
-                        &manos,
-                        &self.tantos,
-                        self.abstract_game,
-                    );
-                    self.pareja_mano = turno_inicial;
-                    f(self, probabilidad_pareja1 * probabilidad_pareja2);
-                }
-            }
-        }
+    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+            move |(_mano1, _mano2, prob)| {
+                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                    move |(_mano3, _mano4, prob2)| {
+                        // let manos = [
+                        //     Mano::new(mano1.to_owned()),
+                        //     Mano::new(mano2.to_owned()),
+                        //     Mano::new(mano3),
+                        //     Mano::new(mano4),
+                        // ];
+                        //let intento_partida = EstadoLance::<CuatroJugadores>::new(
+                        //    &self.lance,
+                        //    &manos,
+                        //    PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+                        //);
+                        //let turno_inicial = self.lance.turno_inicial(&manos);
+                        (
+                            Self::new(self.lance, self.tantos, self.abstract_game),
+                            prob * prob2,
+                        )
+                        //if intento_partida.turno().is_some() {
+                        //    let mut partida =
+                        //        Self::new(self.lance, self.tantos, self.abstract_game);
+                        //    partida.estado_lance = Some(intento_partida);
+                        //    partida.info_set_prefix = LanceGame::info_set_prefix(
+                        //        &self.lance,
+                        //        &manos,
+                        //        &self.tantos,
+                        //        self.abstract_game,
+                        //    );
+                        //    partida.pareja_mano = turno_inicial;
+                        //    (partida, prob * prob2)
+                        //}
+                    },
+                )
+            },
+        )
     }
+
+    // let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4);
+    // let mut frecuencia_baraja_2 = Baraja::FREC_BARAJA_MUS;
+    // while let Some((mano1_pareja1, mano2_pareja1, probabilidad_pareja1)) = iter.next() {
+    //     let manos_pareja1 = [Mano::new(mano1_pareja1), Mano::new(mano2_pareja1)];
+    //     let frequencies2 = iter.current_frequencies();
+    //     frecuencia_baraja_2
+    //         .iter_mut()
+    //         .zip(frequencies2.iter())
+    //         .for_each(|(carta, f2)| {
+    //             carta.1 = *f2 as u8;
+    //         });
+    //     let iter2 = DistribucionDobleCartaIter::new(&frecuencia_baraja_2, 4);
+    //     for (mano1_pareja2, mano2_pareja2, probabilidad_pareja2) in iter2 {
+    //         let manos = [
+    //             manos_pareja1[0].clone(),
+    //             Mano::new(mano1_pareja2),
+    //             manos_pareja1[1].clone(),
+    //             Mano::new(mano2_pareja2),
+    //         ];
+    //         let turno_inicial = self.lance.turno_inicial(&manos);
+    //         let intento_partida = EstadoLance::<CuatroJugadores>::new(
+    //             &self.lance,
+    //             &manos,
+    //             PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+    //         );
+    //         if intento_partida.turno().is_some() {
+    //             self.estado_lance = Some(intento_partida);
+    //             self.info_set_prefix = LanceGame::info_set_prefix(
+    //                 &self.lance,
+    //                 &manos,
+    //                 &self.tantos,
+    //                 self.abstract_game,
+    //             );
+    //             self.pareja_mano = turno_inicial;
+    //             f(self, probabilidad_pareja1 * probabilidad_pareja2);
+    //         }
+    //     }
+    //}
 
     fn utility(&mut self, player: usize) -> f64 {
         let estado_lance = self.estado_lance.as_mut().unwrap();
