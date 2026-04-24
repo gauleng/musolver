@@ -701,41 +701,43 @@ impl Game for MusGameTwoPlayers {
     fn actions(&self) -> Vec<Accion> {
         let partida = self.partida.as_ref().unwrap();
         let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        let tantos = partida.tantos();
-        let max_tantos = tantos[0].max(tantos[1]);
-        if max_tantos >= 38 {
-            match ultimo_envite {
-                Apuesta::Tantos(0) => vec![Accion::Paso, Accion::Ordago],
-                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+        let apuesta_maxima = partida.apuesta_maxima();
+        let mut actions = match ultimo_envite {
+            Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
+                return vec![Accion::Paso, Accion::Quiero, Accion::Ordago];
             }
-        } else {
-            match ultimo_envite {
-                Apuesta::Tantos(0) => vec![
-                    Accion::Paso,
-                    Accion::Envido(2),
-                    Accion::Envido(5),
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ],
-                Apuesta::Tantos(2) => vec![
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(2),
-                    Accion::Envido(5),
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ],
-                Apuesta::Tantos(4..=5) => vec![
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ],
-                Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-                _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+            Apuesta::Tantos(0) => vec![
+                Accion::Paso,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Tantos(2) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Tantos(4..=5) => vec![
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(10),
+                Accion::Ordago,
+            ],
+            Apuesta::Ordago => return vec![Accion::Paso, Accion::Quiero],
+            _ => return vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+        };
+        actions.retain(|action| {
+            if let Accion::Envido(v) = action {
+                *v < apuesta_maxima
+            } else {
+                true
             }
-        }
+        });
+        actions
     }
 
     fn current_player(&self) -> NodeType {
@@ -844,12 +846,7 @@ mod tests {
         game.act(Accion::Envido(2));
         assert_eq!(
             game.actions(),
-            vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(10),
-                Accion::Ordago,
-            ]
+            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
         );
         game.act(Accion::Quiero);
         game.act(Accion::Envido(10));

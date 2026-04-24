@@ -165,11 +165,9 @@ pub enum NodeType {
 ///    #
 ///    # fn new_random(&mut self) {
 ///    # }
-///
-///    # fn new_iter<F>(&mut self, _f: F)
-///    # where
-///    #     F: FnMut(&mut Self, f64),
-///    # {
+///    #
+///    # fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+///    #     std::iter::empty()
 ///    # }
 ///    #
 ///    # fn reset(&mut self) {
@@ -317,9 +315,11 @@ impl Cfr {
                 }
             }
             let round_size = 1_000_000;
-            if iterations > 0 && i.is_multiple_of(round_size) {
+            if i > 0 && i.is_multiple_of(round_size) {
                 let block = (i / round_size) as f64;
                 self.discount(block / (block + 1.));
+                let exp = self.exploitability(game);
+                println!("exploitability: {exp}");
             }
             iteration_callback(&i, &util.iter().map(|u| u / i as f64).collect::<Vec<f64>>());
         }
@@ -542,6 +542,155 @@ impl Cfr {
             game_graph.node_mut(idx).data_mut().reach_opponent = 0.;
         }
         game_graph.node(0).data().utility
+    }
+
+    pub fn exploitability<G>(&mut self, game: &mut G) -> f64
+    where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        let info_sets = self.info_sets(game);
+        let mut br_strategies = HashMap::new();
+
+        (0..G::N_PLAYERS)
+            .map(|player| self.best_response_value(game, player, &info_sets, &mut br_strategies))
+            .sum()
+    }
+
+    pub fn best_response_value<G>(
+        &mut self,
+        game: &mut G,
+        player: usize,
+        info_sets: &HashMap<String, Vec<(G, f64)>>,
+        br_strategies: &mut HashMap<String, usize>,
+    ) -> f64
+    where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        match game.current_player() {
+            NodeType::Chance => game
+                .new_iter()
+                .map(|(mut game, prob)| {
+                    prob * self.best_response_value(&mut game, player, info_sets, br_strategies)
+                })
+                .sum(),
+            NodeType::Player(current_player) => {
+                let actions = game.actions();
+                let info_set_str = game.info_set_str(current_player);
+                if player == current_player {
+                    if br_strategies.get(&info_set_str).is_none() {
+                        let mut action_values = vec![0.; game.actions().len()];
+                        if let Some(games) = info_sets.get(&info_set_str) {
+                            games.iter().for_each(|(game, po)| {
+                                game.actions().iter().enumerate().for_each(|(idx, action)| {
+                                    let mut new_game = game.clone();
+                                    new_game.act(*action);
+                                    let br = self.best_response_value(&mut new_game, player, info_sets, br_strategies);
+                                    action_values[idx] += po * br;
+                                });
+                            });
+                        }
+                        let br_action = action_values
+                                .iter()
+                                .enumerate()
+                                .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                                .map(|(idx, _)| idx).unwrap();
+
+                        br_strategies.insert(info_set_str.clone(), br_action); 
+                    }
+                    if let Some(action_idx) = br_strategies.get_mut(&info_set_str) {
+                        let best_action = actions[*action_idx];
+                        let mut game = game.clone();
+                        game.act(best_action);
+                        self.best_response_value(&mut game, player, info_sets, br_strategies)
+                    } else {
+                        0.
+                    }
+                } else {
+                    let node = self
+                        .nodes
+                        .entry(info_set_str.clone())
+                        .or_insert_with(|| Node::new(actions.len()));
+                    let strategy = node.get_average_strategy();
+                    std::iter::zip(actions, strategy)
+                        .map(|(action, prob)| {
+                            if prob == 0. {
+                                return 0.;
+                            }
+                            let mut game = game.clone();
+                            game.act(action);
+                            prob * self.best_response_value(&mut game, player, info_sets, br_strategies)
+                        })
+                        .sum()
+                }
+            }
+            NodeType::Terminal => return game.utility(player),
+        }
+    }
+
+    fn info_sets<G>(&mut self, game: &mut G) -> HashMap<String, Vec<(G, f64)>>
+    where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        let mut info_sets = HashMap::new();
+
+        for player in 0..G::N_PLAYERS {
+            self.info_sets_player(game, player, 1., &mut info_sets);
+        }
+
+        info_sets
+    }
+
+    fn info_sets_player<G>(
+        &mut self,
+        game: &mut G,
+        player: usize,
+        po: f64,
+        info_sets: &mut HashMap<String, Vec<(G, f64)>>,
+    ) where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        match game.current_player() {
+            NodeType::Chance => {
+                game.new_iter().for_each(|(mut game, prob)| {
+                    self.info_sets_player(&mut game, player, po * prob, info_sets);
+                });
+            }
+            NodeType::Player(current_player) => {
+                if player == current_player {
+                    let info_set_str = game.info_set_str(current_player);
+                    let info_set = info_sets
+                        .entry(info_set_str)
+                        .or_insert_with(|| vec![]);
+                    info_set.push((game.clone(), po));
+                }
+                let actions = game.actions();
+                if player == current_player {
+                    for action in actions {
+                        let mut next_game = game.clone();
+                        next_game.act(action);
+                        self.info_sets_player(&mut next_game, player, po, info_sets);
+                    }
+                } else {
+                    let n_actions = actions.len();
+                    let info_set_str = game.info_set_str(current_player);
+                    let node = self
+                        .nodes
+                        .entry(info_set_str)
+                        .or_insert_with(|| Node::new(n_actions));
+                    let strategy = node.get_average_strategy();
+                    for (action, prob) in std::iter::zip(actions, strategy) {
+                        let mut next_game = game.clone();
+                        next_game.act(action);
+                        self.info_sets_player(&mut next_game, player, po * prob, info_sets);
+                    }
+                }
+            }
+            NodeType::Terminal => {}
+        }
     }
 
     pub fn nodes(&self) -> &HashMap<String, Node> {

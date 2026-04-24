@@ -391,6 +391,13 @@ impl<T: ModalidadMus> PartidaMus<T> {
             |estado_lance| estado_lance.ultima_apuesta(),
         )
     }
+
+    /// Devuelve la apuesta máxima del lance en curso. Si la partida ha terminado devuelve 0.
+    pub fn apuesta_maxima(&self) -> u8 {
+        self.estado_lance
+            .as_ref()
+            .map_or_else(|| 0, |estado_lance| estado_lance.apuesta_maxima())
+    }
 }
 
 #[cfg(test)]

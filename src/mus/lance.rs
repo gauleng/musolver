@@ -648,6 +648,11 @@ impl<T> EstadoLance<T> {
     pub fn ultima_apuesta(&self) -> Apuesta {
         self.bote[1]
     }
+
+    /// Devuelve la máxima apuesta aceptable en el lance.
+    pub fn apuesta_maxima(&self) -> u8 {
+        self.apuesta_maxima
+    }
 }
 
 #[cfg(test)]
