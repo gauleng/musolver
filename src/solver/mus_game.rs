@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use arrayvec::ArrayString;
 use itertools::Itertools;
 
@@ -555,10 +557,11 @@ pub struct MusGameTwoPlayers {
     manos_pares: ArrayString<2>,
     manos_juego: ArrayString<2>,
     abstract_game: bool,
+    utility_table: Rc<[[f64; 40]; 40]>,
 }
 
 impl MusGameTwoPlayers {
-    pub fn new(tantos: [u8; 2], abstract_game: bool) -> Self {
+    pub fn new(tantos: [u8; 2], abstract_game: bool, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
         Self {
             partida: None,
             tantos,
@@ -567,6 +570,7 @@ impl MusGameTwoPlayers {
             manos_pares: ArrayString::new(),
             manos_juego: ArrayString::new(),
             abstract_game,
+            utility_table,
         }
     }
 
@@ -592,6 +596,7 @@ impl MusGameTwoPlayers {
             manos_pares,
             manos_juego,
             abstract_game,
+            utility_table: Rc::new([[0.; 40]; 40]),
         }
     }
 
@@ -640,12 +645,21 @@ impl Game for MusGameTwoPlayers {
     fn utility(&mut self, player: usize) -> f64 {
         let tantos = self.partida.as_mut().unwrap().tantos();
 
-        let payoff = [
-            tantos[0] as i8 - tantos[1] as i8,
-            tantos[1] as i8 - tantos[0] as i8,
-        ];
+        if tantos[0] == 40 || tantos[1] == 40 {
+            let payoff = [
+                tantos[0] as i8 - tantos[1] as i8,
+                tantos[1] as i8 - tantos[0] as i8,
+            ];
 
-        payoff[player % 2] as f64
+            payoff[player % 2] as f64
+        } else {
+            let expected_utility = self.utility_table[tantos[1] as usize][tantos[0] as usize];
+            if player == 0 {
+                -expected_utility
+            } else {
+                expected_utility
+            }
+        }
     }
 
     fn info_set_str(&self, player: usize) -> String {
@@ -731,8 +745,10 @@ impl Game for MusGameTwoPlayers {
             _ => return vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
         };
         actions.retain(|action| {
-            if let Accion::Envido(v) = action {
-                *v < apuesta_maxima
+            if let Apuesta::Tantos(tantos) = ultimo_envite
+                && let Accion::Envido(v) = action
+            {
+                tantos + *v < apuesta_maxima
             } else {
                 true
             }
@@ -854,5 +870,24 @@ mod tests {
             game.actions(),
             vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
         );
+        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [37, 37], false);
+        assert_eq!(
+            game.actions(),
+            vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]
+        );
+        game.act(Accion::Envido(2));
+        assert_eq!(
+            game.actions(),
+            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
+        );
+        game.act(Accion::Paso);
+        assert_eq!(
+            game.actions(),
+            vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]
+        );
+        game.act(Accion::Paso);
+        game.act(Accion::Envido(2));
+        game.act(Accion::Paso);
+        assert_eq!(game.actions(), vec![Accion::Paso, Accion::Ordago]);
     }
 }

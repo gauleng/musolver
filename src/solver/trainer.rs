@@ -1,9 +1,12 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, rc::Rc};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use crate::{Cfr, CfrMethod, Game};
+use crate::{
+    Cfr, CfrMethod, Game,
+    solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
+};
 
 pub struct Trainer {}
 
@@ -14,22 +17,69 @@ pub struct TrainerConfig {
 }
 
 impl Trainer {
-    pub fn train<G>(&self, cfr: &mut Cfr, game: &mut G, config: &TrainerConfig)
-    where
-        G: Game + Debug + Clone,
-        G::Action: Eq + Copy,
-    {
-        use std::time::Instant;
+    pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
+        let mut cfr = Cfr::new();
+        let mut utility_table = [[0.; 40]; 40];
+        (37..40).rev().for_each(|t1| {
+            (0..(40 - t1)).for_each(|t2| {
+                let tantos = [t1 + t2, 39 - t2];
+                match game_config.game_type {
+                    GameType::LanceGame(lance) => {
+                        let mut lance_game =
+                            LanceGame::new(lance, tantos, game_config.abstract_game);
+                        train_game(&mut cfr, &mut lance_game, &trainer_config);
+                    }
+                    GameType::MusGame => {
+                        let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
+                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                    }
+                    GameType::LanceGameTwoHands(_) => todo!(),
+                    GameType::MusGameTwoHands => {
+                        let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
+                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                    }
+                    GameType::MusGameTwoPlayers => {
+                        let mut mus_game = MusGameTwoPlayers::new(
+                            tantos,
+                            game_config.abstract_game,
+                            Rc::new(utility_table),
+                        );
+                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        println!("Finished training.");
+                        println!(
+                            "Expected utility {}-{}: {}",
+                            tantos[0], tantos[1], expected_utility
+                        );
+                        println!();
+                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                    }
+                }
+            });
+        });
+        cfr
+    }
+}
 
-        let now = Instant::now();
-        let pb = ProgressBar::new(config.iterations as u64);
-        pb.set_style(
-            ProgressStyle::with_template("{wide_bar:40.cyan/blue} {human_pos}/{human_len} {msg} ")
-                .unwrap()
-                .progress_chars("##-"),
-        );
+fn train_game<G>(cfr: &mut Cfr, game: &mut G, trainer_config: &TrainerConfig)
+where
+    G: Game + Debug + Clone,
+    G::Action: Eq + Copy,
+{
+    use std::time::Instant;
 
-        cfr.train(game, config.method, config.iterations, |i, util| {
+    let now = Instant::now();
+    let pb = ProgressBar::new(trainer_config.iterations as u64);
+    pb.set_style(
+        ProgressStyle::with_template("{wide_bar:40.cyan/blue} {human_pos}/{human_len} {msg} ")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    cfr.train(
+        game,
+        trainer_config.method,
+        trainer_config.iterations,
+        |i, util| {
             pb.inc(1);
             if i % 1000 == 0 {
                 pb.set_message(format!(
@@ -40,14 +90,8 @@ impl Trainer {
                         .join(" "),
                 ));
             }
-        });
-
-        // if i % 100000000 == 0 {
-        //     banco
-        //         .export_estrategia_lance(lance)
-        //         .expect("Error exportando estrategias.");
-        // }
-        let elapsed = now.elapsed();
-        println!("Elapsed: {elapsed:.2?}");
-    }
+        },
+    );
+    let elapsed = now.elapsed();
+    println!("Elapsed: {elapsed:.2?}");
 }

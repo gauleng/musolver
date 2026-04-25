@@ -4,10 +4,7 @@ use chrono::Utc;
 use musolver::{
     Cfr, CfrMethod,
     mus::Lance,
-    solver::{
-        GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers, SolverError,
-        Strategy, Trainer, TrainerConfig,
-    },
+    solver::{GameConfig, GameType, SolverError, Strategy, Trainer, TrainerConfig},
 };
 
 use clap::{Parser, ValueEnum};
@@ -75,7 +72,6 @@ fn main() {
     let args = Args::parse();
 
     let tantos = args.tantos.unwrap_or_default();
-    let trainer = Trainer {};
     let method = args.method.unwrap_or(CfrMethod::ChanceSampling);
     let mut output_path = PathBuf::from(args.output.unwrap_or_else(|| "output/".to_string()));
 
@@ -105,26 +101,8 @@ fn main() {
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
-    let mut cfr = Cfr::new();
-    match game_config.game_type {
-        GameType::LanceGame(lance) => {
-            let mut lance_game = LanceGame::new(lance, tantos, game_config.abstract_game);
-            trainer.train(&mut cfr, &mut lance_game, &trainer_config);
-        }
-        GameType::MusGame => {
-            let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
-            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
-        }
-        GameType::LanceGameTwoHands(_) => todo!(),
-        GameType::MusGameTwoHands => {
-            let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
-            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
-        }
-        GameType::MusGameTwoPlayers => {
-            let mut mus_game = MusGameTwoPlayers::new(tantos, game_config.abstract_game);
-            trainer.train(&mut cfr, &mut mus_game, &trainer_config);
-        }
-    }
+    let trainer = Trainer {};
+    let cfr = trainer.train(&game_config, &trainer_config);
     let curr_time = Utc::now();
     output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
     println!("Exportando estrategias a {output_path:?}...");

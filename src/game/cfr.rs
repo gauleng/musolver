@@ -544,6 +544,48 @@ impl Cfr {
         game_graph.node(0).data().utility
     }
 
+    pub fn expected_utility<G>(&mut self, game: &G) -> Vec<f64>
+    where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        match game.current_player() {
+            NodeType::Chance => {
+                game.new_iter()
+                    .fold(vec![0.; G::N_PLAYERS], |accum, (mut game, prob)| {
+                        std::iter::zip(accum, self.expected_utility(&mut game))
+                            .map(|(a, b)| a + prob * b)
+                            .collect()
+                    })
+            }
+            NodeType::Player(current_player) => {
+                let actions = game.actions();
+                let info_set_str = game.info_set_str(current_player);
+                let node = self
+                    .nodes
+                    .entry(info_set_str.clone())
+                    .or_insert_with(|| Node::new(actions.len()));
+                let strategy = node.get_average_strategy();
+                actions
+                    .iter()
+                    .map(|action| {
+                        let mut game = game.clone();
+                        game.act(*action);
+                        game
+                    })
+                    .zip(strategy)
+                    .fold(vec![0.; G::N_PLAYERS], |accum, (mut game, prob)| {
+                        std::iter::zip(accum, self.expected_utility(&mut game))
+                            .map(|(a, b)| a + prob * b)
+                            .collect()
+                    })
+            }
+            NodeType::Terminal => {
+                Vec::from_iter((0..G::N_PLAYERS).map(|player_idx| game.clone().utility(player_idx)))
+            }
+        }
+    }
+
     pub fn exploitability<G>(&mut self, game: &mut G) -> f64
     where
         G: Game + Clone,
@@ -586,18 +628,24 @@ impl Cfr {
                                 game.actions().iter().enumerate().for_each(|(idx, action)| {
                                     let mut new_game = game.clone();
                                     new_game.act(*action);
-                                    let br = self.best_response_value(&mut new_game, player, info_sets, br_strategies);
+                                    let br = self.best_response_value(
+                                        &mut new_game,
+                                        player,
+                                        info_sets,
+                                        br_strategies,
+                                    );
                                     action_values[idx] += po * br;
                                 });
                             });
                         }
                         let br_action = action_values
-                                .iter()
-                                .enumerate()
-                                .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                                .map(|(idx, _)| idx).unwrap();
+                            .iter()
+                            .enumerate()
+                            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                            .map(|(idx, _)| idx)
+                            .unwrap();
 
-                        br_strategies.insert(info_set_str.clone(), br_action); 
+                        br_strategies.insert(info_set_str.clone(), br_action);
                     }
                     if let Some(action_idx) = br_strategies.get_mut(&info_set_str) {
                         let best_action = actions[*action_idx];
@@ -620,7 +668,12 @@ impl Cfr {
                             }
                             let mut game = game.clone();
                             game.act(action);
-                            prob * self.best_response_value(&mut game, player, info_sets, br_strategies)
+                            prob * self.best_response_value(
+                                &mut game,
+                                player,
+                                info_sets,
+                                br_strategies,
+                            )
                         })
                         .sum()
                 }
@@ -662,9 +715,7 @@ impl Cfr {
             NodeType::Player(current_player) => {
                 if player == current_player {
                     let info_set_str = game.info_set_str(current_player);
-                    let info_set = info_sets
-                        .entry(info_set_str)
-                        .or_insert_with(|| vec![]);
+                    let info_set = info_sets.entry(info_set_str).or_insert_with(|| vec![]);
                     info_set.push((game.clone(), po));
                 }
                 let actions = game.actions();

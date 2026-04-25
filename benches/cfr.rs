@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use musolver::{
     Cfr, CfrMethod,
@@ -72,7 +74,7 @@ fn bench_external_sampling_mus_two_players(c: &mut Criterion) {
     c.bench_function("external_sampling mus two_players", |b| {
         b.iter_batched(
             || {
-                let game = MusGameTwoPlayers::new([38, 38], false);
+                let game = MusGameTwoPlayers::new([38, 38], false, Rc::new([[0.; 40]; 40]));
                 let cfr = Cfr::new();
                 (cfr, game)
             },
