@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
@@ -414,10 +415,13 @@ impl Cfr {
                     self.external_sampling(&mut new_game, player)
                 })
                 .collect();
-            let node = self
-                .nodes
-                .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.len()));
+            let node = match self.nodes.get_mut(&info_set_str) {
+                Some(node) => node,
+                None => self
+                    .nodes
+                    .entry(info_set_str.clone())
+                    .or_insert_with(|| Node::new(actions.len())),
+            };
             let strategy = node.update_strategy();
 
             let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
@@ -427,10 +431,13 @@ impl Cfr {
                 .for_each(|(r, u)| *r += u - node_util);
             node_util
         } else {
-            let node = self
-                .nodes
-                .entry(info_set_str.clone())
-                .or_insert_with(|| Node::new(actions.len()));
+            let node = match self.nodes.get_mut(&info_set_str) {
+                Some(node) => node,
+                None => self
+                    .nodes
+                    .entry(info_set_str.clone())
+                    .or_insert_with(|| Node::new(actions.len())),
+            };
 
             node.update_strategy();
             node.update_strategy_sum(1.);

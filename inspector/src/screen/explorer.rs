@@ -984,7 +984,7 @@ impl Buckets {
     }
 
     fn one_hand_list(lance: &Lance) -> Vec<(Mano, f64)> {
-        let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4)
+        let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS)
             .map(|(cards, prob)| (Mano::new(cards), prob));
         manos
             .filter(|(hand, _)| hand.jugada(lance).is_some())

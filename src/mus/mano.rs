@@ -12,8 +12,15 @@ pub struct Mano(ArrayVec<Carta, 4>);
 
 impl Mano {
     // Cards in hand are always sorted by value.
-    pub fn new(cartas: Vec<Carta>) -> Self {
-        let mut m = Mano(ArrayVec::from_iter(cartas));
+    pub fn new(cartas: [Carta; 4]) -> Self {
+        let mut m = Mano(ArrayVec::from(cartas));
+        m.0.sort_by(|a, b| b.cmp(a));
+        m
+    }
+
+    // Cards in hand are always sorted by value.
+    pub fn from_arrayvec(cartas: ArrayVec<Carta, 4>) -> Self {
+        let mut m = Mano(cartas);
         m.0.sort_by(|a, b| b.cmp(a));
         m
     }
@@ -35,12 +42,12 @@ impl TryFrom<&str> for Mano {
     type Error = MusError;
 
     fn try_from(other: &str) -> Result<Self, Self::Error> {
-        let mut cartas: Vec<Carta> = Vec::new();
+        let mut cartas: ArrayVec<Carta, 4> = ArrayVec::new();
         for c in other.chars() {
             let carta = Carta::try_from(c)?;
             cartas.push(carta);
         }
-        Ok(Self::new(cartas))
+        Ok(Self::from_arrayvec(cartas))
     }
 }
 
@@ -65,13 +72,13 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let m = Mano::new(vec![Carta::Caballo, Carta::Tres, Carta::Dos, Carta::Siete]);
+        let m = Mano::new([Carta::Caballo, Carta::Tres, Carta::Dos, Carta::Siete]);
         assert_eq!(format!("{m}"), "3C72");
     }
 
     #[test]
     fn test_codigo() {
-        let m = Mano::new(vec![Carta::As, Carta::As, Carta::As, Carta::Tres]);
+        let m = Mano::new([Carta::As, Carta::As, Carta::As, Carta::Tres]);
         assert_eq!(m.valor_grande(), 201392385);
         assert_eq!(m.valor_chica(), 16843020);
     }

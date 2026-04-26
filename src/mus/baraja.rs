@@ -1,4 +1,5 @@
 use crate::mus::Carta;
+use arrayvec::ArrayVec;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
@@ -50,11 +51,11 @@ impl Baraja {
     pub fn repartir_manos(&self) -> [Mano; 4] {
         let mut c = self.primeras_n_cartas(16).iter();
         core::array::from_fn(|_| {
-            let mut m = Vec::<Carta>::with_capacity(4);
+            let mut m = ArrayVec::<Carta, 4>::new();
             for _ in 0..4 {
                 m.push(*c.next().unwrap());
             }
-            Mano::new(m)
+            Mano::from_arrayvec(m)
         })
     }
 

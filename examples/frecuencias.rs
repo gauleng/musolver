@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use musolver::mus::{Baraja, Carta, DistribucionCartaIter, Jugada, Lance, Mano, RankingManos};
 
 fn main() {
@@ -41,7 +42,7 @@ fn main() {
 }
 
 fn probabilidades_rivales(frecuencias: [(Carta, u8); 8], lance: &Lance) -> Vec<(Jugada, f64)> {
-    let mut probabilidades: Vec<(Mano, f64)> = DistribucionCartaIter::new(&frecuencias, 4)
+    let mut probabilidades: Vec<(Mano, f64)> = DistribucionCartaIter::new(&frecuencias)
         .map(|(cartas, freq)| (Mano::new(cartas), freq))
         .filter(|(mano, _)| mano.jugada(lance).is_some())
         .collect();

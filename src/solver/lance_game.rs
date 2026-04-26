@@ -404,9 +404,8 @@ impl Game for LanceGame {
     const N_PLAYERS: usize = 4;
 
     fn new_random(&mut self) {
-        let mut baraja = Baraja::baraja_mus();
+        let baraja = Baraja::baraja_mus();
         loop {
-            baraja.barajar();
             let manos = baraja.repartir_manos();
             let turno_inicial = self.lance.turno_inicial(&manos);
             let intento_partida = EstadoLance::<CuatroJugadores>::new(
@@ -438,9 +437,9 @@ impl Game for LanceGame {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+        DistribucionDobleCartaIter::<4>::new(&Baraja::FREC_BARAJA_MUS).flat_map(
             move |(_mano1, _mano2, prob)| {
-                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                DistribucionDobleCartaIter::<4>::new(&Baraja::FREC_BARAJA_MUS).map(
                     move |(_mano3, _mano4, prob2)| {
                         // let manos = [
                         //     Mano::new(mano1.to_owned()),

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use arrayvec::ArrayString;
+use arrayvec::{ArrayString, ArrayVec};
 use itertools::Itertools;
 
 use crate::{
@@ -142,8 +142,7 @@ impl Game for MusGame {
     }
 
     fn new_random(&mut self) {
-        let mut baraja = Baraja::baraja_mus();
-        baraja.barajar();
+        let baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         self.info_set_prefix = MusGame::info_set_prefix(
             &manos,
@@ -170,9 +169,9 @@ impl Game for MusGame {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).flat_map(
             move |(mano1, mano2, prob)| {
-                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).map(
                     move |(mano3, mano4, prob2)| {
                         let manos = [
                             Mano::new(mano1.to_owned()),
@@ -180,6 +179,7 @@ impl Game for MusGame {
                             Mano::new(mano3),
                             Mano::new(mano4),
                         ];
+
                         (
                             Self::new_with_hands(&manos, self.tantos, self.abstract_game),
                             prob * prob2,
@@ -409,8 +409,7 @@ impl Game for MusGameTwoHands {
     }
 
     fn new_random(&mut self) {
-        let mut baraja = Baraja::baraja_mus();
-        baraja.barajar();
+        let baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         self.info_set_prefix = MusGameTwoHands::info_set_prefix(
             &manos,
@@ -436,9 +435,9 @@ impl Game for MusGameTwoHands {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).flat_map(
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).flat_map(
             move |(mano1, mano2, prob)| {
-                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+                DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).map(
                     move |(mano3, mano4, prob2)| {
                         let manos = [
                             Mano::new(mano1.to_owned()),
@@ -674,8 +673,7 @@ impl Game for MusGameTwoPlayers {
     }
 
     fn new_random(&mut self) {
-        let mut baraja = Baraja::baraja_mus();
-        baraja.barajar();
+        let baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         let manos = [manos[0].clone(), manos[1].clone()];
         self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
@@ -702,7 +700,7 @@ impl Game for MusGameTwoPlayers {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS, 4).map(
+        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).map(
             |(mano1, mano2, probability)| {
                 (
                     Self::new_with_hands(
