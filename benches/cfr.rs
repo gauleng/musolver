@@ -71,15 +71,59 @@ fn bench_external_sampling_juego(c: &mut Criterion) {
 }
 
 fn bench_external_sampling_mus_two_players(c: &mut Criterion) {
-    c.bench_function("external_sampling mus two_players", |b| {
+    c.bench_function("external_sampling mus_two_players", |b| {
         b.iter_batched(
             || {
-                let game = MusGameTwoPlayers::new([38, 38], false, Rc::new([[0.; 40]; 40]));
+                let game = MusGameTwoPlayers::new(
+                    [38, 38],
+                    false,
+                    Rc::new(MusGameTwoPlayers::default_utility_table()),
+                );
                 let cfr = Cfr::new();
                 (cfr, game)
             },
             |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
+                cfr.train(&mut game, CfrMethod::ExternalSampling, 50000, |_, _| {});
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+fn bench_chance_sampling_mus_two_players(c: &mut Criterion) {
+    c.bench_function("chance_sampling mus_two_players", |b| {
+        b.iter_batched(
+            || {
+                let game = MusGameTwoPlayers::new(
+                    [38, 38],
+                    false,
+                    Rc::new(MusGameTwoPlayers::default_utility_table()),
+                );
+                let cfr = Cfr::new();
+                (cfr, game)
+            },
+            |(mut cfr, mut game)| {
+                cfr.train(&mut game, CfrMethod::ChanceSampling, 50000, |_, _| {});
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+fn bench_fsicfr_mus_two_players(c: &mut Criterion) {
+    c.bench_function("fsicfr_sampling mus_two_players", |b| {
+        b.iter_batched(
+            || {
+                let game = MusGameTwoPlayers::new(
+                    [38, 38],
+                    false,
+                    Rc::new(MusGameTwoPlayers::default_utility_table()),
+                );
+                let cfr = Cfr::new();
+                (cfr, game)
+            },
+            |(mut cfr, mut game)| {
+                cfr.train(&mut game, CfrMethod::FsiCfr, 50000, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -93,5 +137,7 @@ criterion_group!(
     bench_external_sampling_grande,
     bench_external_sampling_juego,
     bench_external_sampling_mus_two_players,
+    bench_chance_sampling_mus_two_players,
+    bench_fsicfr_mus_two_players,
 );
 criterion_main!(benches);
