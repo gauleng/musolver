@@ -636,6 +636,10 @@ impl MusGameTwoPlayers {
         });
         info_set_prefix
     }
+
+    pub fn default_utility_table() -> [[f64; 40]; 40] {
+        std::array::from_fn(|t1| std::array::from_fn(|t2| (t1 - t2) as f64))
+    }
 }
 
 impl Game for MusGameTwoPlayers {
