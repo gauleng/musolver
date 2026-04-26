@@ -304,11 +304,13 @@ impl Cfr {
                         })
                         .for_each(|non_terminal_node| {
                             let info_set_str = non_terminal_node.info_set_str().unwrap();
-                            self.nodes
-                                .entry(info_set_str.to_string())
-                                .or_insert_with(|| {
-                                    Node::new(non_terminal_node.game().actions().len())
-                                });
+
+                            if !self.nodes.contains_key(info_set_str) {
+                                self.nodes.insert(
+                                    info_set_str.to_string(),
+                                    Node::new(non_terminal_node.game().actions().len()),
+                                );
+                            }
                         });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.fsicfr(&mut game_graph, player_idx);
@@ -352,10 +354,13 @@ impl Cfr {
         };
         let actions: Vec<<G as Game>::Action> = game.actions();
         let info_set_str = game.info_set_str(current_player);
-        let node = self
-            .nodes
-            .entry(info_set_str.clone())
-            .or_insert_with(|| Node::new(actions.len()));
+        let node = match self.nodes.get_mut(&info_set_str) {
+            Some(node) => node,
+            None => self
+                .nodes
+                .entry(info_set_str.clone())
+                .or_insert_with(|| Node::new(actions.len())),
+        };
         let strategy = node.strategy().clone();
 
         let util: Vec<f64> = actions
