@@ -4,8 +4,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Cfr, CfrMethod, Game,
     solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
+    Cfr, CfrMethod, Game,
 };
 
 pub struct Trainer {}
@@ -19,8 +19,8 @@ pub struct TrainerConfig {
 impl Trainer {
     pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
         let mut cfr = Cfr::new();
-        let mut utility_table = [[0.; 40]; 40];
-        (37..40).rev().for_each(|t1| {
+        let mut utility_table = MusGameTwoPlayers::default_utility_table();
+        (35..40).rev().for_each(|t1| {
             (0..(40 - t1)).for_each(|t2| {
                 let tantos = [t1 + t2, 39 - t2];
                 match game_config.game_type {
