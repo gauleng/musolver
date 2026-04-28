@@ -130,6 +130,27 @@ fn bench_fsicfr_mus_two_players(c: &mut Criterion) {
     });
 }
 
+fn bench_exploitability(c: &mut Criterion) {
+    c.bench_function("exploitability mus_two_players", |b| {
+        b.iter_batched(
+            || {
+                let mut game = MusGameTwoPlayers::new(
+                    [38, 38],
+                    false,
+                    Rc::new(MusGameTwoPlayers::default_utility_table()),
+                );
+                let mut cfr = Cfr::new();
+                cfr.train(&mut game, CfrMethod::FsiCfr, 500, |_, _| {});
+                (cfr, game)
+            },
+            |(mut cfr, mut game)| {
+                cfr.exploitability(&mut game);
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group!(
     benches,
     bench_chance_sampling_grande,
@@ -139,5 +160,6 @@ criterion_group!(
     bench_external_sampling_mus_two_players,
     bench_chance_sampling_mus_two_players,
     bench_fsicfr_mus_two_players,
+    bench_exploitability
 );
 criterion_main!(benches);

@@ -295,23 +295,6 @@ impl Cfr {
                 CfrMethod::FsiCfr => {
                     let mut game_graph = GameGraph::new(game.clone());
                     game_graph.inflate();
-                    game_graph
-                        .nodes()
-                        .iter()
-                        .filter(|node| {
-                            node.game().current_player() != NodeType::Terminal
-                                && node.game().current_player() != NodeType::Chance
-                        })
-                        .for_each(|non_terminal_node| {
-                            let info_set_str = non_terminal_node.info_set_str().unwrap();
-
-                            if !self.nodes.contains_key(info_set_str) {
-                                self.nodes.insert(
-                                    info_set_str.to_string(),
-                                    Node::new(non_terminal_node.game().actions().len()),
-                                );
-                            }
-                        });
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.fsicfr(&mut game_graph, player_idx);
                     }
@@ -475,33 +458,36 @@ impl Cfr {
                     let info_set_str = game_node
                         .info_set_str()
                         .expect("InfoSet must be valid in non terminal nodes.");
-                    let node = self
-                        .nodes
-                        .get(info_set_str)
-                        .expect("InfoSet should be preloaded before calling fsicfr.");
+                    let node = match self.nodes.get(info_set_str) {
+                        Some(node) => node,
+                        None => self
+                            .nodes
+                            .entry(info_set_str.to_string())
+                            .or_insert_with(|| Node::new(game.actions().len())),
+                    };
                     let strategy = node.strategy();
                     for (i, s) in strategy.iter().enumerate() {
                         let child_idx = game_graph.node(idx).children()[i];
+                        let indices = [idx, child_idx];
+                        let [parent, child] =
+                            unsafe { game_graph.nodes_mut().get_disjoint_unchecked_mut(indices) };
 
                         if current_player == player {
-                            game_graph.node_mut(child_idx).data_mut().reach_player +=
-                                s * game_graph.node(idx).data().reach_player;
-                            game_graph.node_mut(child_idx).data_mut().reach_opponent +=
-                                game_graph.node(idx).data().reach_opponent;
+                            child.data_mut().reach_player += s * parent.data().reach_player;
+                            child.data_mut().reach_opponent += parent.data().reach_opponent;
                         } else {
-                            game_graph.node_mut(child_idx).data_mut().reach_player +=
-                                game_graph.node(idx).data().reach_player;
-                            game_graph.node_mut(child_idx).data_mut().reach_opponent +=
-                                s * game_graph.node(idx).data().reach_opponent;
+                            child.data_mut().reach_player += parent.data().reach_player;
+                            child.data_mut().reach_opponent += s * parent.data().reach_opponent;
                         }
                     }
                 }
                 NodeType::Chance => {
                     let child_idx = game_graph.node(idx).children()[0];
-                    game_graph.node_mut(child_idx).data_mut().reach_player +=
-                        game_graph.node(idx).data().reach_player;
-                    game_graph.node_mut(child_idx).data_mut().reach_opponent +=
-                        game_graph.node(idx).data().reach_opponent;
+                    let indices = [idx, child_idx];
+                    let [parent, child] =
+                        unsafe { game_graph.nodes_mut().get_disjoint_unchecked_mut(indices) };
+                    child.data_mut().reach_player += parent.data().reach_player;
+                    child.data_mut().reach_opponent += parent.data().reach_opponent;
                 }
                 _ => {}
             }
@@ -546,8 +532,10 @@ impl Cfr {
                 }
                 NodeType::Chance => {
                     let child_idx = game_graph.node(idx).children()[0];
-                    game_graph.node_mut(idx).data_mut().utility =
-                        game_graph.node_mut(child_idx).data_mut().utility;
+                    let indices = [idx, child_idx];
+                    let [parent, child] =
+                        unsafe { game_graph.nodes_mut().get_disjoint_unchecked_mut(indices) };
+                    parent.data_mut().utility = child.data().utility;
                 }
             }
             game_graph.node_mut(idx).data_mut().reach_player = 0.;
@@ -605,6 +593,7 @@ impl Cfr {
     {
         let info_sets = self.info_sets(game);
         let mut br_strategies = HashMap::new();
+        br_strategies.reserve(self.nodes().len());
 
         (0..G::N_PLAYERS)
             .map(|player| self.best_response_value(game, player, &info_sets, &mut br_strategies))
@@ -633,44 +622,43 @@ impl Cfr {
                 let actions = game.actions();
                 let info_set_str = game.info_set_str(current_player);
                 if player == current_player {
-                    if br_strategies.get(&info_set_str).is_none() {
-                        let mut action_values = vec![0.; game.actions().len()];
-                        if let Some(games) = info_sets.get(&info_set_str) {
-                            games.iter().for_each(|(game, po)| {
-                                game.actions().iter().enumerate().for_each(|(idx, action)| {
-                                    let mut new_game = game.clone();
-                                    new_game.act(*action);
-                                    let br = self.best_response_value(
-                                        &mut new_game,
-                                        player,
-                                        info_sets,
-                                        br_strategies,
-                                    );
-                                    action_values[idx] += po * br;
+                    let action_idx = match br_strategies.get(&info_set_str) {
+                        Some(action_idx) => action_idx,
+                        None => {
+                            let mut action_values = vec![0.; game.actions().len()];
+                            if let Some(games) = info_sets.get(&info_set_str) {
+                                games.iter().for_each(|(game, po)| {
+                                    game.actions().iter().enumerate().for_each(|(idx, action)| {
+                                        let mut new_game = game.clone();
+                                        new_game.act(*action);
+                                        let br = self.best_response_value(
+                                            &mut new_game,
+                                            player,
+                                            info_sets,
+                                            br_strategies,
+                                        );
+                                        action_values[idx] += po * br;
+                                    });
                                 });
-                            });
-                        }
-                        let br_action = action_values
-                            .iter()
-                            .enumerate()
-                            .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                            .map(|(idx, _)| idx)
-                            .unwrap();
+                            }
+                            let br_action = action_values
+                                .iter()
+                                .enumerate()
+                                .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                                .map(|(idx, _)| idx)
+                                .unwrap();
 
-                        br_strategies.insert(info_set_str.clone(), br_action);
-                    }
-                    if let Some(action_idx) = br_strategies.get_mut(&info_set_str) {
-                        let best_action = actions[*action_idx];
-                        let mut game = game.clone();
-                        game.act(best_action);
-                        self.best_response_value(&mut game, player, info_sets, br_strategies)
-                    } else {
-                        0.
-                    }
+                            br_strategies.entry(info_set_str).or_insert(br_action)
+                        }
+                    };
+                    let best_action = actions[*action_idx];
+                    let mut game = game.clone();
+                    game.act(best_action);
+                    self.best_response_value(&mut game, player, info_sets, br_strategies)
                 } else {
                     let node = self
                         .nodes
-                        .entry(info_set_str.clone())
+                        .entry(info_set_str)
                         .or_insert_with(|| Node::new(actions.len()));
                     let strategy = node.get_average_strategy();
                     std::iter::zip(actions, strategy)
@@ -700,6 +688,7 @@ impl Cfr {
         G::Action: Eq + Copy,
     {
         let mut info_sets = HashMap::new();
+        info_sets.reserve(self.nodes().len());
 
         for player in 0..G::N_PLAYERS {
             self.info_sets_player(game, player, 1., &mut info_sets);
@@ -727,7 +716,9 @@ impl Cfr {
             NodeType::Player(current_player) => {
                 if player == current_player {
                     let info_set_str = game.info_set_str(current_player);
-                    let info_set = info_sets.entry(info_set_str).or_insert_with(|| vec![]);
+                    let info_set = info_sets
+                        .entry(info_set_str)
+                        .or_insert_with(|| Vec::with_capacity(500));
                     info_set.push((game.clone(), po));
                 }
                 let actions = game.actions();
