@@ -1,15 +1,20 @@
+use async_trait::async_trait;
 use core::panic;
-use std::{cell::RefCell, io, path::PathBuf, rc::Rc};
+use std::{
+    io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
-use clap::{command, Parser, ValueEnum};
+use clap::{Parser, ValueEnum};
 use musolver::{
     mus::{
         arena::{
             ActionRecorder, Agent, AgenteAleatorio, AgenteMusolver, Kibitzer, MusAction, MusArena,
         },
-        Accion, Juego, Lance, Mano, PartidaMus,
+        Accion, CuatroJugadores, DosJugadores, Juego, Lance, Mano, PartidaMus,
     },
-    solver::{BancoEstrategias, LanceGame, SolverError, Strategy, StrategyConfig},
+    solver::{GameType, LanceGame, MusGameTwoPlayers, SolverError, Strategy, StrategyConfig},
     Game,
 };
 
@@ -65,8 +70,8 @@ impl KibitzerCli {
     }
 }
 
-impl Kibitzer for KibitzerCli {
-    fn record(&mut self, partida_mus: &PartidaMus, action: MusAction) {
+impl Kibitzer<CuatroJugadores> for KibitzerCli {
+    fn record(&mut self, partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction) {
         match &action {
             MusAction::GameStart(dealer_id) => {
                 self.lance_actual = None;
@@ -95,7 +100,7 @@ impl Kibitzer for KibitzerCli {
             }
             MusAction::PlayerAction(player_id, accion) => {
                 if *player_id != self.cli_player {
-                    if (*player_id + self.cli_player) % 2 == 0 {
+                    if (*player_id + self.cli_player).is_multiple_of(2) {
                         println!(
                             "💚💚💚{} ha actuado: {:?}",
                             self.nombres_jugadores[*player_id], accion
@@ -133,23 +138,26 @@ impl Kibitzer for KibitzerCli {
 
 #[derive(Debug, Clone)]
 pub struct AgenteCli {
-    history: Rc<RefCell<Vec<Accion>>>,
+    history: Arc<Mutex<Vec<Accion>>>,
+    game_type: GameType,
 }
 
 impl AgenteCli {
-    pub fn new(history: Rc<RefCell<Vec<Accion>>>) -> Self {
-        Self { history }
+    pub fn new(game_type: GameType, history: Arc<Mutex<Vec<Accion>>>) -> Self {
+        Self { game_type, history }
     }
-}
-
-impl Agent for AgenteCli {
-    fn actuar(&mut self, partida_mus: &PartidaMus) -> Accion {
-        let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
-        for action in self.history.borrow().iter() {
-            lance_game.act(*action);
+    fn get_actions<G>(&self, game: &mut G, history: &[Accion]) -> Vec<Accion>
+    where
+        G: Game<Action = Accion>,
+    {
+        for action in history {
+            game.act(*action);
         }
+        game.actions()
+    }
+
+    fn pick_action(next_actions: &[Accion]) -> Accion {
         println!("Elija una acción:");
-        let next_actions = lance_game.actions();
         next_actions
             .iter()
             .enumerate()
@@ -178,14 +186,45 @@ impl Agent for AgenteCli {
     }
 }
 
+#[async_trait]
+impl Agent<CuatroJugadores> for AgenteCli {
+    async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
+        let next_actions = match self.game_type {
+            GameType::LanceGame(_) => {
+                let mut game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
+                self.get_actions(&mut game, &self.history.lock().unwrap())
+            }
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGame => todo!(),
+            GameType::MusGameTwoHands => todo!(),
+            GameType::MusGameTwoPlayers => todo!(),
+        };
+        Self::pick_action(&next_actions)
+    }
+}
+
+#[async_trait]
+impl Agent<DosJugadores> for AgenteCli {
+    async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
+        let next_actions = match self.game_type {
+            GameType::MusGameTwoPlayers => {
+                let mut game = MusGameTwoPlayers::new_with_hands(
+                    &[
+                        partida_mus.manos()[0].clone(),
+                        partida_mus.manos()[0].clone(),
+                    ],
+                    *partida_mus.tantos(),
+                    false,
+                );
+                self.get_actions(&mut game, &self.history.lock().unwrap())
+            }
+            _ => todo!(),
+        };
+        Self::pick_action(&next_actions)
+    }
+}
 fn show_strategy_data(strategy: &StrategyConfig) {
-    println!(
-        "\tLance: {}",
-        strategy
-            .game_config
-            .lance
-            .map_or_else(|| "Partida completa".to_string(), |v| format!("{:?}", v))
-    );
+    println!("\tTipo partida: {:?}", strategy.game_config.game_type);
     println!("\tJuego abstracto: {}", strategy.game_config.abstract_game);
     println!("\tIteraciones:{:?}", strategy.trainer_config.iterations);
     println!("\tMétodo de cálculo: {:?}", strategy.trainer_config.method);
@@ -193,7 +232,7 @@ fn show_strategy_data(strategy: &StrategyConfig) {
 }
 
 fn pick_musolver_strategy() -> String {
-    let estrategias = BancoEstrategias::find(PathBuf::from("output").as_path());
+    let estrategias = Strategy::find(PathBuf::from("output").as_path());
     for (idx, s) in estrategias.iter().enumerate() {
         println!("{idx}: {}", s.0);
         show_strategy_data(&s.1);
@@ -245,11 +284,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let strategy: Option<Strategy<LanceGame>> = if args
-        .agents
-        .iter()
-        .any(|agent| *agent == AgentType::Musolver)
-    {
+    let strategy: Option<Strategy> = if args.agents.contains(&AgentType::Musolver) {
         let strategy_path = PathBuf::from(match args.strategy_path {
             Some(path) => path,
             None => pick_musolver_strategy(),
@@ -275,18 +310,22 @@ fn main() {
         None
     };
 
-    let lance = if let Some(s) = &strategy {
-        s.strategy_config.game_config.lance
-    } else {
-        None
+    let (game_type, lance) = match &strategy {
+        Some(s) => (
+            s.strategy_config.game_config.game_type,
+            match s.strategy_config.game_config.game_type {
+                GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => Some(lance),
+                _ => None,
+            },
+        ),
+        None => (GameType::MusGameTwoPlayers, None),
     };
-
     let mut arena = MusArena::new(lance);
 
     let action_recorder = ActionRecorder::new();
 
     let agente_aleatorio = AgenteAleatorio::new(action_recorder.history());
-    let agente_cli = AgenteCli::new(action_recorder.history());
+    let agente_cli = AgenteCli::new(game_type, action_recorder.history());
 
     let mut cli_client = 0;
     let mut nombres_jugadores = vec![];

@@ -1,11 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use crate::mus::{Accion, CuatroJugadores, PartidaMus};
+use crate::mus::{Accion, CuatroJugadores, ModalidadMus, PartidaMus};
 
 use super::MusAction;
 
-pub trait Kibitzer {
-    fn record(&mut self, partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction);
+pub trait Kibitzer<T: ModalidadMus> {
+    fn record(&mut self, partida_mus: &PartidaMus<T>, action: MusAction);
 }
 
 /// Kibitzer that records the actions played in a game. This kibitzer allows to share the game
@@ -32,7 +32,7 @@ impl Default for ActionRecorder {
     }
 }
 
-impl Kibitzer for ActionRecorder {
+impl Kibitzer<CuatroJugadores> for ActionRecorder {
     fn record(&mut self, _partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction) {
         match &action {
             MusAction::GameStart(_) | MusAction::LanceStart(_) => {

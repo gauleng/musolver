@@ -13,7 +13,7 @@ use musolver::{
         Accion, CuatroJugadores, Lance, Mano,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
-    solver::{GameType, LanceGame, Strategy},
+    solver::{LanceGame, Strategy},
 };
 
 #[derive(Debug, Clone)]
@@ -347,7 +347,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 Self { sender }
             }
         }
-        impl Kibitzer for KibitzerGui {
+        impl Kibitzer<CuatroJugadores> for KibitzerGui {
             fn record(
                 &mut self,
                 _partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
@@ -376,7 +376,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             }
         }
         #[async_trait]
-        impl Agent for AgentGui {
+        impl Agent<CuatroJugadores> for AgentGui {
             async fn actuar(
                 &mut self,
                 partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
@@ -403,11 +403,13 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             to_arena,
         }));
 
-        let lance = match strategy.strategy_config.game_config.game_type {
-            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => Some(lance),
-            GameType::MusGame | GameType::MusGameTwoHands | GameType::MusGameTwoPlayers => None,
-        };
-        let mut arena = MusArena::new(lance);
+        let mut arena = MusArena::new(match strategy.strategy_config.game_config.game_type {
+            musolver::solver::GameType::LanceGame(lance)
+            | musolver::solver::GameType::LanceGameTwoHands(lance) => Some(lance),
+            musolver::solver::GameType::MusGame
+            | musolver::solver::GameType::MusGameTwoHands
+            | musolver::solver::GameType::MusGameTwoPlayers => None,
+        });
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
         let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());

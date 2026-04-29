@@ -5,13 +5,13 @@ use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 
 use crate::{
     Game, NodeType,
-    mus::{Accion, CuatroJugadores, PartidaMus},
+    mus::{Accion, CuatroJugadores, ModalidadMus, PartidaMus},
     solver::{LanceGame, Strategy},
 };
 
 #[async_trait]
-pub trait Agent {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion;
+pub trait Agent<T: ModalidadMus> {
+    async fn actuar(&mut self, partida_mus: &PartidaMus<T>) -> Accion;
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ impl AgenteAleatorio {
 }
 
 #[async_trait]
-impl Agent for AgenteAleatorio {
+impl Agent<CuatroJugadores> for AgenteAleatorio {
     async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
         let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
         let history = self.history.lock().unwrap().clone();
@@ -65,7 +65,7 @@ impl AgenteMusolver {
 }
 
 #[async_trait]
-impl Agent for AgenteMusolver {
+impl Agent<CuatroJugadores> for AgenteMusolver {
     async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
         let mut lance_game = LanceGame::from_partida_mus(
             partida_mus,

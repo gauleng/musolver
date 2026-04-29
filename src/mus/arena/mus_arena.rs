@@ -1,4 +1,7 @@
-use crate::mus::{Accion, Baraja, CuatroJugadores, Lance, Mano, PartidaMus, Turno};
+use crate::{
+    mus::{Accion, Baraja, CuatroJugadores, Lance, Mano, ModalidadMus, PartidaMus, Turno},
+    solver::GameType,
+};
 
 use super::{Agent, Kibitzer};
 
@@ -20,20 +23,20 @@ pub enum MusAction {
 }
 
 /// Simulates a mus game or a particular lance.
-pub struct MusArena {
-    pub agents: Vec<Box<dyn Agent + Send>>,
-    pub kibitzers: Vec<Box<dyn Kibitzer + Send>>,
-    partida_mus: PartidaMus<CuatroJugadores>,
+pub struct MusArena<T: ModalidadMus> {
+    pub agents: Vec<Box<dyn Agent<T> + Send>>,
+    pub kibitzers: Vec<Box<dyn Kibitzer<T> + Send>>,
+    partida_mus: PartidaMus<T>,
     lance: Option<Lance>,
     order: [usize; 4],
 }
 
-impl MusArena {
+impl MusArena<CuatroJugadores> {
     pub fn new(lance: Option<Lance>) -> Self {
         MusArena {
             agents: vec![],
             kibitzers: vec![],
-            partida_mus: MusArena::new_partida(lance),
+            partida_mus: Self::new_partida(lance),
             order: [0, 1, 2, 3],
             lance,
         }
