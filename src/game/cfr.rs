@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
@@ -269,19 +268,22 @@ impl Cfr {
         F: FnMut(&usize, &[f64]),
     {
         let mut util = vec![0.; G::N_PLAYERS];
+        let round_size = match cfr_method {
+            CfrMethod::Cfr | CfrMethod::CfrPlus => 1,
+            CfrMethod::ChanceSampling | CfrMethod::ExternalSampling | CfrMethod::FsiCfr => 100_000,
+        };
         for i in 0..iterations {
             game.reset();
 
             match cfr_method {
                 CfrMethod::Cfr => {
-                    todo!();
-                    // for (player_idx, u) in util.iter_mut().enumerate() {
-                    //     game.new_iter(|game, po| {
-                    //         *u += po * self.chance_sampling(game, player_idx, 1., po);
-                    //     });
-                    // }
+                    for (player_idx, u) in util.iter_mut().enumerate() {
+                        *u += self.cfr(game, player_idx, 1., 1.);
+                    }
                 }
-                CfrMethod::CfrPlus => todo!(),
+                CfrMethod::CfrPlus => {
+                    todo!();
+                }
                 CfrMethod::ChanceSampling => {
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.chance_sampling(game, player_idx, 1., 1.);
@@ -300,12 +302,15 @@ impl Cfr {
                     }
                 }
             }
-            let round_size = 1_000_000;
-            if i > 0 && i.is_multiple_of(round_size) {
-                let block = (i / round_size) as f64;
-                self.discount(block / (block + 1.));
-                let exp = self.exploitability(game);
-                println!("exploitability: {exp}");
+            if i > 0 {
+                if i.is_multiple_of(round_size) {
+                    let block = (i / round_size) as f64;
+                    self.discount(block / (block + 1.));
+                }
+                // if i.is_multiple_of(round_size * 10) {
+                //     let exp = self.exploitability(game);
+                //     println!("Exploitability: {exp}");
+                // }
             }
             iteration_callback(&i, &util.iter().map(|u| u / i as f64).collect::<Vec<f64>>());
         }
@@ -318,6 +323,65 @@ impl Cfr {
         }
     }
 
+    /// Chance sampling CFR algorithm.
+    fn cfr<G>(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
+    where
+        G: Game + Clone,
+        G::Action: Eq + Copy,
+    {
+        let current_player = match game.current_player() {
+            NodeType::Chance => {
+                return game
+                    .new_iter()
+                    .map(|(mut new_game, prob)| {
+                        prob * self.cfr(&mut new_game, player, pi, po * prob)
+                    })
+                    .sum();
+            }
+            NodeType::Player(current_player) => current_player,
+            NodeType::Terminal => {
+                return game.utility(player);
+            }
+        };
+        let actions: Vec<<G as Game>::Action> = game.actions();
+        let info_set_str = game.info_set_str(current_player);
+        let node = match self.nodes.get_mut(&info_set_str) {
+            Some(node) => node,
+            None => self
+                .nodes
+                .entry(info_set_str.clone())
+                .or_insert_with(|| Node::new(actions.len())),
+        };
+        let strategy = node.strategy().clone();
+
+        let util: Vec<f64> = actions
+            .iter()
+            .zip(strategy.iter())
+            .map(|(a, s)| {
+                let mut new_game = game.clone();
+                new_game.act(*a);
+                if current_player == player {
+                    self.cfr(&mut new_game, player, pi * s, po)
+                } else {
+                    self.cfr(&mut new_game, player, pi, po * s)
+                }
+            })
+            .collect();
+        let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
+
+        if let Some(node) = self.nodes.get_mut(&info_set_str)
+            && current_player == player
+        {
+            node.regret_sum
+                .iter_mut()
+                .zip(util.iter())
+                .for_each(|(r, u)| *r += po * (u - node_util));
+            node.update_strategy_sum(pi);
+            node.update_strategy();
+        }
+
+        node_util
+    }
     /// Chance sampling CFR algorithm.
     fn chance_sampling<G>(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
     where
