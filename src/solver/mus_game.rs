@@ -1,6 +1,6 @@
-use std::rc::Rc;
+use std::{fmt::Write, rc::Rc};
 
-use arrayvec::{ArrayString, ArrayVec};
+use arrayvec::ArrayString;
 use itertools::Itertools;
 
 use crate::{
@@ -604,19 +604,22 @@ impl MusGameTwoPlayers {
     }
 
     fn jugadas_manos(manos: &[Mano; 2]) -> (ArrayString<2>, ArrayString<2>) {
-        let manos_pares = manos
-            .iter()
-            .map(|m| if m.pares().is_some() { '1' } else { '0' })
-            .join("");
-        let manos_juego = manos
-            .iter()
-            .map(|m| if m.juego().is_some() { '1' } else { '0' })
-            .join("");
+        let hay_pares = ArrayString::from(match (manos[0].hay_pares(), manos[1].hay_pares()) {
+            (true, true) => "11",
+            (true, false) => "10",
+            (false, true) => "01",
+            (false, false) => "00",
+        });
+        let hay_juego = ArrayString::from(
+            match (manos[0].juego().is_some(), manos[1].juego().is_some()) {
+                (true, true) => "11",
+                (true, false) => "10",
+                (false, true) => "01",
+                (false, false) => "00",
+            },
+        );
 
-        (
-            ArrayString::from(&manos_pares).unwrap(),
-            ArrayString::from(&manos_juego).unwrap(),
-        )
+        (hay_pares.unwrap(), hay_juego.unwrap())
     }
 
     fn info_set_prefix(
@@ -627,10 +630,15 @@ impl MusGameTwoPlayers {
         let info_set_prefix: [ArrayString<16>; 2] = core::array::from_fn(|i| {
             if let Some(lance) = abstracto {
                 let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(&manos[i], &lance);
-                ArrayString::from(&format!("{}:{},{},", tantos[0], tantos[1], mano_abstracta))
-                    .unwrap()
+                let mut str = ArrayString::new();
+                let _ = write!(&mut str, "{}:{},{},", tantos[0], tantos[1], mano_abstracta);
+
+                str
             } else {
-                ArrayString::from(&format!("{}:{},{},", tantos[0], tantos[1], manos[i])).unwrap()
+                let mut str = ArrayString::new();
+                let _ = write!(&mut str, "{}:{},{},", tantos[0], tantos[1], manos[i]);
+
+                str
             }
         });
         info_set_prefix

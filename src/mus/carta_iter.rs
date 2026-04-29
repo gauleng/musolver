@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-use arrayvec::ArrayVec;
 use itertools::{CombinationsWithReplacement, Itertools};
 
 use super::Carta;

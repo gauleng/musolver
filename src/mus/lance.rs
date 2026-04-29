@@ -122,16 +122,15 @@ impl Mano {
         None
     }
 
+    pub fn hay_pares(&self) -> bool {
+        let cartas = self.cartas();
+        cartas[0] == cartas[1] || cartas[1] == cartas[2] || cartas[2] == cartas[3]
+    }
+
     /// Devuelve los puntos de la mano para los lances de punto y juego.
     pub fn valor_puntos(&self) -> u8 {
         let c = self.cartas();
-        c.iter().fold(0, |acc, c| {
-            if c.valor() >= 10 {
-                acc + 10
-            } else {
-                acc + c.valor()
-            }
-        })
+        c.iter().fold(0, |acc, c| acc + c.valor().min(10))
     }
 
     /// Indica si la mano tiene jugada para el lance de juego. En caso contrario devuelve None.
@@ -277,8 +276,8 @@ impl Lance {
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => manos.iter().map(|m| m.pares().is_some()).any(|b| b),
-            Lance::Juego => manos.iter().map(|m| m.juego().is_some()).any(|b| b),
+            Lance::Pares => manos.iter().map(|m| m.hay_pares()).any(|b| b),
+            Lance::Juego => manos.iter().map(|m| m.valor_puntos() >= 31).any(|b| b),
             Lance::Punto => !Lance::Juego.hay_lance(manos),
         }
     }

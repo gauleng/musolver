@@ -14,8 +14,12 @@ impl Mano {
     // Cards in hand are always sorted by value.
     pub fn new(cartas: [Carta; 4]) -> Self {
         let mut m = Mano(ArrayVec::from(cartas));
-        m.0.sort_by(|a, b| b.cmp(a));
+        m.0.sort_unstable_by(|a, b| b.cmp(a));
         m
+    }
+
+    pub fn new_unsorted(cartas: [Carta; 4]) -> Self {
+        Mano(ArrayVec::from(cartas))
     }
 
     // Cards in hand are always sorted by value.

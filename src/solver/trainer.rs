@@ -4,8 +4,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
     Cfr, CfrMethod, Game,
+    solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
 };
 
 pub struct Trainer {}
@@ -27,16 +27,16 @@ impl Trainer {
                     GameType::LanceGame(lance) => {
                         let mut lance_game =
                             LanceGame::new(lance, tantos, game_config.abstract_game);
-                        train_game(&mut cfr, &mut lance_game, &trainer_config);
+                        train_game(&mut cfr, &mut lance_game, trainer_config);
                     }
                     GameType::MusGame => {
                         let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
-                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                        train_game(&mut cfr, &mut mus_game, trainer_config);
                     }
                     GameType::LanceGameTwoHands(_) => todo!(),
                     GameType::MusGameTwoHands => {
                         let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
-                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                        train_game(&mut cfr, &mut mus_game, trainer_config);
                     }
                     GameType::MusGameTwoPlayers => {
                         let mut mus_game = MusGameTwoPlayers::new(
@@ -44,7 +44,7 @@ impl Trainer {
                             game_config.abstract_game,
                             Rc::new(utility_table),
                         );
-                        train_game(&mut cfr, &mut mus_game, &trainer_config);
+                        train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
                         println!("Finished training.");
                         println!(

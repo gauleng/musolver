@@ -11,14 +11,14 @@ pub struct Baraja(Vec<Carta>);
 
 impl Baraja {
     pub const FREC_BARAJA_MUS: [(Carta, u8); 8] = [
-        (Carta::As, 8),
-        (Carta::Cuatro, 4),
-        (Carta::Cinco, 4),
-        (Carta::Seis, 4),
-        (Carta::Siete, 4),
-        (Carta::Sota, 4),
-        (Carta::Caballo, 4),
         (Carta::Rey, 8),
+        (Carta::Caballo, 4),
+        (Carta::Sota, 4),
+        (Carta::Siete, 4),
+        (Carta::Seis, 4),
+        (Carta::Cinco, 4),
+        (Carta::Cuatro, 4),
+        (Carta::As, 8),
     ];
 
     /// Devuelve una nueva baraja vacía.
