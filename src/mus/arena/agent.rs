@@ -5,8 +5,8 @@ use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 
 use crate::{
     Game, NodeType,
-    mus::{Accion, CuatroJugadores, ModalidadMus, PartidaMus},
-    solver::{LanceGame, Strategy},
+    mus::{Accion, CuatroJugadores, DosJugadores, ModalidadMus, PartidaMus},
+    solver::{LanceGame, MusGameTwoPlayers, Strategy},
 };
 
 #[async_trait]
@@ -61,6 +61,36 @@ impl AgenteMusolver {
         let dist = WeightedIndex::new(probabilities).unwrap();
         let idx = dist.sample(&mut rand::thread_rng());
         actions[idx]
+    }
+}
+
+#[async_trait]
+impl Agent<DosJugadores> for AgenteMusolver {
+    async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
+        let mut mus_game = MusGameTwoPlayers::new_with_hands(
+            partida_mus.manos(),
+            *partida_mus.tantos(),
+            self.strategy.strategy_config.game_config.abstract_game,
+        );
+        let history = self.history.lock().unwrap().clone();
+        for action in &history {
+            mus_game.act(*action);
+        }
+        let current_player = match mus_game.current_player() {
+            NodeType::Player(current_player) => current_player,
+            _ => 0,
+        };
+        let info_set_str = mus_game.info_set_str(current_player);
+        let actions = mus_game.actions();
+        let action_probability = self.strategy.nodes.get(&info_set_str);
+        if let Some(probabilities) = action_probability {
+            Self::accion_aleatoria(&actions, probabilities)
+        } else {
+            println!(
+                "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."
+            );
+            Accion::Paso
+        }
     }
 }
 

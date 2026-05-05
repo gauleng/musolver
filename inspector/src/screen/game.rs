@@ -10,10 +10,10 @@ use image::GenericImageView;
 use musolver::{
     Game,
     mus::{
-        Accion, CuatroJugadores, Lance, Mano,
+        Accion, CuatroJugadores, DosJugadores, Lance, Mano, ModalidadMus,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
-    solver::{LanceGame, Strategy},
+    solver::{LanceGame, MusGameTwoPlayers, Strategy},
 };
 
 #[derive(Debug, Clone)]
@@ -78,7 +78,7 @@ pub struct MusArenaUi {
     arena_events: Vec<MusAction>,
     deck_images: DeckImages,
     actions: Vec<Accion>,
-    players: [Player; 4],
+    players: Vec<Player>,
     dealer: usize,
     scoreboard: [u8; 2],
     game_running: bool,
@@ -87,29 +87,42 @@ pub struct MusArenaUi {
 
 impl MusArenaUi {
     pub fn new(strategy: Strategy) -> (Self, Task<GameEvent>) {
+        let players = match strategy.strategy_config.game_config.game_type {
+            musolver::solver::GameType::MusGameTwoPlayers => vec![
+                Player {
+                    name: "Hero".to_string(),
+                    ..Default::default()
+                },
+                Player {
+                    name: "Musolver".to_string(),
+                    ..Default::default()
+                },
+            ],
+            _ => vec![
+                Player {
+                    name: "Hero".to_string(),
+                    ..Default::default()
+                },
+                Player {
+                    name: "Musolver".to_string(),
+                    ..Default::default()
+                },
+                Player {
+                    name: "Musolver".to_string(),
+                    ..Default::default()
+                },
+                Player {
+                    name: "Musolver".to_string(),
+                    ..Default::default()
+                },
+            ],
+        };
         let task = Task::run(setup_arena(strategy), GameEvent::ArenaMessage);
         (
             Self {
                 state: ArenaState::Disconnected,
                 actions: vec![],
-                players: [
-                    Player {
-                        name: "Hero".to_string(),
-                        ..Default::default()
-                    },
-                    Player {
-                        name: "Musolver".to_string(),
-                        ..Default::default()
-                    },
-                    Player {
-                        name: "Musolver".to_string(),
-                        ..Default::default()
-                    },
-                    Player {
-                        name: "Musolver".to_string(),
-                        ..Default::default()
-                    },
-                ],
+                players,
                 dealer: 0,
                 arena_events: vec![],
                 scoreboard: [0, 0],
@@ -128,7 +141,7 @@ impl MusArenaUi {
         .style(container::rounded_box)
         .padding(10);
 
-        let hands = container(
+        let hands = container(if self.players.len() == 4 {
             column![
                 self.hand_row(2, 60),
                 row![
@@ -142,8 +155,23 @@ impl MusArenaUi {
                 self.hand_row(0, 100),
             ]
             .spacing(10)
-            .align_x(Alignment::Center),
-        )
+            .align_x(Alignment::Center)
+        } else if self.players.len() == 2 {
+            column![
+                self.hand_row(1, 60),
+                row![
+                    container(text("Pot: "))
+                        .width(Length::Fill)
+                        .align_x(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
+                self.hand_row(0, 100),
+            ]
+            .spacing(10)
+            .align_x(Alignment::Center)
+        } else {
+            panic!("Players must be 2 or 4")
+        })
         .width(Length::Fill);
 
         let history = container(
@@ -347,12 +375,8 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 Self { sender }
             }
         }
-        impl Kibitzer<CuatroJugadores> for KibitzerGui {
-            fn record(
-                &mut self,
-                _partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
-                action: MusAction,
-            ) {
+        impl<T: ModalidadMus> Kibitzer<T> for KibitzerGui {
+            fn record(&mut self, _partida_mus: &musolver::mus::PartidaMus<T>, action: MusAction) {
                 let _ = self.sender.try_send(ArenaMessage::GameAction(action));
             }
         }
@@ -375,6 +399,31 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 }
             }
         }
+
+        #[async_trait]
+        impl Agent<DosJugadores> for AgentGui {
+            async fn actuar(
+                &mut self,
+                partida_mus: &musolver::mus::PartidaMus<DosJugadores>,
+            ) -> musolver::mus::Accion {
+                let next_actions = {
+                    let mut mus_game = MusGameTwoPlayers::new_with_hands(partida_mus.manos(), *partida_mus.tantos(), false);
+                    for action in self.history.lock().unwrap().iter() {
+                        mus_game.act(*action);
+                    }
+                    mus_game.actions()
+                };
+                let _ = self
+                    .sender
+                    .try_send(ArenaMessage::ActionRequested(next_actions));
+                if let ArenaCommand::PickAction(action) = self.receiver.next().await.unwrap() {
+                    action
+                } else {
+                    Accion::Paso
+                }
+            }
+        }
+
         #[async_trait]
         impl Agent<CuatroJugadores> for AgentGui {
             async fn actuar(
@@ -403,34 +452,63 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             to_arena,
         }));
 
-        let mut arena = MusArena::new(match strategy.strategy_config.game_config.game_type {
-            musolver::solver::GameType::LanceGame(lance)
-            | musolver::solver::GameType::LanceGameTwoHands(lance) => Some(lance),
-            musolver::solver::GameType::MusGame
-            | musolver::solver::GameType::MusGameTwoHands
-            | musolver::solver::GameType::MusGameTwoPlayers => None,
-        });
+        let game_type = strategy.strategy_config.game_config.game_type;
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
         let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());
         let agent_gui = AgentGui::new(sender.clone(), receiver_agent, action_recorder.history());
 
-        arena.agents.push(Box::new(agent_gui));
-        arena.agents.push(Box::new(agent_musolver.clone()));
-        arena.agents.push(Box::new(agent_musolver.clone()));
-        arena.agents.push(Box::new(agent_musolver.clone()));
-        arena.kibitzers.push(Box::new(kibitzer));
-        arena.kibitzers.push(Box::new(action_recorder));
-        loop {
-            arena.start().await;
-            let _ = sender.send(ArenaMessage::NewGameRequested).await;
-            if let ArenaCommand::Terminate = receiver_arena.next().await.unwrap() {
-                break;
+        match game_type {
+            musolver::solver::GameType::LanceGame(_lance) => todo!(),
+            musolver::solver::GameType::LanceGameTwoHands(lance) => {
+                let mut arena = MusArena::<CuatroJugadores>::new(Some(lance));
+                arena.agents.push(Box::new(agent_gui));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.kibitzers.push(Box::new(kibitzer));
+                arena.kibitzers.push(Box::new(action_recorder));
+                loop {
+                    arena.start().await;
+                    let _ = sender.send(ArenaMessage::NewGameRequested).await;
+                    if let ArenaCommand::Terminate = receiver_arena.next().await.unwrap() {
+                        break;
+                    }
+                }
+            }
+            musolver::solver::GameType::MusGame | musolver::solver::GameType::MusGameTwoHands => {
+                let mut arena = MusArena::<CuatroJugadores>::new(None);
+                arena.agents.push(Box::new(agent_gui));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.kibitzers.push(Box::new(kibitzer));
+                arena.kibitzers.push(Box::new(action_recorder));
+                loop {
+                    arena.start().await;
+                    let _ = sender.send(ArenaMessage::NewGameRequested).await;
+                    if let ArenaCommand::Terminate = receiver_arena.next().await.unwrap() {
+                        break;
+                    }
+                }
+            }
+            musolver::solver::GameType::MusGameTwoPlayers => {
+                let mut arena = MusArena::<DosJugadores>::new(None);
+                arena.agents.push(Box::new(agent_gui));
+                arena.agents.push(Box::new(agent_musolver.clone()));
+                arena.kibitzers.push(Box::new(kibitzer));
+                arena.kibitzers.push(Box::new(action_recorder));
+                loop {
+                    arena.start().await;
+                    let _ = sender.send(ArenaMessage::NewGameRequested).await;
+                    if let ArenaCommand::Terminate = receiver_arena.next().await.unwrap() {
+                        break;
+                    }
+                }
             }
         }
     })
 }
-
 struct DeckImages {
     cards: Vec<Vec<iced::widget::image::Handle>>,
     back: iced::widget::image::Handle,

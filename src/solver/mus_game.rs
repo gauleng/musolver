@@ -556,11 +556,11 @@ pub struct MusGameTwoPlayers {
     manos_pares: ArrayString<2>,
     manos_juego: ArrayString<2>,
     abstract_game: bool,
-    utility_table: Rc<[[f64; 40]; 40]>,
+    utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
 impl MusGameTwoPlayers {
-    pub fn new(tantos: [u8; 2], abstract_game: bool, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+    pub fn new(tantos: [u8; 2], abstract_game: bool) -> Self {
         Self {
             partida: None,
             tantos,
@@ -569,7 +569,14 @@ impl MusGameTwoPlayers {
             manos_pares: ArrayString::new(),
             manos_juego: ArrayString::new(),
             abstract_game,
-            utility_table,
+            utility_table: None,
+        }
+    }
+
+    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+        Self {
+            utility_table: Some(utility_table),
+            ..self
         }
     }
 
@@ -595,7 +602,7 @@ impl MusGameTwoPlayers {
             manos_pares,
             manos_juego,
             abstract_game,
-            utility_table: Rc::new([[0.; 40]; 40]),
+            utility_table: None,
         }
     }
 
@@ -656,20 +663,29 @@ impl Game for MusGameTwoPlayers {
     fn utility(&mut self, player: usize) -> f64 {
         let tantos = self.partida.as_mut().unwrap().tantos();
 
-        if tantos[0] == 40 || tantos[1] == 40 {
+        if let Some(utility_table) = &self.utility_table {
+            if tantos[0] == 40 || tantos[1] == 40 {
+                let payoff = [
+                    tantos[0] as i8 - tantos[1] as i8,
+                    tantos[1] as i8 - tantos[0] as i8,
+                ];
+
+                payoff[player % 2] as f64
+            } else {
+                let expected_utility = utility_table[tantos[1] as usize][tantos[0] as usize];
+                if player == 0 {
+                    -expected_utility
+                } else {
+                    expected_utility
+                }
+            }
+        } else {
             let payoff = [
                 tantos[0] as i8 - tantos[1] as i8,
                 tantos[1] as i8 - tantos[0] as i8,
             ];
 
-            payoff[player % 2] as f64
-        } else {
-            let expected_utility = self.utility_table[tantos[1] as usize][tantos[0] as usize];
-            if player == 0 {
-                -expected_utility
-            } else {
-                expected_utility
-            }
+            payoff[player] as f64
         }
     }
 

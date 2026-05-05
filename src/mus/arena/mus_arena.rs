@@ -1,6 +1,5 @@
-use crate::{
-    mus::{Accion, Baraja, CuatroJugadores, Lance, Mano, ModalidadMus, PartidaMus, Turno},
-    solver::GameType,
+use crate::mus::{
+    Accion, Baraja, CuatroJugadores, DosJugadores, Lance, Mano, ModalidadMus, PartidaMus, Turno,
 };
 
 use super::{Agent, Kibitzer};
@@ -28,7 +27,73 @@ pub struct MusArena<T: ModalidadMus> {
     pub kibitzers: Vec<Box<dyn Kibitzer<T> + Send>>,
     partida_mus: PartidaMus<T>,
     lance: Option<Lance>,
-    order: [usize; 4],
+    order: Vec<usize>,
+}
+
+impl<T: ModalidadMus> MusArena<T> {
+    fn record_action(&mut self, a: MusAction) {
+        self.kibitzers
+            .iter_mut()
+            .for_each(|k| k.record(&self.partida_mus, a.clone()));
+    }
+}
+
+impl MusArena<DosJugadores> {
+    pub fn new(lance: Option<Lance>) -> Self {
+        MusArena {
+            agents: vec![],
+            kibitzers: vec![],
+            partida_mus: Self::new_partida(lance),
+            order: vec![0, 1],
+            lance,
+        }
+    }
+
+    fn new_partida(lance: Option<Lance>) -> PartidaMus<DosJugadores> {
+        let baraja = Baraja::baraja_mus();
+        match lance {
+            None => {
+                let manos = baraja.repartir_manos();
+                PartidaMus::<DosJugadores>::new([manos[0].clone(), manos[1].clone()], [37, 37])
+            }
+            Some(_) => loop {
+                todo!()
+            },
+        }
+    }
+
+    pub async fn start(&mut self) {
+        self.partida_mus = MusArena::<DosJugadores>::new_partida(self.lance);
+        self.order.rotate_left(1);
+        self.record_action(MusAction::GameStart(self.order[0]));
+        let manos = self.partida_mus.manos().clone();
+        for (i, m) in manos.iter().enumerate() {
+            self.record_action(MusAction::DealHand(self.order[i], m.clone()));
+        }
+        let mut lance = self.partida_mus.lance_actual();
+        self.record_action(MusAction::LanceStart(lance.unwrap()));
+        while let Some(turno) = self.partida_mus.turno() {
+            let player_id = match turno {
+                Turno::Jugador(id) | Turno::Pareja(id) => id,
+            } as usize;
+            let accion = self.agents[self.order[player_id]]
+                .actuar(&self.partida_mus)
+                .await;
+            if self.partida_mus.actuar(accion).is_ok() {
+                self.record_action(MusAction::PlayerAction(self.order[player_id], accion));
+                let nuevo_lance = self.partida_mus.lance_actual();
+                if nuevo_lance != lance {
+                    lance = nuevo_lance;
+                    if let Some(l) = lance {
+                        self.record_action(MusAction::LanceStart(l));
+                    }
+                }
+            }
+        }
+        let tantos = *self.partida_mus.tantos();
+        self.record_action(MusAction::Payoff(self.order[0], tantos[0]));
+        self.record_action(MusAction::Payoff(self.order[1], tantos[1]));
+    }
 }
 
 impl MusArena<CuatroJugadores> {
@@ -37,7 +102,7 @@ impl MusArena<CuatroJugadores> {
             agents: vec![],
             kibitzers: vec![],
             partida_mus: Self::new_partida(lance),
-            order: [0, 1, 2, 3],
+            order: vec![0, 1, 2, 3],
             lance,
         }
     }
@@ -61,14 +126,8 @@ impl MusArena<CuatroJugadores> {
         }
     }
 
-    fn record_action(&mut self, a: MusAction) {
-        self.kibitzers
-            .iter_mut()
-            .for_each(|k| k.record(&self.partida_mus, a.clone()));
-    }
-
     pub async fn start(&mut self) {
-        self.partida_mus = MusArena::new_partida(self.lance);
+        self.partida_mus = MusArena::<CuatroJugadores>::new_partida(self.lance);
         self.order.rotate_left(1);
         self.record_action(MusAction::GameStart(self.order[0]));
         let manos = self.partida_mus.manos().clone();

@@ -320,7 +320,7 @@ fn main() {
         ),
         None => (GameType::MusGameTwoPlayers, None),
     };
-    let mut arena = MusArena::new(lance);
+    let mut arena = MusArena::<CuatroJugadores>::new(lance);
 
     let action_recorder = ActionRecorder::new();
 

@@ -39,11 +39,9 @@ impl Trainer {
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                     }
                     GameType::MusGameTwoPlayers => {
-                        let mut mus_game = MusGameTwoPlayers::new(
-                            tantos,
-                            game_config.abstract_game,
-                            Rc::new(utility_table),
-                        );
+                        let mut mus_game =
+                            MusGameTwoPlayers::new(tantos, game_config.abstract_game)
+                                .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
                         println!("Finished training.");

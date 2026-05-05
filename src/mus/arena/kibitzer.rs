@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::mus::{Accion, CuatroJugadores, ModalidadMus, PartidaMus};
+use crate::mus::{Accion, ModalidadMus, PartidaMus};
 
 use super::MusAction;
 
@@ -32,8 +32,8 @@ impl Default for ActionRecorder {
     }
 }
 
-impl Kibitzer<CuatroJugadores> for ActionRecorder {
-    fn record(&mut self, _partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction) {
+impl<T: ModalidadMus> Kibitzer<T> for ActionRecorder {
+    fn record(&mut self, _partida_mus: &PartidaMus<T>, action: MusAction) {
         match &action {
             MusAction::GameStart(_) | MusAction::LanceStart(_) => {
                 self.history.lock().unwrap().clear()
