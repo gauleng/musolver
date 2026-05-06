@@ -73,7 +73,10 @@ impl KibitzerCli {
 impl Kibitzer<CuatroJugadores> for KibitzerCli {
     fn record(&mut self, partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction) {
         match &action {
-            MusAction::GameStart(dealer_id) => {
+            MusAction::GameStart {
+                hand: dealer_id,
+                scoreboard: _,
+            } => {
                 self.lance_actual = None;
                 self.jugador_mano = *dealer_id;
                 self.manos.clear();
@@ -320,7 +323,7 @@ fn main() {
         ),
         None => (GameType::MusGameTwoPlayers, None),
     };
-    let mut arena = MusArena::<CuatroJugadores>::new(lance);
+    let mut arena = MusArena::<CuatroJugadores>::new([0, 0], lance);
 
     let action_recorder = ActionRecorder::new();
 

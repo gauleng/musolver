@@ -143,26 +143,29 @@ impl PartidaMus<CuatroJugadores> {
         let lance = self.lances[self.idx_lance].0;
         self.tanteo_envites_lance();
         self.tanteo_final_lance(&lance);
-        while let Some(e) = self.siguiente_lance() {
-            if e.turno().is_some() {
-                return Ok(e.turno());
+        while let Some((lance, estado_lance)) = self.siguiente_lance() {
+            if estado_lance.turno().is_some() {
+                return Ok(estado_lance.turno());
+            } else {
+                self.tanteo_final_lance(&lance);
             }
         }
         self.tanteo_final();
         Ok(None)
     }
 
-    fn siguiente_lance(&mut self) -> Option<&EstadoLance<CuatroJugadores>> {
+    fn siguiente_lance(&mut self) -> Option<(Lance, &EstadoLance<CuatroJugadores>)> {
         self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
             self.idx_lance += 1;
             let lance = self.lances[self.idx_lance].0;
             let estado_lance = self.crear_estado_lance(lance);
             self.estado_lance = Some(estado_lance);
+            Some(lance).zip(self.estado_lance.as_ref())
         } else {
             self.estado_lance = None;
+            None
         }
-        self.estado_lance.as_ref()
     }
 
     fn tanteo_final_lance(&mut self, l: &Lance) {
@@ -271,26 +274,29 @@ impl PartidaMus<DosJugadores> {
         let lance = self.lances[self.idx_lance].0;
         self.tanteo_envites_lance();
         self.tanteo_final_lance(&lance);
-        while let Some(e) = self.siguiente_lance() {
-            if e.turno().is_some() {
-                return Ok(e.turno());
+        while let Some((lance, estado_lance)) = self.siguiente_lance() {
+            if estado_lance.turno().is_some() {
+                return Ok(estado_lance.turno());
+            } else {
+                self.tanteo_final_lance(&lance);
             }
         }
         self.tanteo_final();
         Ok(None)
     }
 
-    fn siguiente_lance(&mut self) -> Option<&EstadoLance<DosJugadores>> {
+    fn siguiente_lance(&mut self) -> Option<(Lance, &EstadoLance<DosJugadores>)> {
         self.estado_lance.as_ref()?;
         if self.idx_lance < self.lances.len() - 1 {
             self.idx_lance += 1;
             let lance = self.lances[self.idx_lance].0;
             let estado_lance = self.crear_estado_lance(lance);
             self.estado_lance = Some(estado_lance);
+            Some(lance).zip(self.estado_lance.as_ref())
         } else {
             self.estado_lance = None;
+            None
         }
-        self.estado_lance.as_ref()
     }
 
     /// Devuelve las manos de los jugadores.
@@ -620,5 +626,52 @@ mod tests {
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         assert_eq!(partida_lance.as_ref().unwrap().tantos(), &[3, 0]);
+    }
+
+    #[test]
+    fn test_marcador_sin_lances() {
+        let manos = [
+            Mano::try_from("RS64").unwrap(),
+            Mano::try_from("RCC1").unwrap(),
+        ];
+        let mut game = PartidaMus::<DosJugadores>::new(manos, [0, 0]);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Envido(2));
+        let _ = game.actuar(Accion::Paso);
+        assert_eq!(game.tantos(), &[0, 1]);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Envido(2));
+        let turno = game.actuar(Accion::Paso);
+        // Solo el jugador 2 tiene pares y juego, la partida termina.
+        assert!(turno.is_ok());
+        assert!(turno.unwrap().is_none());
+        // 2 tantos de envites en grande y chica, 1 de pares, 3 de juego.
+        assert_eq!(game.tantos(), &[0, 6]);
+
+        let manos = [
+            Mano::try_from("RS64").unwrap(),
+            Mano::try_from("RCC1").unwrap(),
+            Mano::try_from("RS64").unwrap(),
+            Mano::try_from("RCC1").unwrap(),
+        ];
+        let mut game = PartidaMus::<CuatroJugadores>::new(manos, [0, 0]);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Envido(2));
+        let _ = game.actuar(Accion::Envido(2));
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Paso);
+        assert_eq!(game.tantos(), &[0, 1]);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Paso);
+        let _ = game.actuar(Accion::Envido(2));
+        let _ = game.actuar(Accion::Envido(2));
+        let _ = game.actuar(Accion::Paso);
+        let turno = game.actuar(Accion::Paso);
+        // Solo el jugador 2 tiene pares y juego, la partida termina.
+        assert!(turno.is_ok());
+        assert!(turno.unwrap().is_none());
+        // 2 tantos de envites en grande y chica, 2 de pares, 6 de juego.
+        assert_eq!(game.tantos(), &[0, 10]);
     }
 }

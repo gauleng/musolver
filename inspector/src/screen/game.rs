@@ -136,7 +136,15 @@ impl MusArenaUi {
 
     pub fn view(&self) -> Element<'_, GameEvent> {
         let scoreboard = container(row![
-            text(format!("{} - {}", self.scoreboard[0], self.scoreboard[1])).size(40)
+            column![
+                text(self.players[0].name.clone()),
+                text(format!("{}", self.scoreboard[0])).size(40)
+            ],
+            column![text(""), text(" - ").size(40)],
+            column![
+                text(self.players[1].name.clone()),
+                text(format!("{}", self.scoreboard[1])).size(40)
+            ],
         ])
         .style(container::rounded_box)
         .padding(10);
@@ -178,9 +186,10 @@ impl MusArenaUi {
             scrollable(column(self.arena_events.iter().map(|mus_action| {
                 match mus_action {
                     MusAction::LanceStart(lance) => text(format!("Lance start: {lance:?}")),
-                    MusAction::PlayerAction(player_id, accion) => {
-                        text(format!("Player {player_id}: {accion}"))
-                    }
+                    MusAction::PlayerAction(player_id, accion) => text(format!(
+                        "[{player_id}] {}: {accion}",
+                        self.players[*player_id].name
+                    )),
                     MusAction::Payoff(pareja_id, tantos) => {
                         text(format!("Payoff: Couple {pareja_id} wins {tantos} tantos"))
                     }
@@ -307,9 +316,13 @@ impl MusArenaUi {
                 }
                 ArenaMessage::GameAction(mus_action) => {
                     match mus_action {
-                        MusAction::GameStart(dealer_id) => {
+                        MusAction::GameStart {
+                            hand: dealer_id,
+                            scoreboard: s,
+                        } => {
                             self.dealer = dealer_id;
                             self.game_running = true;
+                            self.scoreboard = s;
                             self.players.iter_mut().for_each(|player| {
                                 player.last_action = None;
                             });
@@ -407,7 +420,11 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 partida_mus: &musolver::mus::PartidaMus<DosJugadores>,
             ) -> musolver::mus::Accion {
                 let next_actions = {
-                    let mut mus_game = MusGameTwoPlayers::new_with_hands(partida_mus.manos(), *partida_mus.tantos(), false);
+                    let mut mus_game = MusGameTwoPlayers::new_with_hands(
+                        partida_mus.manos(),
+                        *partida_mus.tantos(),
+                        false,
+                    );
                     for action in self.history.lock().unwrap().iter() {
                         mus_game.act(*action);
                     }
@@ -461,7 +478,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
         match game_type {
             musolver::solver::GameType::LanceGame(_lance) => todo!(),
             musolver::solver::GameType::LanceGameTwoHands(lance) => {
-                let mut arena = MusArena::<CuatroJugadores>::new(Some(lance));
+                let mut arena = MusArena::<CuatroJugadores>::new([0, 0], Some(lance));
                 arena.agents.push(Box::new(agent_gui));
                 arena.agents.push(Box::new(agent_musolver.clone()));
                 arena.agents.push(Box::new(agent_musolver.clone()));
@@ -477,7 +494,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 }
             }
             musolver::solver::GameType::MusGame | musolver::solver::GameType::MusGameTwoHands => {
-                let mut arena = MusArena::<CuatroJugadores>::new(None);
+                let mut arena = MusArena::<CuatroJugadores>::new([0, 0], None);
                 arena.agents.push(Box::new(agent_gui));
                 arena.agents.push(Box::new(agent_musolver.clone()));
                 arena.agents.push(Box::new(agent_musolver.clone()));
@@ -493,7 +510,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 }
             }
             musolver::solver::GameType::MusGameTwoPlayers => {
-                let mut arena = MusArena::<DosJugadores>::new(None);
+                let mut arena = MusArena::<DosJugadores>::new([37, 37], None);
                 arena.agents.push(Box::new(agent_gui));
                 arena.agents.push(Box::new(agent_musolver.clone()));
                 arena.kibitzers.push(Box::new(kibitzer));

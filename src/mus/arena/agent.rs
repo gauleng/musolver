@@ -49,12 +49,17 @@ impl Agent<CuatroJugadores> for AgenteAleatorio {
 #[derive(Debug, Clone)]
 pub struct AgenteMusolver {
     strategy: Strategy,
+    initial_score: [u8; 2],
     history: Arc<Mutex<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
     pub fn new(strategy: Strategy, history: Arc<Mutex<Vec<Accion>>>) -> Self {
-        Self { strategy, history }
+        Self {
+            strategy,
+            initial_score: [0, 0],
+            history,
+        }
     }
 
     fn accion_aleatoria(actions: &[Accion], probabilities: &[f64]) -> Accion {
@@ -67,12 +72,15 @@ impl AgenteMusolver {
 #[async_trait]
 impl Agent<DosJugadores> for AgenteMusolver {
     async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
+        let history = self.history.lock().unwrap().clone();
+        if history.len() < 2 {
+            self.initial_score = *partida_mus.tantos();
+        }
         let mut mus_game = MusGameTwoPlayers::new_with_hands(
             partida_mus.manos(),
-            *partida_mus.tantos(),
+            self.initial_score,
             self.strategy.strategy_config.game_config.abstract_game,
         );
-        let history = self.history.lock().unwrap().clone();
         for action in &history {
             mus_game.act(*action);
         }

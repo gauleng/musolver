@@ -35,9 +35,11 @@ impl Default for ActionRecorder {
 impl<T: ModalidadMus> Kibitzer<T> for ActionRecorder {
     fn record(&mut self, _partida_mus: &PartidaMus<T>, action: MusAction) {
         match &action {
-            MusAction::GameStart(_) | MusAction::LanceStart(_) => {
-                self.history.lock().unwrap().clear()
+            MusAction::GameStart {
+                hand: _,
+                scoreboard: _,
             }
+            | MusAction::LanceStart(_) => self.history.lock().unwrap().clear(),
             MusAction::PlayerAction(_, accion) => self.history.lock().unwrap().push(*accion),
             _ => {}
         }
