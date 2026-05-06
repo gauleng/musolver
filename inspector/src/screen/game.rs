@@ -195,6 +195,16 @@ impl MusArenaUi {
                     MusAction::Payoff(pareja_id, tantos) => {
                         text(format!("Payoff: Couple {pareja_id} wins {tantos} tantos"))
                     }
+                    MusAction::HasPares(player_id, has_pares) => text(format!(
+                        "Pares {}: {}",
+                        self.players[*player_id].name,
+                        if *has_pares { "yes" } else { "no" }
+                    )),
+                    MusAction::HasJuego(player_id, has_juego) => text(format!(
+                        "Juego {}: {}",
+                        self.players[*player_id].name,
+                        if *has_juego { "yes" } else { "no" }
+                    )),
                     _ => text(""),
                 }
                 .into()
@@ -344,6 +354,8 @@ impl MusArenaUi {
                             self.players[player_id].last_action = Some(action);
                             self.arena_events.push(mus_action);
                         }
+                        MusAction::HasPares(_, _) => self.arena_events.push(mus_action),
+                        MusAction::HasJuego(_, _) => self.arena_events.push(mus_action),
                     }
                     None
                 }

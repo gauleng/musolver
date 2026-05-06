@@ -17,7 +17,13 @@ pub enum MusAction {
     LanceStart(Lance),
     /// A player acts. It contains the index of the player acting and the corresponding action.
     PlayerAction(usize, Accion),
-    /// The payoff received by each player at the end of the game. It contains the index of the
+    /// A player has pares. It contains the index of the player and a boolean set to true if the
+    /// player has pares.
+    HasPares(usize, bool),
+    /// A player has pares. It contains the index of the player and a boolean set to true if the
+    /// player has juego.
+    HasJuego(usize, bool),
+    /// The payoff received by each player during the game. It contains the index of the
     /// player receiving the payoff and the payoff itself.
     Payoff(usize, u8),
 }
@@ -112,10 +118,29 @@ impl MusArena<DosJugadores> {
                 scoreboard = self.report_payoff(&scoreboard);
                 let nuevo_lance = self.partida_mus.lance_actual();
                 if nuevo_lance != lance {
-                    lance = nuevo_lance;
-                    if let Some(l) = lance {
+                    if let Some(l) = nuevo_lance {
+                        if l == Lance::Pares
+                            || (lance == Some(Lance::Chica)
+                                && (l == Lance::Punto || l == Lance::Juego))
+                        {
+                            for i in 0..manos.len() {
+                                self.record_action(MusAction::HasPares(
+                                    self.order[i],
+                                    manos[i].hay_pares(),
+                                ));
+                            }
+                        }
+                        if l == Lance::Juego || l == Lance::Punto {
+                            for i in 0..manos.len() {
+                                self.record_action(MusAction::HasJuego(
+                                    self.order[i],
+                                    manos[i].juego().is_some(),
+                                ));
+                            }
+                        }
                         self.record_action(MusAction::LanceStart(l));
                     }
+                    lance = nuevo_lance;
                 }
             }
         }
