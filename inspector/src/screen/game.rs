@@ -81,6 +81,7 @@ pub struct MusArenaUi {
     players: Vec<Player>,
     dealer: usize,
     scoreboard: [u8; 2],
+    rounds: [u8; 2],
     game_running: bool,
     lance: Option<Lance>,
 }
@@ -126,6 +127,7 @@ impl MusArenaUi {
                 dealer: 0,
                 arena_events: vec![],
                 scoreboard: [0, 0],
+                rounds: [0, 0],
                 deck_images: deck(),
                 game_running: false,
                 lance: None,
@@ -138,12 +140,12 @@ impl MusArenaUi {
         let scoreboard = container(row![
             column![
                 text(self.players[0].name.clone()),
-                text(format!("{}", self.scoreboard[0])).size(40)
+                text(format!("{} ({})", self.scoreboard[0], self.rounds[0])).size(40)
             ],
             column![text(""), text(" - ").size(40)],
             column![
                 text(self.players[1].name.clone()),
-                text(format!("{}", self.scoreboard[1])).size(40)
+                text(format!("{} ({})", self.scoreboard[1], self.rounds[1])).size(40)
             ],
         ])
         .style(container::rounded_box)
@@ -350,6 +352,12 @@ impl MusArenaUi {
                     None
                 }
                 ArenaMessage::NewGameRequested => {
+                    if self.scoreboard[0] == 40 {
+                        self.rounds[0] += 1;
+                    }
+                    if self.scoreboard[1] == 40 {
+                        self.rounds[1] += 1;
+                    }
                     if let ArenaState::Connected(_connection) = &mut self.state {
                         self.game_running = false;
                     }
@@ -510,7 +518,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 }
             }
             musolver::solver::GameType::MusGameTwoPlayers => {
-                let mut arena = MusArena::<DosJugadores>::new([37, 37], None);
+                let mut arena = MusArena::<DosJugadores>::new([36, 36], None);
                 arena.agents.push(Box::new(agent_gui));
                 arena.agents.push(Box::new(agent_musolver.clone()));
                 arena.kibitzers.push(Box::new(kibitzer));

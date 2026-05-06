@@ -20,9 +20,13 @@ impl Trainer {
     pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
         let mut cfr = Cfr::new();
         let mut utility_table = MusGameTwoPlayers::default_utility_table();
-        (35..40).rev().for_each(|t1| {
-            (0..(40 - t1)).for_each(|t2| {
+        let target = [36, 36];
+        (0..40).rev().for_each(|t1| {
+            for t2 in 0..(40 - t1) {
                 let tantos = [t1 + t2, 39 - t2];
+                if tantos[0] < target[0] || tantos[1] < target[1] {
+                    continue;
+                }
                 match game_config.game_type {
                     GameType::LanceGame(lance) => {
                         let mut lance_game =
@@ -53,7 +57,7 @@ impl Trainer {
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                     }
                 }
-            });
+            }
         });
         cfr
     }
