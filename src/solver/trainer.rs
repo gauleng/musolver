@@ -8,7 +8,9 @@ use crate::{
     solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
 };
 
-pub struct Trainer {}
+pub struct Trainer {
+    tantos: [u8; 2],
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainerConfig {
@@ -17,10 +19,18 @@ pub struct TrainerConfig {
 }
 
 impl Trainer {
+    pub fn new() -> Self {
+        Self { tantos: [0; 2] }
+    }
+
+    pub fn with_tantos(self, tantos: [u8; 2]) -> Self {
+        Self { tantos }
+    }
+
     pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
         let mut cfr = Cfr::new();
         let mut utility_table = MusGameTwoPlayers::default_utility_table();
-        let target = [36, 36];
+        let target = self.tantos;
         (0..40).rev().for_each(|t1| {
             for t2 in 0..(40 - t1) {
                 let tantos = [t1 + t2, 39 - t2];

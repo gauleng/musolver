@@ -101,7 +101,7 @@ fn main() {
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
-    let trainer = Trainer {};
+    let trainer = Trainer::new().with_tantos(tantos);
     let cfr = trainer.train(&game_config, &trainer_config);
     let curr_time = Utc::now();
     output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
