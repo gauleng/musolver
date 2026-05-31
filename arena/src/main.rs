@@ -293,7 +293,7 @@ fn main() {
             None => pick_musolver_strategy(),
         });
 
-        let strategy = match Strategy::from_file(strategy_path.as_path()) {
+        let strategy = match Strategy::from_json(strategy_path.as_path()) {
             Ok(s) => s,
             Err(SolverError::InvalidStrategyPath(err, path)) => {
                 panic!("Cannot open strategy file: {}. ({})", path, err)

@@ -98,7 +98,7 @@ impl Loader {
                 Some(LoaderAction::OpenExplorer(strategy.unwrap()))
             }
             LoaderEvent::PlayStrategy(path) => {
-                let strategy = Strategy::from_file(path);
+                let strategy = Strategy::from_json(path);
                 Some(LoaderAction::OpenGame(strategy.unwrap()))
             }
             LoaderEvent::ListStrategies(list) => {

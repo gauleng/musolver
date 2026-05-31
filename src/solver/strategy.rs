@@ -5,14 +5,22 @@ use std::{
     path::Path,
 };
 
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::{Cfr, mus::Lance};
 
 use super::{SolverError, TrainerConfig};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+    Clone,
+    Copy,
+)]
 pub enum GameType {
     LanceGame(Lance),
     LanceGameTwoHands(Lance),
@@ -21,19 +29,43 @@ pub enum GameType {
     MusGameTwoPlayers,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+    Clone,
+)]
 pub struct GameConfig {
     pub game_type: GameType,
     pub abstract_game: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+    Clone,
+)]
 pub struct StrategyConfig {
     pub trainer_config: TrainerConfig,
     pub game_config: GameConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+)]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
     pub nodes: HashMap<String, Vec<f64>>,
@@ -164,13 +196,43 @@ impl Strategy {
         Ok(())
     }
 
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, SolverError> {
+    pub fn to_rkyv(&self, path: impl AsRef<Path>) -> Result<(), SolverError> {
+        let contents = rkyv::to_bytes::<rkyv::rancor::Error>(self)
+            .map_err(SolverError::ParseStrategyRkyvError)?;
+        fs::write(path.as_ref(), contents).map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        Ok(())
+    }
+
+    pub fn from_json(path: impl AsRef<Path>) -> Result<Self, SolverError> {
         let contents = fs::read_to_string(path.as_ref()).map_err(|err| {
             SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
         })?;
         let n: Self =
             serde_json::from_str(&contents).map_err(SolverError::ParseStrategyJsonError)?;
         Ok(n)
+    }
+
+    pub fn from_rkyv(path: impl AsRef<Path>) -> Result<Self, SolverError> {
+        let contents = fs::read(path.as_ref()).map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        let n: Self = rkyv::from_bytes::<Self, rkyv::rancor::Error>(&contents)
+            .map_err(SolverError::ParseStrategyRkyvError)?;
+        Ok(n)
+    }
+
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, SolverError> {
+        let path = path.as_ref();
+
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("json") => Self::from_json(path),
+            Some("rkyv") => Self::from_rkyv(path),
+            _ => Err(SolverError::UnsupportedFileFormat(
+                path.display().to_string(),
+            )),
+        }
     }
 
     pub fn find(path: impl AsRef<Path>) -> Vec<(String, StrategyConfig)> {
@@ -188,23 +250,43 @@ impl Strategy {
         let mut result = Vec::new();
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if let Some(ext) = path.extension() {
-                if ext != "json" {
-                    continue;
+            match path.extension().and_then(|ext| ext.to_str()) {
+                Some("json") => {
+                    let contents = match fs::read_to_string(path) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    #[derive(Debug, serde::Deserialize)]
+                    struct MockStrategy {
+                        strategy_config: StrategyConfig,
+                    }
+                    let mock_strategy: MockStrategy = match serde_json::from_str(&contents) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    result.push((path.display().to_string(), mock_strategy.strategy_config));
                 }
-                let contents = match fs::read_to_string(path) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                #[derive(Debug, Deserialize)]
-                struct MockStrategy {
-                    strategy_config: StrategyConfig,
+                Some("rkyv") => {
+                    let bytes = match fs::read(path) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    let archived =
+                        match rkyv::access::<ArchivedStrategy, rkyv::rancor::Error>(&bytes) {
+                            Ok(s) => s,
+                            Err(_) => continue,
+                        };
+                    let strategy_config =
+                        match rkyv::deserialize::<StrategyConfig, rkyv::rancor::Error>(
+                            &archived.strategy_config,
+                        ) {
+                            Ok(s) => s,
+                            Err(_) => continue,
+                        };
+                    result.push((path.display().to_string(), strategy_config));
                 }
-                let mock_strategy: MockStrategy = match serde_json::from_str(&contents) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                result.push((path.display().to_string(), mock_strategy.strategy_config));
+                _ => {}
             }
         }
         result

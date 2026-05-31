@@ -117,7 +117,7 @@ pub fn export_cfr(
     game_config: &GameConfig,
 ) -> Result<(), SolverError> {
     let mut estrategia_path = PathBuf::from(path);
-    estrategia_path.set_extension("json");
+    estrategia_path.set_extension("rkyv");
     let strategy = Strategy::new(cfr, trainer_config, game_config);
-    strategy.to_file(estrategia_path)
+    strategy.to_rkyv(estrategia_path)
 }

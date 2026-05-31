@@ -1,7 +1,6 @@
 use std::{fmt::Debug, rc::Rc};
 
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     Cfr, CfrMethod, Game,
@@ -12,7 +11,15 @@ pub struct Trainer {
     tantos: [u8; 2],
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+    Clone,
+)]
 pub struct TrainerConfig {
     pub method: CfrMethod,
     pub iterations: usize,
@@ -29,7 +36,7 @@ impl Trainer {
 
     pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
         let mut cfr = Cfr::new();
-        let mut utility_table = MusGameTwoPlayers::default_utility_table();
+        let mut utility_table = MusGame::default_utility_table();
         let target = self.tantos;
         (0..40).rev().for_each(|t1| {
             for t2 in 0..(40 - t1) {
@@ -37,20 +44,31 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                match game_config.game_type {
+                let expected_utility = match game_config.game_type {
                     GameType::LanceGame(lance) => {
                         let mut lance_game =
                             LanceGame::new(lance, tantos, game_config.abstract_game);
                         train_game(&mut cfr, &mut lance_game, trainer_config);
-                    }
-                    GameType::MusGame => {
-                        let mut mus_game = MusGame::new(tantos, game_config.abstract_game);
-                        train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility = cfr.expected_utility(&lance_game)[0];
+                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                        expected_utility
                     }
                     GameType::LanceGameTwoHands(_) => todo!(),
-                    GameType::MusGameTwoHands => {
-                        let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game);
+                    GameType::MusGame => {
+                        let mut mus_game = MusGame::new(tantos, game_config.abstract_game)
+                            .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                        expected_utility
+                    }
+                    GameType::MusGameTwoHands => {
+                        let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game)
+                            .with_utility_table(Rc::new(utility_table));
+                        train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                        expected_utility
                     }
                     GameType::MusGameTwoPlayers => {
                         let mut mus_game =
@@ -58,15 +76,16 @@ impl Trainer {
                                 .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
-                        println!("Finished training.");
-                        println!(
-                            "Expected utility {}-{}: {}",
-                            tantos[0], tantos[1], expected_utility
-                        );
-                        println!();
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                        expected_utility
                     }
-                }
+                };
+                println!("Finished training.");
+                println!(
+                    "Expected utility {}-{}: {}",
+                    tantos[0], tantos[1], expected_utility
+                );
+                println!();
             }
         });
         cfr

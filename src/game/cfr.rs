@@ -207,7 +207,16 @@ pub trait Game: Sized {
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)>;
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+)]
 pub enum CfrMethod {
     Cfr,
     CfrPlus,

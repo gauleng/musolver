@@ -22,6 +22,7 @@ pub struct MusGame {
     manos_pares: ArrayString<4>,
     manos_juego: ArrayString<4>,
     abstract_game: bool,
+    utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
 impl MusGame {
@@ -35,6 +36,7 @@ impl MusGame {
             manos_pares: ArrayString::new(),
             manos_juego: ArrayString::new(),
             abstract_game,
+            utility_table: None,
         }
     }
 
@@ -66,6 +68,7 @@ impl MusGame {
             manos_juego,
             abstract_game,
             last_action: None,
+            utility_table: None,
         }
     }
     /*fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
@@ -117,6 +120,16 @@ impl MusGame {
         });
         info_set_prefix
     }
+    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+        Self {
+            utility_table: Some(utility_table),
+            ..self
+        }
+    }
+
+    pub fn default_utility_table() -> [[f64; 40]; 40] {
+        std::array::from_fn(|t1| std::array::from_fn(|t2| (t1 - t2) as f64))
+    }
 }
 
 impl Game for MusGame {
@@ -126,12 +139,30 @@ impl Game for MusGame {
     fn utility(&mut self, player: usize) -> f64 {
         let tantos = self.partida.as_mut().unwrap().tantos();
 
-        let payoff = [
-            tantos[0] as i8 - tantos[1] as i8,
-            tantos[1] as i8 - tantos[0] as i8,
-        ];
+        if let Some(utility_table) = &self.utility_table {
+            if tantos[0] == 40 || tantos[1] == 40 {
+                let payoff = [
+                    tantos[0] as i8 - tantos[1] as i8,
+                    tantos[1] as i8 - tantos[0] as i8,
+                ];
 
-        payoff[player % 2] as f64
+                payoff[player % 2] as f64
+            } else {
+                let expected_utility = utility_table[tantos[1] as usize][tantos[0] as usize];
+                if player == 0 {
+                    -expected_utility
+                } else {
+                    expected_utility
+                }
+            }
+        } else {
+            let payoff = [
+                tantos[0] as i8 - tantos[1] as i8,
+                tantos[1] as i8 - tantos[0] as i8,
+            ];
+
+            payoff[player] as f64
+        }
     }
 
     fn info_set_str(&self, player: usize) -> String {
@@ -311,6 +342,7 @@ pub struct MusGameTwoHands {
     manos_pares: ArrayString<4>,
     manos_juego: ArrayString<4>,
     abstract_game: bool,
+    utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
 impl MusGameTwoHands {
@@ -323,6 +355,7 @@ impl MusGameTwoHands {
             manos_pares: ArrayString::new(),
             manos_juego: ArrayString::new(),
             abstract_game,
+            utility_table: None,
         }
     }
 
@@ -353,6 +386,7 @@ impl MusGameTwoHands {
             manos_pares,
             manos_juego,
             abstract_game,
+            utility_table: None,
         }
     }
 
@@ -384,6 +418,12 @@ impl MusGameTwoHands {
         });
         info_set_prefix
     }
+    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+        Self {
+            utility_table: Some(utility_table),
+            ..self
+        }
+    }
 }
 
 impl Game for MusGameTwoHands {
@@ -393,12 +433,30 @@ impl Game for MusGameTwoHands {
     fn utility(&mut self, player: usize) -> f64 {
         let tantos = self.partida.as_mut().unwrap().tantos();
 
-        let payoff = [
-            tantos[0] as i8 - tantos[1] as i8,
-            tantos[1] as i8 - tantos[0] as i8,
-        ];
+        if let Some(utility_table) = &self.utility_table {
+            if tantos[0] == 40 || tantos[1] == 40 {
+                let payoff = [
+                    tantos[0] as i8 - tantos[1] as i8,
+                    tantos[1] as i8 - tantos[0] as i8,
+                ];
 
-        payoff[player % 2] as f64
+                payoff[player % 2] as f64
+            } else {
+                let expected_utility = utility_table[tantos[1] as usize][tantos[0] as usize];
+                if player == 0 {
+                    -expected_utility
+                } else {
+                    expected_utility
+                }
+            }
+        } else {
+            let payoff = [
+                tantos[0] as i8 - tantos[1] as i8,
+                tantos[1] as i8 - tantos[0] as i8,
+            ];
+
+            payoff[player] as f64
+        }
     }
 
     fn info_set_str(&self, player: usize) -> String {
@@ -649,10 +707,6 @@ impl MusGameTwoPlayers {
             }
         });
         info_set_prefix
-    }
-
-    pub fn default_utility_table() -> [[f64; 40]; 40] {
-        std::array::from_fn(|t1| std::array::from_fn(|t2| (t1 - t2) as f64))
     }
 }
 

@@ -61,7 +61,20 @@ pub enum Jugada {
 }
 
 /// Lances de una partida de mus.
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[derive(
+    Hash,
+    Eq,
+    PartialEq,
+    Copy,
+    Clone,
+    Debug,
+    ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+)]
 pub enum Lance {
     Grande,
     Chica,
