@@ -1,6 +1,4 @@
 use clap::ValueEnum;
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::MusError;
 use crate::mus::Accion;

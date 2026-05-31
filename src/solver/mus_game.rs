@@ -161,7 +161,7 @@ impl Game for MusGame {
                 tantos[1] as i8 - tantos[0] as i8,
             ];
 
-            payoff[player] as f64
+            payoff[player % 2] as f64
         }
     }
 
