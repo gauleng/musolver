@@ -6,7 +6,7 @@ use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 use crate::{
     Game, NodeType,
     mus::{Accion, CuatroJugadores, DosJugadores, ModalidadMus, PartidaMus},
-    solver::{LanceGame, MusGameTwoPlayers, Strategy},
+    solver::{LanceGame, Strategy},
 };
 
 #[async_trait]
@@ -76,23 +76,11 @@ impl Agent<DosJugadores> for AgenteMusolver {
         if history.len() < 2 {
             self.initial_score = *partida_mus.tantos();
         }
-        let mut mus_game = MusGameTwoPlayers::new_with_hands(
-            partida_mus.manos(),
-            self.initial_score,
-            self.strategy.strategy_config.game_config.abstract_game,
-        );
-        for action in &history {
-            mus_game.act(*action);
-        }
-        let current_player = match mus_game.current_player() {
-            NodeType::Player(current_player) => current_player,
-            _ => 0,
-        };
-        let info_set_str = mus_game.info_set_str(current_player);
-        let actions = mus_game.actions();
-        let action_probability = self.strategy.nodes.get(&info_set_str);
-        if let Some(probabilities) = action_probability {
-            Self::accion_aleatoria(&actions, probabilities)
+        let action_probability =
+            self.strategy
+                .actions(partida_mus.manos(), self.initial_score, &history);
+        if let Some((actions, probabilities)) = action_probability {
+            Self::accion_aleatoria(&actions, &probabilities)
         } else {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."
@@ -105,24 +93,15 @@ impl Agent<DosJugadores> for AgenteMusolver {
 #[async_trait]
 impl Agent<CuatroJugadores> for AgenteMusolver {
     async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
-        let mut lance_game = LanceGame::from_partida_mus(
-            partida_mus,
-            self.strategy.strategy_config.game_config.abstract_game,
-        )
-        .unwrap();
         let history = self.history.lock().unwrap().clone();
-        for action in &history {
-            lance_game.act(*action);
+        if history.len() < 2 {
+            self.initial_score = *partida_mus.tantos();
         }
-        let current_player = match lance_game.current_player() {
-            NodeType::Player(current_player) => current_player,
-            _ => 0,
-        };
-        let info_set_str = lance_game.info_set_str(current_player);
-        let actions = lance_game.actions();
-        let action_probability = self.strategy.nodes.get(&info_set_str);
-        if let Some(probabilities) = action_probability {
-            Self::accion_aleatoria(&actions, probabilities)
+        let action_probability =
+            self.strategy
+                .actions(partida_mus.manos(), self.initial_score, &history);
+        if let Some((actions, probabilities)) = action_probability {
+            Self::accion_aleatoria(&actions, &probabilities)
         } else {
             println!(
                 "ERROR: La lista de acciones no está en el árbol. {history:?}. Se pasa por defecto."

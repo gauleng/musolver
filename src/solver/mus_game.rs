@@ -40,35 +40,26 @@ impl MusGame {
         }
     }
 
-    pub fn new_with_hands(manos: &[Mano; 4], tantos: [u8; 2], abstract_game: bool) -> Self {
-        let manos = [
-            manos[0].clone(),
-            manos[1].clone(),
-            manos[2].clone(),
-            manos[3].clone(),
-        ];
+    pub fn with_hands(self, manos: [Mano; 4]) -> Self {
         let info_set_prefix = MusGame::info_set_prefix(
             &manos,
-            &tantos,
-            if abstract_game {
+            &self.tantos,
+            if self.abstract_game {
                 Some(Lance::Grande)
             } else {
                 None
             },
         );
         let (manos_pares, manos_juego) = MusGame::jugadas_manos(&manos);
-        let partida = Some(PartidaMus::<CuatroJugadores>::new(manos, tantos));
+        let partida = Some(PartidaMus::<CuatroJugadores>::new(manos, self.tantos));
         let history_str = ArrayString::<64>::from("M").unwrap();
         Self {
             partida,
-            tantos,
             history_str,
             info_set_prefix,
             manos_pares,
             manos_juego,
-            abstract_game,
-            last_action: None,
-            utility_table: None,
+            ..self
         }
     }
     /*fn from_partida_mus(partida: PartidaMus, abstract_game: bool) -> Self {
@@ -212,7 +203,7 @@ impl Game for MusGame {
                         ];
 
                         (
-                            Self::new_with_hands(&manos, self.tantos, self.abstract_game),
+                            Self::new(self.tantos, self.abstract_game).with_hands(manos),
                             prob * prob2,
                         )
                     },
@@ -638,29 +629,26 @@ impl MusGameTwoPlayers {
         }
     }
 
-    pub fn new_with_hands(manos: &[Mano; 2], tantos: [u8; 2], abstract_game: bool) -> Self {
-        let manos = [manos[0].clone(), manos[1].clone()];
+    pub fn with_hands(self, manos: [Mano; 2]) -> Self {
         let info_set_prefix = MusGameTwoPlayers::info_set_prefix(
             &manos,
-            &tantos,
-            if abstract_game {
+            &self.tantos,
+            if self.abstract_game {
                 Some(Lance::Grande)
             } else {
                 None
             },
         );
         let (manos_pares, manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
-        let partida = Some(PartidaMus::<DosJugadores>::new(manos, tantos));
+        let partida = Some(PartidaMus::<DosJugadores>::new(manos, self.tantos));
         let history_str = ArrayString::<64>::from("M").unwrap();
         Self {
             partida,
-            tantos,
             history_str,
             info_set_prefix,
             manos_pares,
             manos_juego,
-            abstract_game,
-            utility_table: None,
+            ..self
         }
     }
 
@@ -781,11 +769,8 @@ impl Game for MusGameTwoPlayers {
         DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).map(
             |(mano1, mano2, probability)| {
                 (
-                    Self::new_with_hands(
-                        &[Mano::new(mano1), Mano::new(mano2)],
-                        self.tantos,
-                        self.abstract_game,
-                    ),
+                    Self::new(self.tantos, self.abstract_game)
+                        .with_hands([Mano::new(mano1), Mano::new(mano2)]),
                     probability,
                 )
             },
@@ -899,7 +884,7 @@ mod tests {
             Mano::from_str("RRR5").unwrap(),
             Mano::from_str("RCC1").unwrap(),
         ];
-        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [38, 37], false);
+        let mut game = MusGameTwoPlayers::new([38, 37], false).with_hands(manos);
         assert_eq!(game.info_set_str(0), "38:37,RRR5,M");
         game.act(Accion::Paso);
         assert_eq!(game.info_set_str(1), "38:37,RCC1,Mp");
@@ -919,7 +904,7 @@ mod tests {
             Mano::from_str("R775").unwrap(),
             Mano::from_str("S651").unwrap(),
         ];
-        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [38, 37], false);
+        let mut game = MusGameTwoPlayers::new([38, 37], false).with_hands(manos);
         game.act(Accion::Paso);
         game.act(Accion::Paso);
 
@@ -937,7 +922,7 @@ mod tests {
             Mano::from_str("RRR5").unwrap(),
             Mano::from_str("RCC1").unwrap(),
         ];
-        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [35, 35], false);
+        let mut game = MusGameTwoPlayers::new([35, 35], false).with_hands(manos.clone());
         game.act(Accion::Envido(2));
         game.act(Accion::Envido(2));
         assert_eq!(
@@ -950,7 +935,7 @@ mod tests {
             game.actions(),
             vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
         );
-        let mut game = MusGameTwoPlayers::new_with_hands(&manos, [37, 37], false);
+        let mut game = MusGameTwoPlayers::new([37, 37], false).with_hands(manos.clone());
         assert_eq!(
             game.actions(),
             vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]

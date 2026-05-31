@@ -135,6 +135,8 @@ impl Kibitzer<CuatroJugadores> for KibitzerCli {
                 self.marcador[*pareja_id] += *tantos as usize;
             }
             MusAction::LanceStart(lance) => self.lance_actual = Some(*lance),
+            MusAction::HasPares(_, _) => todo!(),
+            MusAction::HasJuego(_, _) => todo!(),
         }
     }
 }
@@ -211,14 +213,10 @@ impl Agent<DosJugadores> for AgenteCli {
     async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
         let next_actions = match self.game_type {
             GameType::MusGameTwoPlayers => {
-                let mut game = MusGameTwoPlayers::new_with_hands(
-                    &[
-                        partida_mus.manos()[0].clone(),
-                        partida_mus.manos()[0].clone(),
-                    ],
-                    *partida_mus.tantos(),
-                    false,
-                );
+                let mut game = MusGameTwoPlayers::new(*partida_mus.tantos(), false).with_hands([
+                    partida_mus.manos()[0].clone(),
+                    partida_mus.manos()[1].clone(),
+                ]);
                 self.get_actions(&mut game, &self.history.lock().unwrap())
             }
             _ => todo!(),

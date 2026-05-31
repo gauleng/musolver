@@ -440,11 +440,8 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                 partida_mus: &musolver::mus::PartidaMus<DosJugadores>,
             ) -> musolver::mus::Accion {
                 let next_actions = {
-                    let mut mus_game = MusGameTwoPlayers::new_with_hands(
-                        partida_mus.manos(),
-                        *partida_mus.tantos(),
-                        false,
-                    );
+                    let mut mus_game = MusGameTwoPlayers::new(*partida_mus.tantos(), false)
+                        .with_hands(partida_mus.manos().clone());
                     for action in self.history.lock().unwrap().iter() {
                         mus_game.act(*action);
                     }

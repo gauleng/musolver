@@ -21,8 +21,7 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameType, HandConfiguration, InfoSet, LanceGame, MusGame, MusGameTwoHands,
-        MusGameTwoPlayers, Strategy,
+        GameType, HandConfiguration, InfoSet, LanceGame, MusGameTwoPlayers, Strategy,
     },
 };
 
@@ -174,7 +173,7 @@ impl ActionPath {
         mano1: &Mano,
         mano2: Option<&Mano>,
     ) -> Option<(Vec<Accion>, Vec<f64>)> {
-        let manos = self.selected_example_hands();
+        let mut manos = self.selected_example_hands();
         let game_type = self.strategy.strategy_config.game_config.game_type;
         let history: Vec<Accion> = self.selected_history();
         let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
@@ -207,42 +206,17 @@ impl ActionPath {
                 )
             }
             GameType::MusGame => {
-                let mut mus_game = MusGame::new(tantos, abstract_game);
-                let info_set = format!("{}:{},{},", tantos[0], tantos[1], mano1);
-                mus_game.new_random();
-                for action in &history {
-                    mus_game.act(*action);
-                }
-                Some(mus_game.actions()).zip(
-                    self.strategy
-                        .nodes
-                        .get(&(info_set + &mus_game.history_str()))
-                        .cloned(),
-                )
+                manos[turno as usize] = mano1.clone();
+                self.strategy.actions(&manos, tantos, &history)
             }
             GameType::MusGameTwoHands => {
-                let mut mus_game = MusGameTwoHands::new(tantos, abstract_game);
-                let info_set = format!("{}:{},{},{},", tantos[0], tantos[1], mano1, mano2.unwrap());
-                mus_game.new_random();
-                for action in &history {
-                    mus_game.act(*action);
-                }
-                Some(mus_game.actions()).zip(
-                    self.strategy
-                        .nodes
-                        .get(&(info_set + &mus_game.history_str()))
-                        .cloned(),
-                )
+                manos[turno as usize] = mano1.clone();
+                manos[turno as usize + 2] = mano2.unwrap().clone();
+                self.strategy.actions(&manos, tantos, &history)
             }
             GameType::MusGameTwoPlayers => {
-                let mut manos = [manos[0].clone(), manos[1].clone()];
                 manos[turno as usize] = mano1.clone();
-                let mut mus_game = MusGameTwoPlayers::new_with_hands(&manos, tantos, abstract_game);
-                for action in &history {
-                    mus_game.act(*action);
-                }
-                let info_set = mus_game.info_set_str(turno as usize);
-                Some(mus_game.actions()).zip(self.strategy.nodes.get(&info_set).cloned())
+                self.strategy.actions(&manos, tantos, &history)
             }
         }
     }
@@ -637,22 +611,30 @@ impl ActionPath {
 
     fn game_state(&self) -> (Lance, musolver::NodeType, Vec<Accion>) {
         let manos = self.selected_example_hands();
-        let mut game = MusGameTwoPlayers::new_with_hands(
-            &[manos[0].clone(), manos[1].clone()],
-            [
-                self.selected_tantos_mano.unwrap(),
-                self.selected_tantos_postre.unwrap(),
-            ],
-            self.strategy.strategy_config.game_config.abstract_game,
-        );
-        self.selected_history()
-            .into_iter()
-            .for_each(|action| game.act(action));
-        let mus_game = game.mus_game();
-        let lance = mus_game.unwrap().lance_actual().unwrap();
-        let turno = game.current_player();
-        let actions = game.actions();
-        (lance, turno, actions)
+        match self.strategy.strategy_config.game_config.game_type {
+            GameType::LanceGame(_) => todo!(),
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGame => todo!(),
+            GameType::MusGameTwoHands => todo!(),
+            GameType::MusGameTwoPlayers => {
+                let mut game = MusGameTwoPlayers::new(
+                    [
+                        self.selected_tantos_mano.unwrap(),
+                        self.selected_tantos_postre.unwrap(),
+                    ],
+                    self.strategy.strategy_config.game_config.abstract_game,
+                )
+                .with_hands([manos[0].clone(), manos[1].clone()]);
+                self.selected_history()
+                    .into_iter()
+                    .for_each(|action| game.act(action));
+                let mus_game = game.mus_game();
+                let lance = mus_game.unwrap().lance_actual().unwrap();
+                let turno = game.current_player();
+                let actions = game.actions();
+                (lance, turno, actions)
+            }
+        }
     }
 
     fn example_hand(pares: bool, juego: bool) -> Mano {

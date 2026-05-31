@@ -7,7 +7,11 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::{Cfr, mus::Lance};
+use crate::{
+    Cfr, Game, NodeType,
+    mus::{Accion, Lance, Mano},
+    solver::{MusGame, MusGameTwoPlayers},
+};
 
 use super::{SolverError, TrainerConfig};
 
@@ -94,6 +98,55 @@ impl Strategy {
         }
     }
 
+    pub fn actions(
+        &self,
+        manos: &[Mano],
+        tantos: [u8; 2],
+        history: &[Accion],
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+        match self.strategy_config.game_config.game_type {
+            GameType::LanceGame(_) => todo!(),
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGame => {
+                let manos = [
+                    manos[0].clone(),
+                    manos[1].clone(),
+                    manos[2].clone(),
+                    manos[3].clone(),
+                ];
+                let mut mus_game =
+                    MusGame::new(tantos, self.strategy_config.game_config.abstract_game)
+                        .with_hands(manos.clone());
+                self.actions_for_game(&mut mus_game, history)
+            }
+            GameType::MusGameTwoHands => todo!(),
+            GameType::MusGameTwoPlayers => {
+                let manos = [manos[0].clone(), manos[1].clone()];
+                let mut mus_game =
+                    MusGameTwoPlayers::new(tantos, self.strategy_config.game_config.abstract_game)
+                        .with_hands(manos.clone());
+                self.actions_for_game(&mut mus_game, history)
+            }
+        }
+    }
+
+    fn actions_for_game(
+        &self,
+        game: &mut impl Game<Action = Accion>,
+        history: &[Accion],
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+        for action in history {
+            game.act(*action);
+        }
+        let actions = game.actions();
+        let turno = match game.current_player() {
+            NodeType::Player(t) => t,
+            NodeType::Terminal | NodeType::Chance => return None,
+        };
+        let info_set = game.info_set_str(turno as usize);
+        let strategy = self.nodes.get(&info_set).cloned();
+        Some(actions).zip(strategy)
+    }
     //pub fn best_response_value(
     //    &self,
     //    hand1: &Mano,
