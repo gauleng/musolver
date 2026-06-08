@@ -404,7 +404,7 @@ impl Game for LanceGame {
     const N_PLAYERS: usize = 4;
 
     fn new_random(&mut self) {
-        let baraja = Baraja::baraja_mus();
+        let mut baraja = Baraja::baraja_mus();
         loop {
             let manos = baraja.repartir_manos();
             let turno_inicial = self.lance.turno_inicial(&manos);

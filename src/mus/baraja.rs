@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::mus::Carta;
 use arrayvec::ArrayVec;
 use rand::seq::SliceRandom;
@@ -7,7 +9,7 @@ use super::Mano;
 
 /// Baraja española de cartas.
 #[derive(Clone, Debug)]
-pub struct Baraja(Vec<Carta>);
+pub struct Baraja(VecDeque<Carta>, usize);
 
 impl Baraja {
     pub const FREC_BARAJA_MUS: [(Carta, u8); 8] = [
@@ -23,7 +25,7 @@ impl Baraja {
 
     /// Devuelve una nueva baraja vacía.
     pub fn new() -> Self {
-        Baraja(Vec::with_capacity(40))
+        Baraja(VecDeque::with_capacity(40), 0)
     }
 
     /// Devuelve una baraj de mus. Incluye ocho ases y ocho reyes, y no incluye ni doses ni treses.
@@ -42,18 +44,20 @@ impl Baraja {
             b.insertar(Carta::Cuatro);
         }
         b.barajar();
+        b.1 = 40;
         b
     }
 
     /// Genera cuatro manos a partir de las primeras dieciseis cartas de la baraja en el momento de
     /// la llamada a la función. Esta funcion no baraja las cartas y tampoco las elimina de la
     /// baraja.
-    pub fn repartir_manos(&self) -> [Mano; 4] {
-        let mut c = self.primeras_n_cartas(16).iter();
+    pub fn repartir_manos(&mut self) -> [Mano; 4] {
+        let mut c = self.0.drain(0..16);
+        self.1 -= 16;
         core::array::from_fn(|_| {
             let mut m = ArrayVec::<Carta, 4>::new();
             for _ in 0..4 {
-                m.push(*c.next().unwrap());
+                m.push(c.next().unwrap());
             }
             Mano::from_arrayvec(m)
         })
@@ -61,28 +65,66 @@ impl Baraja {
 
     /// Inserta una carta en la baraja.
     pub fn insertar(&mut self, c: Carta) {
-        self.0.push(c);
+        self.0.push_back(c);
+        self.1 += 1;
     }
 
     /// Baraja las cartas. Utiliza el algoritmo shuffle del crate rand.
     pub fn barajar(&mut self) {
-        self.0.shuffle(&mut thread_rng());
+        self.0.make_contiguous().shuffle(&mut thread_rng());
     }
 
     /// Elimina una carta de la baraja y la devuelve. En caso de que sea una baraja vacía devuelve
     /// None.
     pub fn repartir(&mut self) -> Option<Carta> {
-        self.0.pop()
+        self.1 -= 1;
+        self.0.remove(0)
     }
 
     /// Devuelve un slice de las primeras n cartas de la baraja.
-    pub fn primeras_n_cartas(&self, n: usize) -> &[Carta] {
-        &self.0[0..n]
+    pub fn primeras_n_cartas(&mut self, n: usize) -> &[Carta] {
+        &self.0.make_contiguous()[0..n]
+    }
+
+    pub fn descartar(&mut self, mano: &mut Mano, descartes: [bool; 4]) {
+        let mut num_descartes = 0;
+        self.0
+            .extend(mano.iter().enumerate().filter_map(|(idx, carta)| {
+                if descartes[idx] {
+                    num_descartes += 1;
+                    Some(carta)
+                } else {
+                    None
+                }
+            }));
+        if num_descartes > self.1 {
+            self.0.make_contiguous()[self.1..].shuffle(&mut thread_rng());
+            self.1 = self.0.len();
+        }
+        mano.reemplazar(descartes, self.0.drain(0..num_descartes));
+        self.1 -= num_descartes;
     }
 }
 
 impl Default for Baraja {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_descartar() {
+        let mut baraja = Baraja::new();
+        let mut mano = Mano::new([Carta::As, Carta::As, Carta::As, Carta::Tres]);
+        baraja.descartar(&mut mano, [true, true, true, true]);
+        assert_eq!(mano.to_string(), "3111");
+
+        baraja.insertar(Carta::Caballo);
+        baraja.descartar(&mut mano, [false, false, true, true]);
+        assert_eq!(mano.to_string(), "3C11");
     }
 }

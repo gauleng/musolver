@@ -164,7 +164,7 @@ impl Game for MusGame {
     }
 
     fn new_random(&mut self) {
-        let baraja = Baraja::baraja_mus();
+        let mut baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         self.info_set_prefix = MusGame::info_set_prefix(
             &manos,
@@ -458,7 +458,7 @@ impl Game for MusGameTwoHands {
     }
 
     fn new_random(&mut self) {
-        let baraja = Baraja::baraja_mus();
+        let mut baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         self.info_set_prefix = MusGameTwoHands::info_set_prefix(
             &manos,
@@ -739,7 +739,7 @@ impl Game for MusGameTwoPlayers {
     }
 
     fn new_random(&mut self) {
-        let baraja = Baraja::baraja_mus();
+        let mut baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         let manos = [manos[0].clone(), manos[1].clone()];
         self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
