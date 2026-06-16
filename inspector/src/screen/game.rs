@@ -409,7 +409,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             }
         }
         impl<T: ModalidadMus> Kibitzer<T> for KibitzerGui {
-            fn record(&mut self, _partida_mus: &musolver::mus::PartidaMus<T>, action: MusAction) {
+            fn record(&mut self, _partida_mus: &musolver::mus::FaseEnvites<T>, action: MusAction) {
                 let _ = self.sender.try_send(ArenaMessage::GameAction(action));
             }
         }
@@ -437,7 +437,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
         impl Agent<DosJugadores> for AgentGui {
             async fn actuar(
                 &mut self,
-                partida_mus: &musolver::mus::PartidaMus<DosJugadores>,
+                partida_mus: &musolver::mus::FaseEnvites<DosJugadores>,
             ) -> musolver::mus::Accion {
                 let next_actions = {
                     let mut mus_game = MusGameTwoPlayers::new(*partida_mus.tantos(), false)
@@ -462,7 +462,7 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
         impl Agent<CuatroJugadores> for AgentGui {
             async fn actuar(
                 &mut self,
-                partida_mus: &musolver::mus::PartidaMus<CuatroJugadores>,
+                partida_mus: &musolver::mus::FaseEnvites<CuatroJugadores>,
             ) -> musolver::mus::Accion {
                 let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
                 for action in self.history.lock().unwrap().iter() {

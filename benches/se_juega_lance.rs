@@ -7,7 +7,7 @@ fn bench_hay_lance_juego(c: &mut Criterion) {
             || {
                 let mut baraja = Baraja::baraja_mus();
                 baraja.barajar();
-                baraja.repartir_manos()
+                baraja.repartir_manos::<4>()
             },
             |manos| {
                 Lance::Juego.hay_lance(&manos);
@@ -23,7 +23,7 @@ fn bench_hay_lance_pares(c: &mut Criterion) {
             || {
                 let mut baraja = Baraja::baraja_mus();
                 baraja.barajar();
-                baraja.repartir_manos()
+                baraja.repartir_manos::<4>()
             },
             |manos| {
                 Lance::Pares.hay_lance(&manos);
@@ -39,7 +39,7 @@ fn bench_se_juega_lance_juego(c: &mut Criterion) {
             || {
                 let mut baraja = Baraja::baraja_mus();
                 baraja.barajar();
-                baraja.repartir_manos()
+                baraja.repartir_manos::<4>()
             },
             |manos| {
                 Lance::Juego.se_juega(&manos);
@@ -55,7 +55,7 @@ fn bench_se_juega_lance_pares(c: &mut Criterion) {
             || {
                 let mut baraja = Baraja::baraja_mus();
                 baraja.barajar();
-                baraja.repartir_manos()
+                baraja.repartir_manos::<4>()
             },
             |manos| {
                 Lance::Pares.se_juega(&manos);

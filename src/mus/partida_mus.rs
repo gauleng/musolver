@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::fmt::Write;
 
 use arrayvec::ArrayVec;
 use serde::Deserialize;
@@ -22,15 +23,22 @@ pub enum Accion {
     Quiero,
     Envido(u8),
     Ordago,
+
+    Mus,
+    NoMus,
+    Descartar([bool; 4]),
 }
 
 impl Display for Accion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Accion::Paso => f.write_str("p"),
+            Accion::Paso => f.write_char('p'),
             Accion::Envido(n) => f.write_fmt(format_args!("e{}", n)),
-            Accion::Quiero => f.write_str("q"),
-            Accion::Ordago => f.write_str("o"),
+            Accion::Quiero => f.write_char('q'),
+            Accion::Ordago => f.write_char('o'),
+            Accion::Mus => f.write_char('m'),
+            Accion::NoMus => f.write_char('n'),
+            Accion::Descartar([_, _, _, _]) => todo!(),
         }
     }
 }
@@ -50,7 +58,7 @@ pub trait ModalidadMus: Sized {
         estado: &mut EstadoLance<Self>,
         accion: Accion,
     ) -> Result<Option<Turno>, MusError>;
-    fn repartir_manos(baraja: &Baraja) -> Self::N;
+    fn repartir_manos(baraja: &mut Baraja) -> Self::N;
 }
 
 impl ModalidadMus for DosJugadores {
@@ -71,9 +79,8 @@ impl ModalidadMus for DosJugadores {
         estado.actuar(accion)
     }
 
-    fn repartir_manos(baraja: &Baraja) -> Self::N {
-        let [mano1, mano2, _, _] = baraja.repartir_manos();
-        [mano1, mano2]
+    fn repartir_manos(baraja: &mut Baraja) -> Self::N {
+        baraja.repartir_manos()
     }
 }
 
@@ -97,13 +104,220 @@ impl ModalidadMus for CuatroJugadores {
         estado.actuar(accion)
     }
 
-    fn repartir_manos(baraja: &Baraja) -> Self::N {
+    fn repartir_manos(baraja: &mut Baraja) -> Self::N {
         baraja.repartir_manos()
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct PartidaMus<T: ModalidadMus> {
+    fase: Fase<T>,
+}
+
+impl<T: ModalidadMus> PartidaMus<T> {
+    pub fn turno(&self) -> Option<Turno> {
+        match &self.fase {
+            Fase::Mus(fase_mus) => fase_mus.turno(),
+            Fase::Envites(fase_envites) => fase_envites.turno(),
+        }
+    }
+}
+
+impl PartidaMus<CuatroJugadores> {
+    pub fn new(tantos: [u8; 2]) -> Self {
+        Self {
+            fase: Fase::Mus(FaseMus::<CuatroJugadores>::new(tantos)),
+        }
+    }
+
+    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        match &mut self.fase {
+            Fase::Mus(fase_mus) => {
+                let turno = fase_mus.actuar(accion)?;
+                if turno.is_some() {
+                    return Ok(turno);
+                }
+                let manos = std::mem::take(&mut fase_mus.manos);
+                let fase_envites = FaseEnvites::<CuatroJugadores>::new(manos, fase_mus.tantos);
+                let turno = fase_envites.turno();
+                self.fase = Fase::Envites(fase_envites);
+                Ok(turno)
+            }
+            Fase::Envites(fase_envites) => fase_envites.actuar(accion),
+        }
+    }
+
+    pub fn fase(&self) -> Option<FasePartida> {
+        match &self.fase {
+            Fase::Mus(fase_mus) => match fase_mus.sub_fase {
+                SubfaseMus::Mus => Some(FasePartida::Mus),
+                SubfaseMus::Descartes => Some(FasePartida::Descartes),
+            },
+            Fase::Envites(fase_envites) => fase_envites.lance_actual().map(FasePartida::Envites),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FasePartida {
+    Mus,
+    Descartes,
+    Envites(Lance),
+}
+enum Fase<T: ModalidadMus> {
+    Mus(FaseMus<T>),
+    Envites(FaseEnvites<T>),
+}
+pub struct FaseMus<T: ModalidadMus> {
+    manos: T::N,
+    baraja: Baraja,
+    turno: Option<Turno>,
+    sub_fase: SubfaseMus,
+    tantos: [u8; 2],
+}
+
+enum SubfaseMus {
+    Mus,
+    Descartes,
+}
+
+impl<T: ModalidadMus> FaseMus<T> {
+    pub fn turno(&self) -> Option<Turno> {
+        self.turno
+    }
+}
+
+impl FaseMus<DosJugadores> {
+    pub fn new(tantos: [u8; 2]) -> Self {
+        let mut baraja = Baraja::new();
+        let manos = baraja.repartir_manos();
+        Self {
+            manos,
+            baraja,
+            turno: Some(Turno::Pareja(0)),
+            sub_fase: SubfaseMus::Mus,
+            tantos,
+        }
+    }
+
+    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        match self.sub_fase {
+            SubfaseMus::Mus => self.actuar_mus(accion),
+            SubfaseMus::Descartes => self.actuar_descartes(accion),
+        }
+    }
+
+    fn actuar_mus(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        match accion {
+            Accion::Mus => {
+                self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+                    Turno::Jugador(0) => Some(Turno::Jugador(1)),
+                    Turno::Jugador(1) => {
+                        self.sub_fase = SubfaseMus::Descartes;
+                        Some(Turno::Jugador(0))
+                    }
+                    _ => panic!("Turno inválido en la fase de mus"),
+                };
+                return Ok(self.turno);
+            }
+            Accion::NoMus => return Ok(None),
+            _ => return Err(MusError::AccionNoValida),
+        }
+    }
+
+    fn actuar_descartes(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        let Some(Turno::Jugador(t)) = self.turno else {
+            panic!("Turno inválido en la fase de mus")
+        };
+        match accion {
+            Accion::Descartar(descartes) => {
+                if descartes == [false, false, false, false] {
+                    return Err(MusError::AccionNoValida);
+                }
+                self.baraja
+                    .descartar(&mut self.manos[t as usize], descartes);
+                self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+                    Turno::Jugador(0) => Some(Turno::Jugador(1)),
+                    Turno::Jugador(1) => {
+                        self.sub_fase = SubfaseMus::Mus;
+                        Some(Turno::Pareja(0))
+                    }
+                    _ => panic!("Turno inválido en la fase de mus"),
+                };
+                Ok(self.turno)
+            }
+            _ => Err(MusError::AccionNoValida),
+        }
+    }
+}
+
+impl FaseMus<CuatroJugadores> {
+    pub fn new(tantos: [u8; 2]) -> Self {
+        let mut baraja = Baraja::baraja_mus();
+        let manos = baraja.repartir_manos();
+        Self {
+            manos,
+            baraja,
+            turno: Some(Turno::Pareja(0)),
+            sub_fase: SubfaseMus::Mus,
+            tantos,
+        }
+    }
+
+    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        match self.sub_fase {
+            SubfaseMus::Mus => self.actuar_mus(accion),
+            SubfaseMus::Descartes => self.actuar_descartes(accion),
+        }
+    }
+
+    fn actuar_mus(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        match accion {
+            Accion::Mus => {
+                self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+                    Turno::Pareja(0) => Some(Turno::Pareja(2)),
+                    Turno::Pareja(2) => Some(Turno::Pareja(1)),
+                    Turno::Pareja(1) => Some(Turno::Pareja(3)),
+                    Turno::Pareja(3) => {
+                        self.sub_fase = SubfaseMus::Descartes;
+                        Some(Turno::Jugador(0))
+                    }
+                    _ => panic!("Turno inválido en la fase de mus"),
+                };
+                return Ok(self.turno);
+            }
+            Accion::NoMus => return Ok(None),
+            _ => return Err(MusError::AccionNoValida),
+        }
+    }
+
+    fn actuar_descartes(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        let Some(Turno::Jugador(t)) = self.turno else {
+            panic!("Turno inválido en la fase de mus")
+        };
+        match accion {
+            Accion::Descartar(descartes) => {
+                if descartes == [false, false, false, false] {
+                    return Err(MusError::AccionNoValida);
+                }
+                self.baraja
+                    .descartar(&mut self.manos[t as usize], descartes);
+                self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+                    Turno::Jugador(3) => {
+                        self.sub_fase = SubfaseMus::Mus;
+                        Some(Turno::Pareja(0))
+                    }
+                    Turno::Jugador(t) => Some(Turno::Jugador(t + 1)),
+                    _ => panic!("Turno inválido en la fase de mus"),
+                };
+                Ok(self.turno)
+            }
+            _ => Err(MusError::AccionNoValida),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FaseEnvites<T: ModalidadMus> {
     manos: T::N,
     lances: ArrayVec<(Lance, Option<ResultadoLance>), 4>,
     tantos: [u8; 2],
@@ -111,7 +325,7 @@ pub struct PartidaMus<T: ModalidadMus> {
     estado_lance: Option<EstadoLance<T>>,
 }
 
-impl<T: ModalidadMus> PartidaMus<T> {
+impl<T: ModalidadMus> FaseEnvites<T> {
     pub const MAX_TANTOS: u8 = 40;
 
     /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
@@ -335,7 +549,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = PartidaMus::<CuatroJugadores>::new(manos, [0, 0]);
+        let mut partida = FaseEnvites::<CuatroJugadores>::new(manos, [0, 0]);
         for _ in 0..16 {
             let _ = partida.actuar(Accion::Paso);
         }
@@ -351,7 +565,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = PartidaMus::<CuatroJugadores>::new(manos, [0, 0]);
+        let mut partida = FaseEnvites::<CuatroJugadores>::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0 (0)
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0 (2)
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1 (1)
@@ -404,7 +618,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida =
-            PartidaMus::<CuatroJugadores>::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
+            FaseEnvites::<CuatroJugadores>::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Paso); // Pareja 1
@@ -418,7 +632,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida =
-            PartidaMus::<CuatroJugadores>::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
+            FaseEnvites::<CuatroJugadores>::new_partida_lance(Lance::Punto, manos, [0, 0]).unwrap();
         let _ = partida.actuar(Accion::Paso); // Pareja 0
         let _ = partida.actuar(Accion::Paso); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
@@ -438,7 +652,7 @@ mod tests {
         ];
 
         // Grande
-        let mut partida = PartidaMus::<CuatroJugadores>::new(manos, [29, 32]);
+        let mut partida = FaseEnvites::<CuatroJugadores>::new(manos, [29, 32]);
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
@@ -475,7 +689,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
 
-        let mut partida = PartidaMus::<CuatroJugadores>::new(manos, [29, 38]);
+        let mut partida = FaseEnvites::<CuatroJugadores>::new(manos, [29, 38]);
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 0
         let _ = partida.actuar(Accion::Envido(2)); // Pareja 1
@@ -494,7 +708,7 @@ mod tests {
             Mano::try_from("3334").unwrap(),
             Mano::try_from("257C").unwrap(),
         ];
-        let mut partida = PartidaMus::<CuatroJugadores>::new(manos, [0, 0]);
+        let mut partida = FaseEnvites::<CuatroJugadores>::new(manos, [0, 0]);
         let _ = partida.actuar(Accion::Ordago); // Pareja 0
         let _ = partida.actuar(Accion::Ordago); // Pareja 0
         let _ = partida.actuar(Accion::Paso); // Pareja 1
@@ -517,7 +731,7 @@ mod tests {
             Mano::try_from("257C").unwrap(),
         ];
         let mut partida_lance =
-            PartidaMus::<CuatroJugadores>::new_partida_lance(Lance::Juego, manos, [0, 0]);
+            FaseEnvites::<CuatroJugadores>::new_partida_lance(Lance::Juego, manos, [0, 0]);
         assert!(partida_lance.is_some());
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
         let _ = partida_lance.as_mut().unwrap().actuar(Accion::Paso);
@@ -532,7 +746,7 @@ mod tests {
             Mano::try_from("1111").unwrap(),
         ];
         let mut partida_lance =
-            PartidaMus::<CuatroJugadores>::new_partida_lance(Lance::Juego, manos, [0, 0]);
+            FaseEnvites::<CuatroJugadores>::new_partida_lance(Lance::Juego, manos, [0, 0]);
         assert_eq!(
             partida_lance.as_ref().unwrap().turno(),
             Some(Turno::Jugador(1))
@@ -550,7 +764,7 @@ mod tests {
             Mano::try_from("RS64").unwrap(),
             Mano::try_from("RCC1").unwrap(),
         ];
-        let mut game = PartidaMus::<DosJugadores>::new(manos, [0, 0]);
+        let mut game = FaseEnvites::<DosJugadores>::new(manos, [0, 0]);
         let _ = game.actuar(Accion::Paso);
         let _ = game.actuar(Accion::Envido(2));
         let _ = game.actuar(Accion::Paso);
@@ -570,7 +784,7 @@ mod tests {
             Mano::try_from("RS64").unwrap(),
             Mano::try_from("RCC1").unwrap(),
         ];
-        let mut game = PartidaMus::<CuatroJugadores>::new(manos, [0, 0]);
+        let mut game = FaseEnvites::<CuatroJugadores>::new(manos, [0, 0]);
         let _ = game.actuar(Accion::Paso);
         let _ = game.actuar(Accion::Paso);
         let _ = game.actuar(Accion::Envido(2));
@@ -589,5 +803,42 @@ mod tests {
         assert!(turno.unwrap().is_none());
         // 2 tantos de envites en grande y chica, 2 de pares, 6 de juego.
         assert_eq!(game.tantos(), &[0, 10]);
+    }
+
+    #[test]
+    fn test_fase_mus() {
+        let mut partida = PartidaMus::<CuatroJugadores>::new([0, 0]);
+
+        assert_eq!(partida.fase(), Some(FasePartida::Mus));
+        assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
+
+        let turno = partida.actuar(Accion::Paso);
+        assert!(turno.is_err());
+        let turno = partida.actuar(Accion::Descartar([false, true, true, true]));
+        assert!(turno.is_err());
+        let _ = partida.actuar(Accion::NoMus);
+        assert_eq!(partida.fase(), Some(FasePartida::Envites(Lance::Grande)));
+
+        let mut partida = PartidaMus::<CuatroJugadores>::new([0, 0]);
+        let _ = partida.actuar(Accion::Mus);
+        assert_eq!(partida.turno(), Some(Turno::Pareja(2)));
+        let _ = partida.actuar(Accion::Mus);
+        assert_eq!(partida.turno(), Some(Turno::Pareja(1)));
+        let _ = partida.actuar(Accion::Mus);
+        assert_eq!(partida.turno(), Some(Turno::Pareja(3)));
+        let _ = partida.actuar(Accion::Mus);
+        assert_eq!(partida.fase(), Some(FasePartida::Descartes));
+        assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
+
+        let turno = partida.actuar(Accion::Descartar([false, false, false, false]));
+        assert!(turno.is_err());
+        let turno = partida.actuar(Accion::Descartar([true, false, false, false]));
+        assert!(turno.is_ok());
+        assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
+        let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
+        let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
+        let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
+        assert_eq!(partida.fase(), Some(FasePartida::Mus));
+        assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
     }
 }

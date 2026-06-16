@@ -138,6 +138,10 @@ impl Mano {
         cartas[0] == cartas[1] || cartas[1] == cartas[2] || cartas[2] == cartas[3]
     }
 
+    pub fn hay_juego(&self) -> bool {
+        self.valor_puntos() >= 31
+    }
+
     /// Devuelve los puntos de la mano para los lances de punto y juego.
     pub fn valor_puntos(&self) -> u8 {
         let c = self.cartas();
@@ -288,7 +292,7 @@ impl Lance {
         match self {
             Lance::Grande | Lance::Chica => true,
             Lance::Pares => manos.iter().map(|m| m.hay_pares()).any(|b| b),
-            Lance::Juego => manos.iter().map(|m| m.valor_puntos() >= 31).any(|b| b),
+            Lance::Juego => manos.iter().map(|m| m.hay_juego()).any(|b| b),
             Lance::Punto => !Lance::Juego.hay_lance(manos),
         }
     }
@@ -667,7 +671,7 @@ impl<T> EstadoLance<T> {
 
 #[cfg(test)]
 mod tests_estado_lance {
-    use crate::mus::PartidaMus;
+    use crate::mus::FaseEnvites;
 
     use super::*;
 
@@ -682,7 +686,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Grande,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
@@ -711,7 +715,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), None);
         assert_eq!(partida.resolver_lance(), 1);
@@ -727,7 +731,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
         assert_eq!(
@@ -748,7 +752,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Jugador(0)));
         assert_eq!(
@@ -772,7 +776,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Grande,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
@@ -795,7 +799,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Grande,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
         assert_eq!(
@@ -818,7 +822,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
@@ -837,7 +841,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
@@ -860,7 +864,7 @@ mod tests_estado_lance {
         let mut partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.turno(), Some(Turno::Jugador(2)));
         assert_eq!(
@@ -899,25 +903,25 @@ mod tests_estado_lance {
         let partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Grande,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.tantos_mano(), &[0, 0]);
         let partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Pares,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.tantos_mano(), &[4, 4]);
         let partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Juego,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.tantos_mano(), &[3, 6]);
         let partida = EstadoLance::<CuatroJugadores>::new(
             &Lance::Punto,
             &manos,
-            PartidaMus::<CuatroJugadores>::MAX_TANTOS,
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
         );
         assert_eq!(partida.tantos_mano(), &[1, 1]);
     }

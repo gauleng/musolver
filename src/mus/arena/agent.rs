@@ -5,13 +5,13 @@ use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 
 use crate::{
     Game, NodeType,
-    mus::{Accion, CuatroJugadores, DosJugadores, ModalidadMus, PartidaMus},
+    mus::{Accion, CuatroJugadores, DosJugadores, FaseEnvites, ModalidadMus},
     solver::{LanceGame, Strategy},
 };
 
 #[async_trait]
 pub trait Agent<T: ModalidadMus> {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<T>) -> Accion;
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<T>) -> Accion;
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ impl AgenteAleatorio {
 
 #[async_trait]
 impl Agent<CuatroJugadores> for AgenteAleatorio {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<CuatroJugadores>) -> Accion {
         let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
         let history = self.history.lock().unwrap().clone();
         for action in &history {
@@ -71,7 +71,7 @@ impl AgenteMusolver {
 
 #[async_trait]
 impl Agent<DosJugadores> for AgenteMusolver {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<DosJugadores>) -> Accion {
         let history = self.history.lock().unwrap().clone();
         if history.len() < 2 {
             self.initial_score = *partida_mus.tantos();
@@ -92,7 +92,7 @@ impl Agent<DosJugadores> for AgenteMusolver {
 
 #[async_trait]
 impl Agent<CuatroJugadores> for AgenteMusolver {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<CuatroJugadores>) -> Accion {
         let history = self.history.lock().unwrap().clone();
         if history.len() < 2 {
             self.initial_score = *partida_mus.tantos();

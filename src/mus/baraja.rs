@@ -51,12 +51,12 @@ impl Baraja {
     /// Genera cuatro manos a partir de las primeras dieciseis cartas de la baraja en el momento de
     /// la llamada a la función. Esta funcion no baraja las cartas y tampoco las elimina de la
     /// baraja.
-    pub fn repartir_manos(&mut self) -> [Mano; 4] {
-        let mut c = self.0.drain(0..16);
+    pub fn repartir_manos<const N: usize>(&mut self) -> [Mano; N] {
+        let mut c = self.0.drain(0..4 * N);
         self.1 -= 16;
         core::array::from_fn(|_| {
             let mut m = ArrayVec::<Carta, 4>::new();
-            for _ in 0..4 {
+            for _ in 0..N {
                 m.push(c.next().unwrap());
             }
             Mano::from_arrayvec(m)

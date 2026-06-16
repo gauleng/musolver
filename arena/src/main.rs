@@ -12,7 +12,7 @@ use musolver::{
         arena::{
             ActionRecorder, Agent, AgenteAleatorio, AgenteMusolver, Kibitzer, MusAction, MusArena,
         },
-        Accion, CuatroJugadores, DosJugadores, Juego, Lance, Mano, PartidaMus,
+        Accion, CuatroJugadores, DosJugadores, FaseEnvites, Juego, Lance, Mano,
     },
     solver::{GameType, LanceGame, MusGameTwoPlayers, SolverError, Strategy, StrategyConfig},
     Game,
@@ -71,7 +71,7 @@ impl KibitzerCli {
 }
 
 impl Kibitzer<CuatroJugadores> for KibitzerCli {
-    fn record(&mut self, partida_mus: &PartidaMus<CuatroJugadores>, action: MusAction) {
+    fn record(&mut self, partida_mus: &FaseEnvites<CuatroJugadores>, action: MusAction) {
         match &action {
             MusAction::GameStart {
                 hand: dealer_id,
@@ -204,7 +204,7 @@ impl AgenteCli {
 
 #[async_trait]
 impl Agent<CuatroJugadores> for AgenteCli {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<CuatroJugadores>) -> Accion {
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<CuatroJugadores>) -> Accion {
         let next_actions = match self.game_type {
             GameType::LanceGame(_) => {
                 let mut game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
@@ -221,7 +221,7 @@ impl Agent<CuatroJugadores> for AgenteCli {
 
 #[async_trait]
 impl Agent<DosJugadores> for AgenteCli {
-    async fn actuar(&mut self, partida_mus: &PartidaMus<DosJugadores>) -> Accion {
+    async fn actuar(&mut self, partida_mus: &FaseEnvites<DosJugadores>) -> Accion {
         let next_actions = match self.game_type {
             GameType::MusGameTwoPlayers => {
                 let mut game = MusGameTwoPlayers::new(*partida_mus.tantos(), false).with_hands([
