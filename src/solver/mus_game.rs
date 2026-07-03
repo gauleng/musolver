@@ -1,13 +1,13 @@
 use std::{fmt::Write, rc::Rc};
 
-use arrayvec::ArrayString;
+use arrayvec::{ArrayString, ArrayVec};
 use itertools::Itertools;
 
 use crate::{
     Game, NodeType,
     mus::{
-        Accion, Apuesta, Baraja, CuatroJugadores, DistribucionDobleCartaIter, DosJugadores,
-        FaseEnvites, Lance, Mano, Turno,
+        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DistribucionDobleCartaIter, DosJugadores,
+        FaseEnvites, FasePartida, Lance, Mano, PartidaMus, Turno,
     },
     solver::ManosNormalizadas,
 };
@@ -599,11 +599,13 @@ impl Game for MusGameTwoHands {
 #[derive(Debug, Clone)]
 pub struct MusGameTwoPlayers {
     tantos: [u8; 2],
-    partida: Option<FaseEnvites<DosJugadores>>,
+    partida: Option<PartidaMus<DosJugadores>>,
     history_str: ArrayString<64>,
     info_set_prefix: [ArrayString<16>; 2],
+    descarte_str: [ArrayString<5>; 2],
     manos_pares: ArrayString<2>,
     manos_juego: ArrayString<2>,
+    hubo_mus: bool,
     abstract_game: bool,
     utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
@@ -615,8 +617,10 @@ impl MusGameTwoPlayers {
             tantos,
             history_str: ArrayString::new(),
             info_set_prefix: [ArrayString::new(); 2],
+            descarte_str: [ArrayString::new(); 2],
             manos_pares: ArrayString::new(),
             manos_juego: ArrayString::new(),
+            hubo_mus: false,
             abstract_game,
             utility_table: None,
         }
@@ -633,14 +637,13 @@ impl MusGameTwoPlayers {
         let info_set_prefix = MusGameTwoPlayers::info_set_prefix(
             &manos,
             &self.tantos,
-            if self.abstract_game {
-                Some(Lance::Grande)
-            } else {
-                None
-            },
+            self.abstract_game.then_some(Lance::Grande),
         );
         let (manos_pares, manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
-        let partida = Some(FaseEnvites::<DosJugadores>::new(manos, self.tantos));
+        let partida = Some(PartidaMus::<DosJugadores>::new_with_hands(
+            manos,
+            self.tantos,
+        ));
         let history_str = ArrayString::<64>::from("M").unwrap();
         Self {
             partida,
@@ -652,7 +655,7 @@ impl MusGameTwoPlayers {
         }
     }
 
-    pub fn mus_game(&self) -> Option<&FaseEnvites<DosJugadores>> {
+    pub fn mus_game(&self) -> Option<&PartidaMus<DosJugadores>> {
         self.partida.as_ref()
     }
 
@@ -674,27 +677,16 @@ impl MusGameTwoPlayers {
 
         (hay_pares.unwrap(), hay_juego.unwrap())
     }
-
     fn info_set_prefix(
         manos: &[Mano; 2],
         tantos: &[u8; 2],
         abstracto: Option<Lance>,
     ) -> [ArrayString<16>; 2] {
-        let info_set_prefix: [ArrayString<16>; 2] = core::array::from_fn(|i| {
-            if let Some(lance) = abstracto {
-                let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(&manos[i], &lance);
-                let mut str = ArrayString::new();
-                let _ = write!(&mut str, "{}:{},{},", tantos[0], tantos[1], mano_abstracta);
-
-                str
-            } else {
-                let mut str = ArrayString::new();
-                let _ = write!(&mut str, "{}:{},{},", tantos[0], tantos[1], manos[i]);
-
-                str
-            }
-        });
-        info_set_prefix
+        core::array::from_fn(|i| {
+            let mut w = InfoSetWriter(ArrayString::<16>::new());
+            w.tantos(tantos).mano(&manos[i], abstracto);
+            w.into_inner()
+        })
     }
 }
 
@@ -734,26 +726,29 @@ impl Game for MusGameTwoPlayers {
     fn info_set_str(&self, player: usize) -> String {
         let mut output = String::with_capacity(15 + self.history_str.len());
         output.push_str(&self.info_set_prefix[player]);
+        output.push_str(&self.descarte_str[player]);
         output.push_str(&self.history_str());
         output
     }
 
     fn new_random(&mut self) {
-        let mut baraja = Baraja::baraja_mus();
-        let manos = baraja.repartir_manos();
-        self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
-            &manos,
-            &self.tantos,
-            if self.abstract_game {
-                Some(Lance::Grande)
-            } else {
-                None
-            },
-        );
-        (self.manos_pares, self.manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
-        let partida = FaseEnvites::<DosJugadores>::new(manos, self.tantos);
-        self.partida = Some(partida);
-        self.history_str.push('M');
+        match &mut self.partida {
+            None => {
+                let partida = PartidaMus::<DosJugadores>::new(self.tantos);
+                let manos = partida.manos();
+                self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
+                    manos,
+                    &self.tantos,
+                    self.abstract_game.then_some(Lance::Grande),
+                );
+                (self.manos_pares, self.manos_juego) = MusGameTwoPlayers::jugadas_manos(manos);
+                self.partida = Some(partida);
+                self.history_str.push('M');
+            }
+            Some(p) => {
+                let _ = p.descarte_pendiente();
+            }
+        }
     }
 
     fn reset(&mut self) {
@@ -778,55 +773,93 @@ impl Game for MusGameTwoPlayers {
 
     fn actions(&self) -> Vec<Accion> {
         let partida = self.partida.as_ref().unwrap();
-        let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        let apuesta_maxima = partida.apuesta_maxima();
-        let mut actions = match ultimo_envite {
-            Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
-                return vec![Accion::Paso, Accion::Quiero, Accion::Ordago];
+        match partida.fase() {
+            Some(FasePartida::Mus) => {
+                if self.hubo_mus {
+                    vec![Accion::NoMus]
+                } else {
+                    vec![Accion::Mus, Accion::NoMus]
+                }
             }
-            Apuesta::Tantos(0) => vec![
-                Accion::Paso,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(2) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(4..=5) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Ordago => return vec![Accion::Paso, Accion::Quiero],
-            _ => return vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
-        };
-        actions.retain(|action| {
-            if let Apuesta::Tantos(tantos) = ultimo_envite
-                && let Accion::Envido(v) = action
-            {
-                tantos + *v < apuesta_maxima
-            } else {
-                true
+            Some(FasePartida::Descartes) => {
+                let turno = match partida
+                    .turno()
+                    .expect("Some player must be active to call actions()")
+                {
+                    Turno::Jugador(t) => t,
+                    Turno::Pareja(_) => todo!(),
+                } as usize;
+                let mano = &partida.manos()[turno];
+                let mut descartes = [false; 4];
+                for (idx, carta) in mano.iter().enumerate() {
+                    descartes[idx] = *carta != Carta::Rey;
+                }
+                if descartes == [false; 4] {
+                    descartes[0] = true;
+                }
+                vec![Accion::Descartar(descartes)]
             }
-        });
-        actions
+            Some(FasePartida::Envites(_)) => {
+                let fase_envites = partida.fase_envites().unwrap();
+                let ultimo_envite: Apuesta = fase_envites.ultima_apuesta();
+                let apuesta_maxima = fase_envites.apuesta_maxima();
+                let mut actions = match ultimo_envite {
+                    Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
+                        return vec![Accion::Paso, Accion::Quiero, Accion::Ordago];
+                    }
+                    Apuesta::Tantos(0) => vec![
+                        Accion::Paso,
+                        Accion::Envido(2),
+                        Accion::Envido(5),
+                        Accion::Envido(10),
+                        Accion::Ordago,
+                    ],
+                    Apuesta::Tantos(2) => vec![
+                        Accion::Paso,
+                        Accion::Quiero,
+                        Accion::Envido(2),
+                        Accion::Envido(5),
+                        Accion::Envido(10),
+                        Accion::Ordago,
+                    ],
+                    Apuesta::Tantos(4..=5) => vec![
+                        Accion::Paso,
+                        Accion::Quiero,
+                        Accion::Envido(10),
+                        Accion::Ordago,
+                    ],
+                    Apuesta::Ordago => return vec![Accion::Paso, Accion::Quiero],
+                    _ => return vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
+                };
+                actions.retain(|action| {
+                    if let Apuesta::Tantos(tantos) = ultimo_envite
+                        && let Accion::Envido(v) = action
+                    {
+                        tantos + *v < apuesta_maxima
+                    } else {
+                        true
+                    }
+                });
+                actions
+            }
+            Some(FasePartida::DescartePendiente) => vec![],
+            None => todo!(),
+        }
     }
 
     fn current_player(&self) -> NodeType {
         match &self.partida {
             None => NodeType::Chance,
-            Some(estado_lance) => match estado_lance.turno() {
+            Some(partida) => match partida.fase() {
                 None => NodeType::Terminal,
-                Some(Turno::Jugador(player_id)) | Some(Turno::Pareja(player_id)) => {
-                    NodeType::Player(player_id as usize % 2)
+                Some(FasePartida::DescartePendiente) => NodeType::Chance,
+                Some(FasePartida::Mus | FasePartida::Descartes | FasePartida::Envites(_)) => {
+                    match partida.turno() {
+                        Some(Turno::Jugador(player_id)) | Some(Turno::Pareja(player_id)) => {
+                            NodeType::Player(player_id as usize % 2)
+                        }
+                        None => NodeType::Terminal,
+                    }
                 }
             },
         }
@@ -835,34 +868,54 @@ impl Game for MusGameTwoPlayers {
     fn act(&mut self, a: Accion) {
         self.history_str.push_str(&a.to_string());
         if let Some(partida) = self.partida.as_mut() {
-            let lance_previo = partida.lance_actual();
-            if let Turno::Pareja(_) = partida.turno().expect("some player must be playing") {
-                let _ = partida.actuar(a);
-            }
-            let _ = partida.actuar(a);
-            let lance_siguiente = partida.lance_actual();
-            if lance_previo != lance_siguiente {
-                if let Some(lance) = lance_siguiente {
-                    self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
-                        partida.manos(),
-                        &self.tantos,
-                        if self.abstract_game {
-                            Some(lance)
-                        } else {
-                            None
-                        },
-                    );
-                }
-                match lance_siguiente {
-                    Some(Lance::Pares) => self.history_str.push_str(self.manos_pares.as_str()),
-                    Some(Lance::Punto) | Some(Lance::Juego) => {
-                        if lance_previo != Some(Lance::Pares) {
-                            self.history_str.push_str(self.manos_pares.as_str());
-                        }
-                        self.history_str.push_str(self.manos_juego.as_str());
+            match &partida.fase() {
+                Some(FasePartida::Descartes) => {
+                    if let Accion::Descartar(descartes) = a {
+                        let turno = match partida
+                            .turno()
+                            .expect("Some player must be active to call act()")
+                        {
+                            Turno::Jugador(t) => t,
+                            Turno::Pareja(_) => todo!(),
+                        } as usize;
+                        let mano = &partida.manos()[turno];
+                        let descartadas: ArrayVec<Carta, 4> = mano
+                            .iter()
+                            .zip(descartes)
+                            .filter_map(|(carta, descarte)| descarte.then_some(*carta))
+                            .collect();
+                        InfoSetWriter(&mut self.descarte_str[turno]).descarte(&descartadas);
                     }
-                    _ => {}
+                    let _ = partida.actuar(a);
+                    self.hubo_mus = true;
                 }
+                Some(FasePartida::Mus) => {
+                    let _ = partida.actuar(a);
+                }
+                Some(FasePartida::Envites(lance_previo)) => {
+                    let _ = partida.actuar(a);
+                    let Some(FasePartida::Envites(lance_siguiente)) = &partida.fase() else {
+                        return;
+                    };
+                    if lance_previo != lance_siguiente {
+                        self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
+                            partida.manos(),
+                            &self.tantos,
+                            self.abstract_game.then_some(*lance_siguiente),
+                        );
+                        match lance_siguiente {
+                            Lance::Pares => self.history_str.push_str(self.manos_pares.as_str()),
+                            Lance::Punto | Lance::Juego => {
+                                if lance_previo != &Lance::Pares {
+                                    self.history_str.push_str(self.manos_pares.as_str());
+                                }
+                                self.history_str.push_str(self.manos_juego.as_str());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => todo!(),
             }
         }
     }
@@ -871,6 +924,42 @@ impl Game for MusGameTwoPlayers {
         self.history_str.to_string()
     }
 }
+
+struct InfoSetWriter<W: Write>(W);
+
+impl<W: Write> InfoSetWriter<W> {
+    fn tantos(&mut self, tantos: &[u8; 2]) -> &mut Self {
+        let _ = write!(self.0, "{}:{},", tantos[0], tantos[1]);
+        self
+    }
+
+    fn mano(&mut self, mano: &Mano, abstracto: Option<Lance>) -> &mut Self {
+        if let Some(lance) = abstracto {
+            let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(mano, &lance);
+            let _ = write!(self.0, "{},", mano_abstracta);
+
+            self
+        } else {
+            let _ = write!(self.0, "{},", mano);
+
+            self
+        }
+    }
+
+    fn descarte(&mut self, descartes: &[Carta]) -> &mut Self {
+        for d in descartes {
+            let _ = write!(self.0, "{}", char::from(d));
+        }
+        let _ = write!(self.0, ",");
+
+        self
+    }
+
+    fn into_inner(self) -> W {
+        self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;

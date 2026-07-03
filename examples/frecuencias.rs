@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use musolver::mus::{Baraja, Carta, DistribucionCartaIter, Jugada, Lance, Mano, RankingManos};
 
 fn main() {

@@ -56,7 +56,7 @@ impl Baraja {
         self.1 -= 16;
         core::array::from_fn(|_| {
             let mut m = ArrayVec::<Carta, 4>::new();
-            for _ in 0..N {
+            for _ in 0..4 {
                 m.push(c.next().unwrap());
             }
             Mano::from_arrayvec(m)

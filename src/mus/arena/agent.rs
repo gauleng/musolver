@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 
 use crate::{
-    Game, NodeType,
+    Game,
     mus::{Accion, CuatroJugadores, DosJugadores, FaseEnvites, ModalidadMus},
     solver::{LanceGame, Strategy},
 };

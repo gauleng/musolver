@@ -112,6 +112,7 @@ impl ModalidadMus for CuatroJugadores {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PartidaMus<T: ModalidadMus> {
     fase: Fase<T>,
 }
@@ -135,6 +136,27 @@ impl<T: ModalidadMus> PartidaMus<T> {
                 } => Some(FasePartida::DescartePendiente),
             },
             Fase::Envites(fase_envites) => fase_envites.lance_actual().map(FasePartida::Envites),
+        }
+    }
+
+    pub fn tantos(&self) -> [u8; 2] {
+        match &self.fase {
+            Fase::Mus(fase_mus) => *fase_mus.tantos(),
+            Fase::Envites(fase_envites) => *fase_envites.tantos(),
+        }
+    }
+
+    pub fn fase_envites(&self) -> Option<&FaseEnvites<T>> {
+        match &self.fase {
+            Fase::Mus(_) => None,
+            Fase::Envites(fase_envites) => Some(fase_envites),
+        }
+    }
+
+    pub fn manos(&self) -> &T::N {
+        match &self.fase {
+            Fase::Mus(fase_mus) => &fase_mus.manos,
+            Fase::Envites(fase_envites) => fase_envites.manos(),
         }
     }
 }
@@ -167,6 +189,12 @@ impl PartidaMus<DosJugadores> {
         match &mut self.fase {
             Fase::Mus(fase_mus) => fase_mus.descarte_pendiente(),
             Fase::Envites(_) => Err(MusError::AccionNoValida),
+        }
+    }
+
+    pub fn new_with_hands(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
+        Self {
+            fase: Fase::Envites(FaseEnvites::<DosJugadores>::new(manos, tantos)),
         }
     }
 }
@@ -210,10 +238,14 @@ pub enum FasePartida {
     DescartePendiente,
     Envites(Lance),
 }
+
+#[derive(Debug, Clone)]
 enum Fase<T: ModalidadMus> {
     Mus(FaseMus<T>),
     Envites(FaseEnvites<T>),
 }
+
+#[derive(Debug, Clone)]
 pub struct FaseMus<T: ModalidadMus> {
     manos: T::N,
     baraja: Baraja,
@@ -222,6 +254,7 @@ pub struct FaseMus<T: ModalidadMus> {
     tantos: [u8; 2],
 }
 
+#[derive(Debug, Clone)]
 enum SubfaseMus {
     Mus,
     Descartes,
@@ -251,16 +284,20 @@ impl<T: ModalidadMus> FaseMus<T> {
             _ => Err(MusError::AccionNoValida),
         }
     }
+
+    pub fn tantos(&self) -> &[u8; 2] {
+        &self.tantos
+    }
 }
 
 impl FaseMus<DosJugadores> {
     pub fn new(tantos: [u8; 2]) -> Self {
-        let mut baraja = Baraja::new();
+        let mut baraja = Baraja::baraja_mus();
         let manos = baraja.repartir_manos();
         Self {
             manos,
             baraja,
-            turno: Some(Turno::Pareja(0)),
+            turno: Some(Turno::Jugador(0)),
             sub_fase: SubfaseMus::Mus,
             tantos,
         }
@@ -305,7 +342,7 @@ impl FaseMus<DosJugadores> {
             }
             Turno::Jugador(1) => {
                 self.sub_fase = SubfaseMus::Mus;
-                Some(Turno::Pareja(0))
+                Some(Turno::Jugador(0))
             }
             _ => panic!("Turno inválido en la fase de mus"),
         };
