@@ -86,23 +86,25 @@ impl Baraja {
         &self.0.make_contiguous()[0..n]
     }
 
-    pub fn descartar(&mut self, mano: &mut Mano, descartes: [bool; 4]) {
-        let mut num_descartes = 0;
-        self.0
-            .extend(mano.iter().enumerate().filter_map(|(idx, carta)| {
-                if descartes[idx] {
-                    num_descartes += 1;
-                    Some(carta)
-                } else {
-                    None
-                }
-            }));
+    pub fn descartar_mano(&mut self, mano: &mut Mano, descartes: [bool; 4]) {
+        let nuevas = self.descartar(
+            mano.iter()
+                .enumerate()
+                .filter_map(|(idx, carta)| descartes[idx].then_some(*carta)),
+        );
+        mano.reemplazar(descartes, nuevas.into_iter());
+    }
+
+    pub fn descartar(&mut self, descartes: impl Iterator<Item = Carta>) -> ArrayVec<Carta, 4> {
+        let antes = self.0.len();
+        self.0.extend(descartes);
+        let num_descartes = self.0.len() - antes;
         if num_descartes > self.1 {
             self.0.make_contiguous()[self.1..].shuffle(&mut thread_rng());
             self.1 = self.0.len();
         }
-        mano.reemplazar(descartes, self.0.drain(0..num_descartes));
         self.1 -= num_descartes;
+        self.0.drain(0..num_descartes).collect()
     }
 }
 
@@ -120,11 +122,11 @@ mod tests {
     fn test_descartar() {
         let mut baraja = Baraja::new();
         let mut mano = Mano::new([Carta::As, Carta::As, Carta::As, Carta::Tres]);
-        baraja.descartar(&mut mano, [true, true, true, true]);
+        baraja.descartar_mano(&mut mano, [true, true, true, true]);
         assert_eq!(mano.to_string(), "3111");
 
         baraja.insertar(Carta::Caballo);
-        baraja.descartar(&mut mano, [false, false, true, true]);
+        baraja.descartar_mano(&mut mano, [false, false, true, true]);
         assert_eq!(mano.to_string(), "3C11");
     }
 }

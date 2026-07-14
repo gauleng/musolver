@@ -1,13 +1,14 @@
 use std::{fmt::Write, rc::Rc};
 
-use arrayvec::{ArrayString, ArrayVec};
+use arrayvec::ArrayString;
 use itertools::Itertools;
 
 use crate::{
     Game, NodeType,
     mus::{
-        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DistribucionDobleCartaIter, DosJugadores,
-        FaseEnvites, FasePartida, Lance, Mano, PartidaMus, Turno,
+        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DistribucionCartaIter,
+        DistribucionDobleCartaIter, DosJugadores, FaseEnvites, FasePartida, Lance, Mano,
+        PartidaMus, Turno,
     },
     solver::ManosNormalizadas,
 };
@@ -599,6 +600,7 @@ impl Game for MusGameTwoHands {
 #[derive(Debug, Clone)]
 pub struct MusGameTwoPlayers {
     tantos: [u8; 2],
+    cards: Option<CardSource>,
     partida: Option<PartidaMus<DosJugadores>>,
     history_str: ArrayString<64>,
     info_set_prefix: [ArrayString<16>; 2],
@@ -614,6 +616,7 @@ impl MusGameTwoPlayers {
     pub fn new(tantos: [u8; 2], abstract_game: bool) -> Self {
         Self {
             partida: None,
+            cards: None,
             tantos,
             history_str: ArrayString::new(),
             info_set_prefix: [ArrayString::new(); 2],
@@ -688,6 +691,30 @@ impl MusGameTwoPlayers {
             w.into_inner()
         })
     }
+
+    fn iter_descartes<const N: usize>(
+        &self,
+        estado_baraja: &[(Carta, u8); 8],
+    ) -> Vec<(MusGameTwoPlayers, f64)> {
+        let mut partidas = Vec::new();
+        let mut iter = DistribucionCartaIter::<N>::new(estado_baraja);
+        while let Some((nuevas, probability)) = iter.next() {
+            let mut game = self.clone();
+            game.partida
+                .as_mut()
+                .unwrap()
+                .descartar_con_nuevas(&nuevas)
+                .unwrap();
+            let Some(CardSource::Iterable(freq2)) = &mut game.cards else {
+                unreachable!()
+            };
+            for (idx, f) in iter.current_frequencies().iter().enumerate() {
+                freq2[idx].1 = *f as u8;
+            }
+            partidas.push((game, probability));
+        }
+        partidas
+    }
 }
 
 impl Game for MusGameTwoPlayers {
@@ -734,19 +761,32 @@ impl Game for MusGameTwoPlayers {
     fn new_random(&mut self) {
         match &mut self.partida {
             None => {
-                let partida = PartidaMus::<DosJugadores>::new(self.tantos);
-                let manos = partida.manos();
+                let mut baraja = Baraja::baraja_mus();
+                let manos = baraja.repartir_manos();
                 self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
-                    manos,
+                    &manos,
                     &self.tantos,
                     self.abstract_game.then_some(Lance::Grande),
                 );
-                (self.manos_pares, self.manos_juego) = MusGameTwoPlayers::jugadas_manos(manos);
-                self.partida = Some(partida);
+                (self.manos_pares, self.manos_juego) = MusGameTwoPlayers::jugadas_manos(&manos);
+                self.partida = Some(PartidaMus::<DosJugadores>::new(manos, self.tantos));
+                self.cards = Some(CardSource::Baraja(baraja));
                 self.history_str.push('M');
             }
             Some(p) => {
-                let _ = p.descarte_pendiente();
+                if let Some(CardSource::Baraja(baraja)) = &mut self.cards {
+                    let turno = match p
+                        .turno()
+                        .expect("Some player must be active to call new_random() after game start")
+                    {
+                        Turno::Jugador(t) => t,
+                        Turno::Pareja(_) => todo!(),
+                    } as usize;
+                    let descartes = p.descartadas().unwrap();
+                    InfoSetWriter(&mut self.descarte_str[turno]).descarte(&descartes);
+                    let nuevas = baraja.descartar(descartes.into_iter());
+                    let _ = p.descartar_con_nuevas(&nuevas);
+                }
             }
         }
     }
@@ -760,15 +800,47 @@ impl Game for MusGameTwoPlayers {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS).map(
-            |(mano1, mano2, probability)| {
-                (
-                    Self::new(self.tantos, self.abstract_game)
-                        .with_hands([Mano::new(mano1), Mano::new(mano2)]),
-                    probability,
-                )
-            },
-        )
+        match &self.partida {
+            None => {
+                let mut partidas = Vec::new();
+                let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS);
+                while let Some((mano1, mano2, probability)) = iter.next() {
+                    let mut game = MusGameTwoPlayers::new(self.tantos, self.abstract_game)
+                        .with_hands([Mano::new(mano1), Mano::new(mano2)]);
+                    let mut dist = Baraja::FREC_BARAJA_MUS;
+                    let freq = iter.current_frequencies();
+                    for (d, f) in std::iter::zip(&mut dist, freq) {
+                        d.1 = *f as u8;
+                    }
+                    game.cards = Some(CardSource::Iterable(dist));
+                    partidas.push((game, probability));
+                }
+                partidas.into_iter()
+            }
+            Some(p) => {
+                let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
+                    todo!()
+                };
+                let turno = match p
+                    .turno()
+                    .expect("Some player must be active to call new_iter() after game started")
+                {
+                    Turno::Jugador(t) => t,
+                    Turno::Pareja(_) => todo!(),
+                } as usize;
+                let mut game = self.clone();
+                let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
+                InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
+                match descartes.len() {
+                    1 => game.iter_descartes::<1>(&estado_baraja),
+                    2 => game.iter_descartes::<2>(&estado_baraja),
+                    3 => game.iter_descartes::<3>(&estado_baraja),
+                    4 => game.iter_descartes::<4>(&estado_baraja),
+                    _ => unreachable!(),
+                }
+                .into_iter()
+            }
+        }
     }
 
     fn actions(&self) -> Vec<Accion> {
@@ -870,22 +942,6 @@ impl Game for MusGameTwoPlayers {
         if let Some(partida) = self.partida.as_mut() {
             match &partida.fase() {
                 Some(FasePartida::Descartes) => {
-                    if let Accion::Descartar(descartes) = a {
-                        let turno = match partida
-                            .turno()
-                            .expect("Some player must be active to call act()")
-                        {
-                            Turno::Jugador(t) => t,
-                            Turno::Pareja(_) => todo!(),
-                        } as usize;
-                        let mano = &partida.manos()[turno];
-                        let descartadas: ArrayVec<Carta, 4> = mano
-                            .iter()
-                            .zip(descartes)
-                            .filter_map(|(carta, descarte)| descarte.then_some(*carta))
-                            .collect();
-                        InfoSetWriter(&mut self.descarte_str[turno]).descarte(&descartadas);
-                    }
                     let _ = partida.actuar(a);
                     self.hubo_mus = true;
                 }
@@ -923,6 +979,12 @@ impl Game for MusGameTwoPlayers {
     fn history_str(&self) -> String {
         self.history_str.to_string()
     }
+}
+
+#[derive(Debug, Clone)]
+enum CardSource {
+    Baraja(Baraja),
+    Iterable([(Carta, u8); 8]),
 }
 
 struct InfoSetWriter<W: Write>(W);
@@ -974,34 +1036,37 @@ mod tests {
         ];
         let mut game = MusGameTwoPlayers::new([38, 37], false).with_hands(manos);
         assert_eq!(game.info_set_str(0), "38:37,RRR5,M");
+        game.act(Accion::NoMus);
+        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mn");
         game.act(Accion::Paso);
-        assert_eq!(game.info_set_str(1), "38:37,RCC1,Mp");
+        assert_eq!(game.info_set_str(1), "38:37,RCC1,Mnp");
         game.act(Accion::Paso);
-        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mpp");
+        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mnpp");
         game.act(Accion::Paso);
         game.act(Accion::Ordago);
-        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mpppo");
+        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mnpppo");
         game.act(Accion::Paso);
-        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mpppop11");
+        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mnpppop11");
         game.act(Accion::Ordago);
-        assert_eq!(game.info_set_str(1), "38:37,RCC1,Mpppop11o");
+        assert_eq!(game.info_set_str(1), "38:37,RCC1,Mnpppop11o");
         game.act(Accion::Paso);
-        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mpppop11op11");
+        assert_eq!(game.info_set_str(0), "38:37,RRR5,Mnpppop11op11");
 
         let manos = [
             Mano::from_str("R775").unwrap(),
             Mano::from_str("S651").unwrap(),
         ];
         let mut game = MusGameTwoPlayers::new([38, 37], false).with_hands(manos);
+        game.act(Accion::NoMus);
         game.act(Accion::Paso);
         game.act(Accion::Paso);
 
         game.act(Accion::Paso);
         game.act(Accion::Ordago);
-        assert_eq!(game.info_set_str(0), "38:37,R775,Mpppo");
+        assert_eq!(game.info_set_str(0), "38:37,R775,Mnpppo");
         game.act(Accion::Paso);
 
-        assert_eq!(game.info_set_str(0), "38:37,R775,Mpppop1000");
+        assert_eq!(game.info_set_str(0), "38:37,R775,Mnpppop1000");
     }
 
     #[test]
@@ -1011,6 +1076,7 @@ mod tests {
             Mano::from_str("RCC1").unwrap(),
         ];
         let mut game = MusGameTwoPlayers::new([35, 35], false).with_hands(manos.clone());
+        game.act(Accion::NoMus);
         game.act(Accion::Envido(2));
         game.act(Accion::Envido(2));
         assert_eq!(
@@ -1024,6 +1090,7 @@ mod tests {
             vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
         );
         let mut game = MusGameTwoPlayers::new([37, 37], false).with_hands(manos.clone());
+        game.act(Accion::NoMus);
         assert_eq!(
             game.actions(),
             vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]

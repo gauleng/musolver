@@ -5,7 +5,7 @@ use arrayvec::ArrayVec;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::mus::Baraja;
+use crate::mus::Carta;
 use crate::mus::CuatroJugadores;
 use crate::mus::DosJugadores;
 use crate::mus::Lance;
@@ -162,9 +162,9 @@ impl<T: ModalidadMus> PartidaMus<T> {
 }
 
 impl PartidaMus<DosJugadores> {
-    pub fn new(tantos: [u8; 2]) -> Self {
+    pub fn new(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
         Self {
-            fase: Fase::Mus(FaseMus::<DosJugadores>::new(tantos)),
+            fase: Fase::Mus(FaseMus::<DosJugadores>::new(manos, tantos)),
         }
     }
 
@@ -185,24 +185,31 @@ impl PartidaMus<DosJugadores> {
         }
     }
 
-    pub fn descarte_pendiente(&mut self) -> Result<Option<Turno>, MusError> {
+    pub fn descartar_con_nuevas(&mut self, nuevas: &[Carta]) -> Result<Option<Turno>, MusError> {
         match &mut self.fase {
-            Fase::Mus(fase_mus) => fase_mus.descarte_pendiente(),
+            Fase::Mus(fase_mus) => fase_mus.descartar_con_nuevas(nuevas),
             Fase::Envites(_) => Err(MusError::AccionNoValida),
         }
     }
 
     pub fn new_with_hands(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
         Self {
-            fase: Fase::Envites(FaseEnvites::<DosJugadores>::new(manos, tantos)),
+            fase: Fase::Mus(FaseMus::<DosJugadores>::new(manos, tantos)),
+        }
+    }
+
+    pub fn descartadas(&self) -> Result<ArrayVec<Carta, 4>, MusError> {
+        match &self.fase {
+            Fase::Mus(fase_mus) => fase_mus.descartadas(),
+            Fase::Envites(_) => Err(MusError::AccionNoValida),
         }
     }
 }
 
 impl PartidaMus<CuatroJugadores> {
-    pub fn new(tantos: [u8; 2]) -> Self {
+    pub fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
         Self {
-            fase: Fase::Mus(FaseMus::<CuatroJugadores>::new(tantos)),
+            fase: Fase::Mus(FaseMus::<CuatroJugadores>::new(manos, tantos)),
         }
     }
 
@@ -223,9 +230,9 @@ impl PartidaMus<CuatroJugadores> {
         }
     }
 
-    pub fn descarte_pendiente(&mut self) -> Result<Option<Turno>, MusError> {
+    pub fn descartar_con_nuevas(&mut self, nuevas: &[Carta]) -> Result<Option<Turno>, MusError> {
         match &mut self.fase {
-            Fase::Mus(fase_mus) => fase_mus.descarte_pendiente(),
+            Fase::Mus(fase_mus) => fase_mus.descartar_con_nuevas(nuevas),
             Fase::Envites(_) => Err(MusError::AccionNoValida),
         }
     }
@@ -248,7 +255,6 @@ enum Fase<T: ModalidadMus> {
 #[derive(Debug, Clone)]
 pub struct FaseMus<T: ModalidadMus> {
     manos: T::N,
-    baraja: Baraja,
     turno: Option<Turno>,
     sub_fase: SubfaseMus,
     tantos: [u8; 2],
@@ -291,12 +297,9 @@ impl<T: ModalidadMus> FaseMus<T> {
 }
 
 impl FaseMus<DosJugadores> {
-    pub fn new(tantos: [u8; 2]) -> Self {
-        let mut baraja = Baraja::baraja_mus();
-        let manos = baraja.repartir_manos();
+    pub fn new(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
         Self {
             manos,
-            baraja,
             turno: Some(Turno::Jugador(0)),
             sub_fase: SubfaseMus::Mus,
             tantos,
@@ -329,12 +332,45 @@ impl FaseMus<DosJugadores> {
         }
     }
 
-    pub fn descarte_pendiente(&mut self) -> Result<Option<Turno>, MusError> {
+    fn descartadas(&self) -> Result<ArrayVec<Carta, 4>, MusError> {
         let SubfaseMus::DescartePendiente { jugador, descarte } = self.sub_fase else {
             return Err(MusError::AccionNoValida);
         };
-        self.baraja
-            .descartar(&mut self.manos[jugador as usize], descarte);
+
+        let mano = &self.manos[jugador as usize];
+        Ok(mano
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, carta)| descarte[idx].then_some(*carta))
+            .collect())
+    }
+    // fn descartar(&mut self) -> Result<Option<Turno>, MusError> {
+    //     let SubfaseMus::DescartePendiente { jugador, descarte } = self.sub_fase else {
+    //         return Err(MusError::AccionNoValida);
+    //     };
+    //     self.baraja
+    //         .as_mut()
+    //         .expect("Baraja must exist if descarte_pendiente() is called.")
+    //         .descartar(&mut self.manos[jugador as usize], descarte);
+    //     self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+    //         Turno::Jugador(0) => {
+    //             self.sub_fase = SubfaseMus::Descartes;
+    //             Some(Turno::Jugador(1))
+    //         }
+    //         Turno::Jugador(1) => {
+    //             self.sub_fase = SubfaseMus::Mus;
+    //             Some(Turno::Jugador(0))
+    //         }
+    //         _ => panic!("Turno inválido en la fase de mus"),
+    //     };
+    //     Ok(self.turno)
+    // }
+
+    fn descartar_con_nuevas(&mut self, nuevas: &[Carta]) -> Result<Option<Turno>, MusError> {
+        let SubfaseMus::DescartePendiente { jugador, descarte } = self.sub_fase else {
+            return Err(MusError::AccionNoValida);
+        };
+        self.manos[jugador as usize].reemplazar(descarte, nuevas.iter().copied());
         self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
             Turno::Jugador(0) => {
                 self.sub_fase = SubfaseMus::Descartes;
@@ -351,19 +387,16 @@ impl FaseMus<DosJugadores> {
 }
 
 impl FaseMus<CuatroJugadores> {
-    pub fn new(tantos: [u8; 2]) -> Self {
-        let mut baraja = Baraja::baraja_mus();
-        let manos = baraja.repartir_manos();
+    fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
         Self {
             manos,
-            baraja,
             turno: Some(Turno::Pareja(0)),
             sub_fase: SubfaseMus::Mus,
             tantos,
         }
     }
 
-    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+    fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
         match self.sub_fase {
             SubfaseMus::Mus => self.actuar_mus(accion),
             SubfaseMus::Descartes => self.actuar_descartes(accion),
@@ -391,12 +424,33 @@ impl FaseMus<CuatroJugadores> {
         }
     }
 
-    pub fn descarte_pendiente(&mut self) -> Result<Option<Turno>, MusError> {
+    // fn descartar(&mut self) -> Result<Option<Turno>, MusError> {
+    //     let SubfaseMus::DescartePendiente { jugador, descarte } = self.sub_fase else {
+    //         return Err(MusError::AccionNoValida);
+    //     };
+    //     self.baraja
+    //         .as_mut()
+    //         .expect("Baraja must exist if descarte_pendiente() is called")
+    //         .descartar(&mut self.manos[jugador as usize], descarte);
+    //     self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
+    //         Turno::Jugador(3) => {
+    //             self.sub_fase = SubfaseMus::Mus;
+    //             Some(Turno::Pareja(0))
+    //         }
+    //         Turno::Jugador(t) => {
+    //             self.sub_fase = SubfaseMus::Descartes;
+    //             Some(Turno::Jugador(t + 1))
+    //         }
+    //         _ => panic!("Turno inválido en la fase de mus"),
+    //     };
+    //     Ok(self.turno)
+    // }
+
+    fn descartar_con_nuevas(&mut self, nuevas: &[Carta]) -> Result<Option<Turno>, MusError> {
         let SubfaseMus::DescartePendiente { jugador, descarte } = self.sub_fase else {
             return Err(MusError::AccionNoValida);
         };
-        self.baraja
-            .descartar(&mut self.manos[jugador as usize], descarte);
+        self.manos[jugador as usize].reemplazar(descarte, nuevas.iter().copied());
         self.turno = match self.turno.ok_or(MusError::AccionNoValida)? {
             Turno::Jugador(3) => {
                 self.sub_fase = SubfaseMus::Mus;
@@ -903,7 +957,15 @@ mod tests {
 
     #[test]
     fn test_fase_mus() {
-        let mut partida = PartidaMus::<CuatroJugadores>::new([0, 0]);
+        let mut partida = PartidaMus::<CuatroJugadores>::new(
+            [
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+            ],
+            [0, 0],
+        );
 
         assert_eq!(partida.fase(), Some(FasePartida::Mus));
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
@@ -915,7 +977,15 @@ mod tests {
         let _ = partida.actuar(Accion::NoMus);
         assert_eq!(partida.fase(), Some(FasePartida::Envites(Lance::Grande)));
 
-        let mut partida = PartidaMus::<CuatroJugadores>::new([0, 0]);
+        let mut partida = PartidaMus::<CuatroJugadores>::new(
+            [
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+                Mano::try_from("RRAA").unwrap(),
+            ],
+            [0, 0],
+        );
         let _ = partida.actuar(Accion::Mus);
         assert_eq!(partida.turno(), Some(Turno::Pareja(2)));
         let _ = partida.actuar(Accion::Mus);
@@ -930,14 +1000,14 @@ mod tests {
         assert!(turno.is_err());
         let turno = partida.actuar(Accion::Descartar([true, false, false, false]));
         assert!(turno.is_ok());
-        let _ = partida.descarte_pendiente();
+        let _ = partida.descartar_con_nuevas(&[Carta::Rey]);
         assert_eq!(partida.turno(), Some(Turno::Jugador(1)));
         let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
-        let _ = partida.descarte_pendiente();
+        let _ = partida.descartar_con_nuevas(&[Carta::Rey]);
         let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
-        let _ = partida.descarte_pendiente();
+        let _ = partida.descartar_con_nuevas(&[Carta::Rey]);
         let _ = partida.actuar(Accion::Descartar([true, false, false, false]));
-        let _ = partida.descarte_pendiente();
+        let _ = partida.descartar_con_nuevas(&[Carta::Rey]);
         assert_eq!(partida.fase(), Some(FasePartida::Mus));
         assert_eq!(partida.turno(), Some(Turno::Pareja(0)));
     }

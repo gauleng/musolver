@@ -121,6 +121,15 @@ impl<'a, const N: usize> DistribucionCartaIter<'a, N> {
         let iter = CombinationsWithReplacementProb::new(N, frequencies);
         Self { cartas, iter }
     }
+
+    pub fn current_frequencies(&self) -> &[usize] {
+        &self.iter.current_frequencies
+    }
+
+    pub fn next_with_freq(&mut self) -> Option<(([Carta; N], f64), &[usize])> {
+        let item = self.next()?;
+        Some((item, self.current_frequencies()))
+    }
 }
 
 impl<'a, const N: usize> Iterator for DistribucionCartaIter<'a, N> {
@@ -185,6 +194,11 @@ impl<'a, const N: usize> DistribucionDobleCartaIter<'a, N> {
 
     pub fn current_frequencies(&self) -> &[usize] {
         &self.iter2.current_frequencies
+    }
+
+    pub fn next_with_freq(&mut self) -> Option<(([Carta; N], [Carta; N], f64), &[usize])> {
+        let item = self.next()?;
+        Some((item, self.current_frequencies()))
     }
 }
 
