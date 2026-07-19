@@ -40,16 +40,55 @@ struct ResultadoLance {
     tantos: u8,
 }
 
-pub trait ModalidadMus {
-    type N: AsRef<[Mano]>;
+pub trait ModalidadMus: Sized {
+    type N: AsRef<[Mano]> + Clone + std::fmt::Debug;
+
+    fn tantos_ganador(lance: &Lance, manos: &Self::N, ganador: u8) -> u8;
+    fn nuevo_estado_lance(lance: &Lance, manos: &Self::N, apuesta_maxima: u8) -> EstadoLance<Self>;
+    fn actuar_envite(
+        estado: &mut EstadoLance<Self>,
+        accion: Accion,
+    ) -> Result<Option<Turno>, MusError>;
 }
 
 impl ModalidadMus for DosJugadores {
     type N = [Mano; 2];
+
+    fn tantos_ganador(lance: &Lance, manos: &Self::N, ganador: u8) -> u8 {
+        lance.tantos_mano(&manos.as_ref()[ganador as usize]) + lance.bonus()
+    }
+
+    fn nuevo_estado_lance(lance: &Lance, manos: &Self::N, apuesta_maxima: u8) -> EstadoLance<Self> {
+        EstadoLance::<DosJugadores>::new(lance, manos, apuesta_maxima)
+    }
+
+    fn actuar_envite(
+        estado: &mut EstadoLance<Self>,
+        accion: Accion,
+    ) -> Result<Option<Turno>, MusError> {
+        estado.actuar(accion)
+    }
 }
 
 impl ModalidadMus for CuatroJugadores {
     type N = [Mano; 4];
+
+    fn tantos_ganador(lance: &Lance, manos: &Self::N, ganador: u8) -> u8 {
+        lance.tantos_mano(&manos.as_ref()[ganador as usize])
+            + lance.tantos_mano(&manos.as_ref()[ganador as usize + 2])
+            + lance.bonus()
+    }
+
+    fn nuevo_estado_lance(lance: &Lance, manos: &Self::N, apuesta_maxima: u8) -> EstadoLance<Self> {
+        EstadoLance::<CuatroJugadores>::new(lance, manos, apuesta_maxima)
+    }
+
+    fn actuar_envite(
+        estado: &mut EstadoLance<Self>,
+        accion: Accion,
+    ) -> Result<Option<Turno>, MusError> {
+        estado.actuar(accion)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,268 +100,113 @@ pub struct PartidaMus<T: ModalidadMus> {
     estado_lance: Option<EstadoLance<T>>,
 }
 
-impl PartidaMus<CuatroJugadores> {
-    /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
-    /// array y se asume que la primera posición se corresponde con la mano del jugador mano y la
-    /// última con la del jugador postre.
-    ///
-    /// Recibe también los tantos con los que comienzan la partida
-    /// cada una de las parejas.
-    pub fn new(manos: [Mano; 4], tantos: [u8; 2]) -> Self {
-        let mut lances = ArrayVec::new();
-        lances.push((Lance::Grande, None));
-        lances.push((Lance::Chica, None));
-        if Lance::Pares.hay_lance(&manos) {
-            lances.push((Lance::Pares, None));
-        }
-        if Lance::Juego.hay_lance(&manos) {
-            lances.push((Lance::Juego, None));
-        } else {
-            lances.push((Lance::Punto, None));
-        }
-        let mut p = PartidaMus::<CuatroJugadores> {
-            manos,
-            lances,
-            idx_lance: 0,
-            tantos,
-            estado_lance: None,
-        };
-        let e = p.crear_estado_lance(Lance::Grande);
-        p.estado_lance = Some(e);
-        p
-    }
-
-    /// Crea una partida de mus en la que solo se juega un lance con la manos recibidas como
-    /// parámetro. Recibe también los tantos con los que comienzan la partida cada una de las
-    /// parejas.
-    ///
-    /// La partida solo se crea si se juega el lance. En caso contrario devuelve None.
-    /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
-    /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
-    pub fn new_partida_lance(lance: Lance, manos: [Mano; 4], tantos: [u8; 2]) -> Option<Self> {
-        let mut lances = ArrayVec::<(Lance, Option<_>), 4>::new();
-        lances.push((lance, None));
-        let mut p = Self {
-            manos,
-            lances,
-            idx_lance: 0,
-            tantos,
-            estado_lance: None,
-        };
-        let e = p.crear_estado_lance(lance);
-        e.turno()?;
-        p.estado_lance = Some(e);
-        Some(p)
-    }
-
-    fn crear_estado_lance(&self, l: Lance) -> EstadoLance<CuatroJugadores> {
-        let tantos_restantes = [
-            Self::MAX_TANTOS - self.tantos[0],
-            Self::MAX_TANTOS - self.tantos[1],
-        ];
-        let mut e = EstadoLance::<CuatroJugadores>::new(
-            &l,
-            &self.manos,
-            tantos_restantes[0].max(tantos_restantes[1]),
-        );
-        if !l.se_juega(&self.manos) {
-            e.resolver_lance();
-        }
-        e
-    }
-
-    /// Realiza la acción recibida como parámetro. Devuelve el turno de la siguiente pareja o Ok(None)
-    /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
-    /// partida.
-    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
-        let estado_lance = self.estado_lance.as_mut().ok_or(MusError::AccionNoValida)?;
-        let turno = estado_lance.actuar(accion)?;
-        if turno.is_some() {
-            return Ok(turno);
-        }
-        let lance = self.lances[self.idx_lance].0;
-        self.tanteo_envites_lance();
-        self.tanteo_final_lance(&lance);
-        while let Some((lance, estado_lance)) = self.siguiente_lance() {
-            if estado_lance.turno().is_some() {
-                return Ok(estado_lance.turno());
-            } else {
-                self.tanteo_final_lance(&lance);
-            }
-        }
-        self.tanteo_final();
-        Ok(None)
-    }
-
-    fn siguiente_lance(&mut self) -> Option<(Lance, &EstadoLance<CuatroJugadores>)> {
-        self.estado_lance.as_ref()?;
-        if self.idx_lance < self.lances.len() - 1 {
-            self.idx_lance += 1;
-            let lance = self.lances[self.idx_lance].0;
-            let estado_lance = self.crear_estado_lance(lance);
-            self.estado_lance = Some(estado_lance);
-            Some(lance).zip(self.estado_lance.as_ref())
-        } else {
-            self.estado_lance = None;
-            None
-        }
-    }
-
-    fn tanteo_final_lance(&mut self, l: &Lance) {
-        if let Some(estado_lance) = &mut self.estado_lance {
-            let mut tantos = 0;
-            let ganador = estado_lance.ganador().unwrap_or_else(|| {
-                let g = estado_lance.resolver_lance();
-                if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
-                    tantos += t;
-                }
-                g
-            });
-
-            tantos += l.tantos_mano(&self.manos.as_ref()[ganador as usize])
-                + l.tantos_mano(&self.manos.as_ref()[ganador as usize + 2])
-                + l.bonus();
-            self.lances[self.idx_lance].1 = Some(ResultadoLance { ganador, tantos });
-        }
-    }
-
-    /// Devuelve las manos de los jugadores.
-    pub fn manos(&self) -> &[Mano; 4] {
-        &self.manos
-    }
-}
-
-impl PartidaMus<DosJugadores> {
-    /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
-    /// array y se asume que la primera posición se corresponde con la mano del jugador mano y la
-    /// última con la del jugador postre.
-    ///
-    /// Recibe también los tantos con los que comienzan la partida
-    /// cada una de las parejas.
-    pub fn new(manos: [Mano; 2], tantos: [u8; 2]) -> Self {
-        let mut lances = ArrayVec::new();
-        lances.push((Lance::Grande, None));
-        lances.push((Lance::Chica, None));
-        if Lance::Pares.hay_lance(&manos) {
-            lances.push((Lance::Pares, None));
-        }
-        if Lance::Juego.hay_lance(&manos) {
-            lances.push((Lance::Juego, None));
-        } else {
-            lances.push((Lance::Punto, None));
-        }
-        let mut p = Self {
-            manos,
-            lances,
-            idx_lance: 0,
-            tantos,
-            estado_lance: None,
-        };
-        let e = p.crear_estado_lance(Lance::Grande);
-        p.estado_lance = Some(e);
-        p
-    }
-
-    /// Crea una partida de mus en la que solo se juega un lance con la manos recibidas como
-    /// parámetro. Recibe también los tantos con los que comienzan la partida cada una de las
-    /// parejas.
-    ///
-    /// La partida solo se crea si se juega el lance. En caso contrario devuelve None.
-    /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
-    /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
-    pub fn new_partida_lance(lance: Lance, manos: [Mano; 2], tantos: [u8; 2]) -> Option<Self> {
-        let mut lances = ArrayVec::<(Lance, Option<_>), 4>::new();
-        lances.push((lance, None));
-        let mut p = Self {
-            manos,
-            lances,
-            idx_lance: 0,
-            tantos,
-            estado_lance: None,
-        };
-        let e = p.crear_estado_lance(lance);
-        e.turno()?;
-        p.estado_lance = Some(e);
-        Some(p)
-    }
-
-    fn crear_estado_lance(&self, l: Lance) -> EstadoLance<DosJugadores> {
-        let tantos_restantes = [
-            Self::MAX_TANTOS - self.tantos[0],
-            Self::MAX_TANTOS - self.tantos[1],
-        ];
-        let mut e = EstadoLance::<DosJugadores>::new(
-            &l,
-            &self.manos,
-            tantos_restantes[0].max(tantos_restantes[1]),
-        );
-        if !l.se_juega(&self.manos) {
-            e.resolver_lance();
-        }
-        e
-    }
-
-    /// Realiza la acción recibida como parámetro. Devuelve el turno de la siguiente pareja o Ok(None)
-    /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
-    /// partida.
-    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
-        let estado_lance = self.estado_lance.as_mut().ok_or(MusError::AccionNoValida)?;
-        let turno = estado_lance.actuar(accion)?;
-        if turno.is_some() {
-            return Ok(turno);
-        }
-        let lance = self.lances[self.idx_lance].0;
-        self.tanteo_envites_lance();
-        self.tanteo_final_lance(&lance);
-        while let Some((lance, estado_lance)) = self.siguiente_lance() {
-            if estado_lance.turno().is_some() {
-                return Ok(estado_lance.turno());
-            } else {
-                self.tanteo_final_lance(&lance);
-            }
-        }
-        self.tanteo_final();
-        Ok(None)
-    }
-
-    fn siguiente_lance(&mut self) -> Option<(Lance, &EstadoLance<DosJugadores>)> {
-        self.estado_lance.as_ref()?;
-        if self.idx_lance < self.lances.len() - 1 {
-            self.idx_lance += 1;
-            let lance = self.lances[self.idx_lance].0;
-            let estado_lance = self.crear_estado_lance(lance);
-            self.estado_lance = Some(estado_lance);
-            Some(lance).zip(self.estado_lance.as_ref())
-        } else {
-            self.estado_lance = None;
-            None
-        }
-    }
-
-    /// Devuelve las manos de los jugadores.
-    pub fn manos(&self) -> &[Mano; 2] {
-        &self.manos
-    }
-
-    fn tanteo_final_lance(&mut self, l: &Lance) {
-        if let Some(estado_lance) = &mut self.estado_lance {
-            let mut tantos = 0;
-            let ganador = estado_lance.ganador().unwrap_or_else(|| {
-                let g = estado_lance.resolver_lance();
-                if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
-                    tantos += t;
-                }
-                g
-            });
-
-            tantos += l.tantos_mano(&self.manos.as_ref()[ganador as usize]) + l.bonus();
-            self.lances[self.idx_lance].1 = Some(ResultadoLance { ganador, tantos });
-        }
-    }
-}
-
 impl<T: ModalidadMus> PartidaMus<T> {
     pub const MAX_TANTOS: u8 = 40;
+
+    /// Crea una partida de mus con las manos recibidas como parámetro. Las manos deben estar en un
+    /// array y se asume que la primera posición se corresponde con la mano del jugador mano y la
+    /// última con la del jugador postre.
+    ///
+    /// Recibe también los tantos con los que comienzan la partida
+    /// cada una de las parejas.
+    pub fn new(manos: T::N, tantos: [u8; 2]) -> Self {
+        let mut lances = ArrayVec::new();
+        lances.push((Lance::Grande, None));
+        lances.push((Lance::Chica, None));
+        if Lance::Pares.hay_lance(manos.as_ref()) {
+            lances.push((Lance::Pares, None));
+        }
+        if Lance::Juego.hay_lance(manos.as_ref()) {
+            lances.push((Lance::Juego, None));
+        } else {
+            lances.push((Lance::Punto, None));
+        }
+        let mut p = Self {
+            manos,
+            lances,
+            idx_lance: 0,
+            tantos,
+            estado_lance: None,
+        };
+        let e = p.crear_estado_lance(Lance::Grande);
+        p.estado_lance = Some(e);
+        p
+    }
+
+    /// Crea una partida de mus en la que solo se juega un lance con la manos recibidas como
+    /// parámetro. Recibe también los tantos con los que comienzan la partida cada una de las
+    /// parejas.
+    ///
+    /// La partida solo se crea si se juega el lance. En caso contrario devuelve None.
+    /// Esto puede ocurrir por ejemplo si se desea crear una partida para el lance de pares
+    /// con cuatro manos sin jugadas de pares, o que solo una de las parejas tiene pares.
+    pub fn new_partida_lance(lance: Lance, manos: T::N, tantos: [u8; 2]) -> Option<Self> {
+        let mut lances = ArrayVec::<(Lance, Option<_>), 4>::new();
+        lances.push((lance, None));
+        let mut p = Self {
+            manos,
+            lances,
+            idx_lance: 0,
+            tantos,
+            estado_lance: None,
+        };
+        let e = p.crear_estado_lance(lance);
+        e.turno()?;
+        p.estado_lance = Some(e);
+        Some(p)
+    }
+
+    fn crear_estado_lance(&self, l: Lance) -> EstadoLance<T> {
+        let tantos_restantes = [
+            Self::MAX_TANTOS - self.tantos[0],
+            Self::MAX_TANTOS - self.tantos[1],
+        ];
+        let mut e = T::nuevo_estado_lance(
+            &l,
+            &self.manos,
+            tantos_restantes[0].max(tantos_restantes[1]),
+        );
+        if !l.se_juega(self.manos.as_ref()) {
+            e.resolver_lance();
+        }
+        e
+    }
+    /// Realiza la acción recibida como parámetro. Devuelve el turno de la siguiente pareja o Ok(None)
+    /// si la partida ha terminado. Esta función devuelve error si se llama tras haber acabado la
+    /// partida.
+    pub fn actuar(&mut self, accion: Accion) -> Result<Option<Turno>, MusError> {
+        let estado_lance = self.estado_lance.as_mut().ok_or(MusError::AccionNoValida)?;
+        let turno = T::actuar_envite(estado_lance, accion)?;
+        if turno.is_some() {
+            return Ok(turno);
+        }
+        let lance = self.lances[self.idx_lance].0;
+        self.tanteo_envites_lance();
+        self.tanteo_final_lance(&lance);
+        while let Some((lance, estado_lance)) = self.siguiente_lance() {
+            if estado_lance.turno().is_some() {
+                return Ok(estado_lance.turno());
+            } else {
+                self.tanteo_final_lance(&lance);
+            }
+        }
+        self.tanteo_final();
+        Ok(None)
+    }
+
+    fn siguiente_lance(&mut self) -> Option<(Lance, &EstadoLance<T>)> {
+        self.estado_lance.as_ref()?;
+        if self.idx_lance < self.lances.len() - 1 {
+            self.idx_lance += 1;
+            let lance = self.lances[self.idx_lance].0;
+            let estado_lance = self.crear_estado_lance(lance);
+            self.estado_lance = Some(estado_lance);
+            Some(lance).zip(self.estado_lance.as_ref())
+        } else {
+            self.estado_lance = None;
+            None
+        }
+    }
 
     fn tanteo_envites_lance(&mut self) {
         if let Some(estado_lance) = &mut self.estado_lance {
@@ -403,6 +287,27 @@ impl<T: ModalidadMus> PartidaMus<T> {
         self.estado_lance
             .as_ref()
             .map_or_else(|| 0, |estado_lance| estado_lance.apuesta_maxima())
+    }
+
+    /// Devuelve las manos de los jugadores.
+    pub fn manos(&self) -> &T::N {
+        &self.manos
+    }
+
+    fn tanteo_final_lance(&mut self, l: &Lance) {
+        if let Some(estado_lance) = &mut self.estado_lance {
+            let mut tantos = 0;
+            let ganador = estado_lance.ganador().unwrap_or_else(|| {
+                let g = estado_lance.resolver_lance();
+                if let Apuesta::Tantos(t) = estado_lance.tantos_apostados() {
+                    tantos += t;
+                }
+                g
+            });
+
+            tantos += T::tantos_ganador(l, &self.manos, ganador);
+            self.lances[self.idx_lance].1 = Some(ResultadoLance { ganador, tantos });
+        }
     }
 }
 
