@@ -134,9 +134,20 @@ impl Kibitzer<CuatroJugadores> for KibitzerCli {
                 }
                 self.marcador[*pareja_id] += *tantos as usize;
             }
-            MusAction::LanceStart(lance) => self.lance_actual = Some(*lance),
-            MusAction::HasPares(_, _) => todo!(),
-            MusAction::HasJuego(_, _) => todo!(),
+            MusAction::LanceStart(lance) => {
+                self.lance_actual = Some(*lance);
+                println!("Nuevo lance: {lance:?}");
+            }
+            MusAction::HasPares(player_id, pares) => {
+                if *pares {
+                    println!("{} tiene pares.", self.nombres_jugadores[*player_id]);
+                }
+            }
+            MusAction::HasJuego(player_id, juego) => {
+                if *juego {
+                    println!("{} tiene juego.", self.nombres_jugadores[*player_id]);
+                }
+            }
         }
     }
 }

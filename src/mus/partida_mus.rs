@@ -4,6 +4,7 @@ use arrayvec::ArrayVec;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::mus::Baraja;
 use crate::mus::CuatroJugadores;
 use crate::mus::DosJugadores;
 use crate::mus::Lance;
@@ -49,6 +50,7 @@ pub trait ModalidadMus: Sized {
         estado: &mut EstadoLance<Self>,
         accion: Accion,
     ) -> Result<Option<Turno>, MusError>;
+    fn repartir_manos(baraja: &Baraja) -> Self::N;
 }
 
 impl ModalidadMus for DosJugadores {
@@ -67,6 +69,11 @@ impl ModalidadMus for DosJugadores {
         accion: Accion,
     ) -> Result<Option<Turno>, MusError> {
         estado.actuar(accion)
+    }
+
+    fn repartir_manos(baraja: &Baraja) -> Self::N {
+        let [mano1, mano2, _, _] = baraja.repartir_manos();
+        [mano1, mano2]
     }
 }
 
@@ -88,6 +95,10 @@ impl ModalidadMus for CuatroJugadores {
         accion: Accion,
     ) -> Result<Option<Turno>, MusError> {
         estado.actuar(accion)
+    }
+
+    fn repartir_manos(baraja: &Baraja) -> Self::N {
+        baraja.repartir_manos()
     }
 }
 
