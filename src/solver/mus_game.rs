@@ -791,6 +791,8 @@ impl Game for MusGameTwoPlayers {
         self.manos_pares.clear();
         self.manos_juego.clear();
         self.cards = None;
+        self.hubo_mus = false;
+        self.descarte_str = [ArrayString::new(); 2];
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
