@@ -45,6 +45,9 @@ pub enum GameType {
 pub struct GameConfig {
     pub game_type: GameType,
     pub abstract_game: bool,
+    /// Número máximo de rondas de mus. Con cero rondas se juega a primeras dadas. Acota el
+    /// árbol de juego, que sin este límite es infinito. Solo aplica a las partidas completas.
+    pub max_mus_rounds: u8,
 }
 
 #[derive(
@@ -114,17 +117,23 @@ impl Strategy {
                     manos[2].clone(),
                     manos[3].clone(),
                 ];
-                let mut mus_game =
-                    MusGame::new(tantos, self.strategy_config.game_config.abstract_game)
-                        .with_hands(manos.clone());
+                let mut mus_game = MusGame::new(
+                    tantos,
+                    self.strategy_config.game_config.abstract_game,
+                    self.strategy_config.game_config.max_mus_rounds,
+                )
+                .with_hands(manos.clone());
                 self.actions_for_game(&mut mus_game, history)
             }
             GameType::MusGameTwoHands => todo!(),
             GameType::MusGameTwoPlayers => {
                 let manos = [manos[0].clone(), manos[1].clone()];
-                let mut mus_game =
-                    MusGameTwoPlayers::new(tantos, self.strategy_config.game_config.abstract_game)
-                        .with_hands(manos.clone());
+                let mut mus_game = MusGameTwoPlayers::new(
+                    tantos,
+                    self.strategy_config.game_config.abstract_game,
+                    self.strategy_config.game_config.max_mus_rounds,
+                )
+                .with_hands(manos.clone());
                 self.actions_for_game(&mut mus_game, history)
             }
         }

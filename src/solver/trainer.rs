@@ -55,25 +55,36 @@ impl Trainer {
                     }
                     GameType::LanceGameTwoHands(_) => todo!(),
                     GameType::MusGame => {
-                        let mut mus_game = MusGame::new(tantos, game_config.abstract_game)
-                            .with_utility_table(Rc::new(utility_table));
+                        let mut mus_game = MusGame::new(
+                            tantos,
+                            game_config.abstract_game,
+                            game_config.max_mus_rounds,
+                        )
+                        .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                         expected_utility
                     }
                     GameType::MusGameTwoHands => {
-                        let mut mus_game = MusGameTwoHands::new(tantos, game_config.abstract_game)
-                            .with_utility_table(Rc::new(utility_table));
+                        let mut mus_game = MusGameTwoHands::new(
+                            tantos,
+                            game_config.abstract_game,
+                            game_config.max_mus_rounds,
+                        )
+                        .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                         expected_utility
                     }
                     GameType::MusGameTwoPlayers => {
-                        let mut mus_game =
-                            MusGameTwoPlayers::new(tantos, game_config.abstract_game)
-                                .with_utility_table(Rc::new(utility_table));
+                        let mut mus_game = MusGameTwoPlayers::new(
+                            tantos,
+                            game_config.abstract_game,
+                            game_config.max_mus_rounds,
+                        )
+                        .with_utility_table(Rc::new(utility_table));
                         train_game(&mut cfr, &mut mus_game, trainer_config);
                         let expected_utility = cfr.expected_utility(&mus_game)[0];
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;

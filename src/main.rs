@@ -49,6 +49,11 @@ struct Args {
     /// acción por pareja.
     #[arg(long)]
     variant: Option<MusVariant>,
+
+    /// Número máximo de rondas de mus. Con cero rondas se juega a primeras dadas. Este límite
+    /// acota el árbol de juego, que sin él sería infinito. Por defecto: 1
+    #[arg(long, default_value_t = 1)]
+    max_mus_rounds: u8,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -81,6 +86,7 @@ fn main() {
     };
     let game_config = GameConfig {
         abstract_game: args.abstract_game,
+        max_mus_rounds: args.max_mus_rounds,
         game_type: match (args.lance, args.variant) {
             (Some(lance), _) => GameType::LanceGame(lance),
             (None, None) => GameType::MusGame,
