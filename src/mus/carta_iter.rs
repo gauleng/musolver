@@ -106,17 +106,17 @@ impl Iterator for CombinationsWithReplacementProb {
     }
 }
 
-pub struct DistribucionCartaIter<'a, const N: usize> {
-    cartas: &'a [(Carta, u8)],
+pub struct DistribucionCartaIter<const N: usize, const M: usize> {
+    cartas: [(Carta, u8); M],
     iter: CombinationsWithReplacementProb,
 }
 
 /// Iterador de manos de cartas de mus.
-impl<'a, const N: usize> DistribucionCartaIter<'a, N> {
+impl<const N: usize, const M: usize> DistribucionCartaIter<N, M> {
     /// Crea un nuevo iterador a partir de una distribución de cartas y el número de cartas que se
     /// desean tener ne la mano. La distribución se indica con un vector de pares (Carta, u8),
     /// donde el entero indica el número de cartas disponibles de ese valor.
-    pub fn new(cartas: &'a [(Carta, u8)]) -> Self {
+    pub fn new(cartas: [(Carta, u8); M]) -> Self {
         let frequencies: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
         let iter = CombinationsWithReplacementProb::new(N, frequencies);
         Self { cartas, iter }
@@ -126,13 +126,12 @@ impl<'a, const N: usize> DistribucionCartaIter<'a, N> {
         &self.iter.current_frequencies
     }
 
-    pub fn next_with_freq(&mut self) -> Option<(([Carta; N], f64), &[usize])> {
-        let item = self.next()?;
-        Some((item, self.current_frequencies()))
+    pub fn cartas(&self) -> [(Carta, u8); M] {
+        self.cartas
     }
 }
 
-impl<'a, const N: usize> Iterator for DistribucionCartaIter<'a, N> {
+impl<const N: usize, const M: usize> Iterator for DistribucionCartaIter<N, M> {
     type Item = ([Carta; N], f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -142,19 +141,19 @@ impl<'a, const N: usize> Iterator for DistribucionCartaIter<'a, N> {
     }
 }
 
-pub struct DistribucionDobleCartaIter<'a, const N: usize> {
-    cartas: &'a [(Carta, u8)],
+pub struct DistribucionDobleCartaIter<const N: usize, const M: usize> {
+    cartas: [(Carta, u8); M],
     mano_actual1: Option<([Carta; N], f64)>,
     iter1: CombinationsWithReplacementProb,
     iter2: CombinationsWithReplacementProb,
 }
 ///
 /// Iterador de pares de manos de mus.
-impl<'a, const N: usize> DistribucionDobleCartaIter<'a, N> {
+impl<const N: usize, const M: usize> DistribucionDobleCartaIter<N, M> {
     /// Crea un nuevo iterador a partir de una distribución de cartas y el número de cartas que se
     /// desean tener en cada una de las manos. La distribución se indica con un vector de pares (Carta, u8),
     /// donde el entero indica el número de cartas disponibles de ese valor.
-    pub fn new(cartas: &'a [(Carta, u8)]) -> Self {
+    pub fn new(cartas: [(Carta, u8); M]) -> Self {
         let frecuencias: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
         let mut iter1 = CombinationsWithReplacementProb::new(N, frecuencias);
         let idx1 = iter1.next();
@@ -196,13 +195,12 @@ impl<'a, const N: usize> DistribucionDobleCartaIter<'a, N> {
         &self.iter2.current_frequencies
     }
 
-    pub fn next_with_freq(&mut self) -> Option<(([Carta; N], [Carta; N], f64), &[usize])> {
-        let item = self.next()?;
-        Some((item, self.current_frequencies()))
+    pub fn cartas(&self) -> [(Carta, u8); M] {
+        self.cartas
     }
 }
 
-impl<'a, const N: usize> Iterator for DistribucionDobleCartaIter<'a, N> {
+impl<const N: usize, const M: usize> Iterator for DistribucionDobleCartaIter<N, M> {
     type Item = ([Carta; N], [Carta; N], f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -210,13 +208,13 @@ impl<'a, const N: usize> Iterator for DistribucionDobleCartaIter<'a, N> {
         let next = self.iter2.next();
         if let Some((idx, frec)) = next {
             let cartas = std::array::from_fn(|i| self.cartas[idx[i]].0);
-            Some((mano1.0.clone(), cartas, mano1.1 * frec))
+            Some((mano1.0, cartas, mano1.1 * frec))
         } else {
             self.new_iter2();
             let mano1 = self.mano_actual1.as_ref()?;
             let idx = self.iter2.next().unwrap();
             let cartas = std::array::from_fn(|i| self.cartas[idx.0[i]].0);
-            Some((mano1.0.clone(), cartas, mano1.1 * idx.1))
+            Some((mano1.0, cartas, mano1.1 * idx.1))
         }
     }
 }
@@ -253,13 +251,13 @@ mod tests {
             (Carta::Tres, 1),
             (Carta::Cuatro, 1),
         ];
-        let it = DistribucionCartaIter::<4>::new(&cartas);
+        let it = DistribucionCartaIter::<4, 4>::new(cartas);
         assert_eq!(it.count(), 1);
 
         let cartas = [(Carta::As, 2), (Carta::Cuatro, 1)];
-        let it = DistribucionCartaIter::<2>::new(&cartas);
+        let it = DistribucionCartaIter::<2, 2>::new(cartas);
         assert_eq!(it.count(), 2);
-        let mut it = DistribucionCartaIter::new(&cartas);
+        let mut it = DistribucionCartaIter::new(cartas);
         assert_eq!(it.next().unwrap(), ([Carta::As, Carta::As], 1. / 3.));
         assert_eq!(it.next().unwrap(), ([Carta::As, Carta::Cuatro], 2. / 3.));
     }
@@ -272,13 +270,13 @@ mod tests {
             (Carta::Tres, 1),
             (Carta::Cuatro, 1),
         ];
-        let it = DistribucionDobleCartaIter::<2>::new(&cartas);
+        let it = DistribucionDobleCartaIter::<2, 4>::new(cartas);
         assert_eq!(it.count(), 6);
 
         let cartas = [(Carta::As, 2), (Carta::Cuatro, 2)];
-        let it = DistribucionDobleCartaIter::<2>::new(&cartas);
+        let it = DistribucionDobleCartaIter::<2, 2>::new(cartas);
         assert_eq!(it.count(), 3);
-        let mut it = DistribucionDobleCartaIter::new(&cartas);
+        let mut it = DistribucionDobleCartaIter::new(cartas);
         assert_eq!(
             it.next().unwrap(),
             (
@@ -292,7 +290,7 @@ mod tests {
     #[test]
     fn test_current_frequencies() {
         let cartas = [(Carta::As, 2), (Carta::Cuatro, 2)];
-        let mut it = DistribucionDobleCartaIter::<2>::new(&cartas);
+        let mut it = DistribucionDobleCartaIter::<2, 2>::new(cartas);
         it.next();
         assert_eq!(it.current_frequencies(), &[0, 0]);
     }

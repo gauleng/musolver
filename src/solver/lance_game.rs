@@ -437,9 +437,9 @@ impl Game for LanceGame {
     }
 
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
-        DistribucionDobleCartaIter::<4>::new(&Baraja::FREC_BARAJA_MUS).flat_map(
+        DistribucionDobleCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS).flat_map(
             move |(_mano1, _mano2, prob)| {
-                DistribucionDobleCartaIter::<4>::new(&Baraja::FREC_BARAJA_MUS).map(
+                DistribucionDobleCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS).map(
                     move |(_mano3, _mano4, prob2)| {
                         // let manos = [
                         //     Mano::new(mano1.to_owned()),

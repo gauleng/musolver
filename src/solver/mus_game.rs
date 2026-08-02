@@ -1,14 +1,14 @@
 use std::{fmt::Write, rc::Rc};
 
 use arrayvec::ArrayString;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 
 use crate::{
     Game, NodeType,
     mus::{
         Accion, Apuesta, Baraja, Carta, CuatroJugadores, DistribucionCartaIter,
-        DistribucionDobleCartaIter, DosJugadores, FasePartida, Lance, Mano,
-        ModalidadMus, PartidaMus, Turno,
+        DistribucionDobleCartaIter, DosJugadores, FasePartida, Lance, Mano, ModalidadMus,
+        PartidaMus, Turno,
     },
     solver::ManosNormalizadas,
 };
@@ -78,13 +78,7 @@ impl MusGame {
         self.enforce_max_mus_rounds();
     }
 
-    /// Sale de la fase de mus cuando se han agotado las rondas configuradas. `NoMus` sería
-    /// entonces la única acción posible, así que se fuerza aquí en lugar de crear un nodo de
-    /// decisión con una sola opción. Con cero rondas esto ocurre ya en el reparto: se juega a
-    /// primeras dadas y la fase de mus no llega a formar parte del árbol.
-    ///
-    /// Mantiene la invariante de la que depende [`actions`]: si hay un nodo de jugador en
-    /// `FasePartida::Mus`, queda al menos una ronda por jugar.
+    /// Finish mus phase when rounds reach max_mus_rounds.
     fn enforce_max_mus_rounds(&mut self) {
         if self.mus_rounds < self.max_mus_rounds {
             return;
@@ -145,17 +139,17 @@ impl MusGame {
 
     fn iter_descartes<const N: usize>(
         &self,
-        estado_baraja: &[(Carta, u8); 8],
+        estado_baraja: [(Carta, u8); 8],
     ) -> Vec<(MusGame, f64)> {
         let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N>::new(estado_baraja);
+        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
         while let Some((nuevas, probability)) = iter.next() {
             let mut game = self.clone();
             game.partida
                 .as_mut()
-                .unwrap()
+                .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
-                .unwrap();
+                .expect("Game must be expecting a discard but it doesn't");
             let Some(CardSource::Iterable(dist)) = &mut game.cards else {
                 unreachable!()
             };
@@ -170,18 +164,14 @@ impl MusGame {
         partidas
     }
 
-    /// En la fase de envites la pareja actúa como una unidad: el primer miembro elige a ciegas y
-    /// el compañero, que sí conoce esa elección, tiene la última palabra. Solo se registra en el
-    /// historial la acción del compañero, que es la que vincula a la pareja.
-    fn accion_oculta(&self) -> bool {
+    fn first_player_action(&self) -> bool {
         self.partida.as_ref().is_some_and(|partida| {
             matches!(partida.fase(), Some(FasePartida::Envites(_)))
                 && matches!(partida.turno(), Some(Turno::Pareja(0 | 1)))
         })
     }
 
-    /// Cierto cuando le toca al segundo miembro de la pareja en la fase de envites.
-    fn turno_companero(&self) -> bool {
+    fn second_player_turn(&self) -> bool {
         self.partida.as_ref().is_some_and(|partida| {
             matches!(partida.fase(), Some(FasePartida::Envites(_)))
                 && matches!(partida.turno(), Some(Turno::Pareja(2 | 3)))
@@ -255,29 +245,24 @@ impl Game for MusGame {
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         match &self.partida {
             None => {
-                // Los repartos de las dos primeras manos se enumeran de golpe, pero los de las
-                // dos últimas se generan bajo demanda: el producto de ambos niveles no cabe en
-                // memoria.
                 let (tantos, abstract_game, max_mus_rounds) =
                     (self.tantos, self.abstract_game, self.max_mus_rounds);
-                let partidas = repartos_dobles(&Baraja::FREC_BARAJA_MUS).into_iter().flat_map(
+                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).flat_map(
                     move |(mano1, mano2, probability, dist)| {
-                        repartos_dobles(&dist).into_iter().map(
-                            move |(mano3, mano4, probability2, dist2)| {
-                                let mut game = MusGame::new(tantos, abstract_game, max_mus_rounds)
-                                    .with_hands([
-                                        Mano::new(mano1),
-                                        Mano::new(mano2),
-                                        Mano::new(mano3),
-                                        Mano::new(mano4),
-                                    ]);
-                                game.set_card_source(CardSource::Iterable(dist2));
-                                (game, probability * probability2)
-                            },
-                        )
+                        double_deal(dist).map(move |(mano3, mano4, probability2, dist2)| {
+                            let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
+                                .with_hands([
+                                    Mano::new(mano1),
+                                    Mano::new(mano2),
+                                    Mano::new(mano3),
+                                    Mano::new(mano4),
+                                ]);
+                            game.set_card_source(CardSource::Iterable(dist2));
+                            (game, probability * probability2)
+                        })
                     },
                 );
-                Box::new(partidas) as Box<dyn Iterator<Item = (Self, f64)>>
+                Either::Left(partidas)
             }
             Some(p) => {
                 let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
@@ -295,13 +280,13 @@ impl Game for MusGame {
                 InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
                 game.history_str.push('C');
                 let partidas = match descartes.len() {
-                    1 => game.iter_descartes::<1>(&estado_baraja),
-                    2 => game.iter_descartes::<2>(&estado_baraja),
-                    3 => game.iter_descartes::<3>(&estado_baraja),
-                    4 => game.iter_descartes::<4>(&estado_baraja),
+                    1 => game.iter_descartes::<1>(estado_baraja),
+                    2 => game.iter_descartes::<2>(estado_baraja),
+                    3 => game.iter_descartes::<3>(estado_baraja),
+                    4 => game.iter_descartes::<4>(estado_baraja),
                     _ => unreachable!(),
                 };
-                Box::new(partidas.into_iter()) as Box<dyn Iterator<Item = (Self, f64)>>
+                Either::Right(partidas.into_iter())
             }
         }
     }
@@ -311,15 +296,15 @@ impl Game for MusGame {
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
                 || self.mus_rounds < self.max_mus_rounds,
-            "Nodo de jugador en la fase de mus sin rondas disponibles:              falta un enforce_max_mus_rounds tras resolver el descarte."
+            "Mus phase reached and no available rounds: missing call to enforce_max_mus_rounds."
         );
         let mut acciones = actions(partida);
-        if self.turno_companero() {
+        if self.second_player_turn() {
             // El compañero conoce ya la acción del primer miembro de la pareja y solo puede
             // igualarla o subirla: la acción de la pareja es la suya.
             let last_action = self
                 .last_action
-                .expect("El primer miembro de la pareja ha actuado antes que su compañero.");
+                .expect("First player of the couple must act but it's missing");
             acciones.retain(|a| *a >= last_action);
         }
         acciones
@@ -345,7 +330,7 @@ impl Game for MusGame {
 
     fn act(&mut self, a: Accion) {
         self.last_action = Some(a);
-        if !self.accion_oculta() {
+        if !self.first_player_action() {
             self.history_str.push_str(&a.to_string());
         }
         let fase = self
@@ -394,7 +379,7 @@ impl Game for MusGame {
     }
 
     fn history_str(&self) -> String {
-        if self.turno_companero() {
+        if self.second_player_turn() {
             format!("{}{}*", self.history_str, self.last_action.unwrap())
         } else {
             self.history_str.to_string()
@@ -508,7 +493,7 @@ impl MusGameTwoHands {
         tantos: &[u8; 2],
         abstracto: Option<Lance>,
     ) -> [ArrayString<24>; 2] {
-        let info_set_prefix = core::array::from_fn(|i| {
+        core::array::from_fn(|i| {
             if let Some(lance) = abstracto {
                 let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(&manos[i], &lance);
                 let mano_abstracta2 =
@@ -528,8 +513,7 @@ impl MusGameTwoHands {
                 ))
                 .unwrap()
             }
-        });
-        info_set_prefix
+        })
     }
 
     pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
@@ -541,17 +525,17 @@ impl MusGameTwoHands {
 
     fn iter_descartes<const N: usize>(
         &self,
-        estado_baraja: &[(Carta, u8); 8],
+        estado_baraja: [(Carta, u8); 8],
     ) -> Vec<(MusGameTwoHands, f64)> {
         let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N>::new(estado_baraja);
+        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
         while let Some((nuevas, probability)) = iter.next() {
             let mut game = self.clone();
             game.partida
                 .as_mut()
-                .unwrap()
+                .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
-                .unwrap();
+                .expect("Game must be expecting a discard but it doesn't");
             let Some(CardSource::Iterable(dist)) = &mut game.cards else {
                 unreachable!()
             };
@@ -632,32 +616,24 @@ impl Game for MusGameTwoHands {
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         match &self.partida {
             None => {
-                let mut partidas = Vec::new();
-                let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS);
-                while let Some((mano1, mano2, probability)) = iter.next() {
-                    let mut dist = Baraja::FREC_BARAJA_MUS;
-                    let freq = iter.current_frequencies();
-                    for (d, f) in std::iter::zip(&mut dist, freq) {
-                        d.1 = *f as u8;
-                    }
-                    let mut iter2 = DistribucionDobleCartaIter::new(&dist);
-                    while let Some((mano3, mano4, probability2)) = iter2.next() {
-                        let mut game = MusGameTwoHands::new(
-                            self.tantos,
-                            self.abstract_game,
-                            self.max_mus_rounds,
-                        )
-                        .with_hands([
-                            Mano::new(mano1),
-                            Mano::new(mano2),
-                            Mano::new(mano3),
-                            Mano::new(mano4),
-                        ]);
-                        game.set_card_source(CardSource::Iterable(dist));
-                        partidas.push((game, probability * probability2));
-                    }
-                }
-                partidas.into_iter()
+                let (tantos, abstract_game, max_mus_rounds) =
+                    (self.tantos, self.abstract_game, self.max_mus_rounds);
+                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).flat_map(
+                    move |(mano1, mano2, probability, dist)| {
+                        double_deal(dist).map(move |(mano3, mano4, probability2, dist2)| {
+                            let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
+                                .with_hands([
+                                    Mano::new(mano1),
+                                    Mano::new(mano2),
+                                    Mano::new(mano3),
+                                    Mano::new(mano4),
+                                ]);
+                            game.set_card_source(CardSource::Iterable(dist2));
+                            (game, probability * probability2)
+                        })
+                    },
+                );
+                Either::Left(partidas)
             }
             Some(p) => {
                 let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
@@ -674,14 +650,15 @@ impl Game for MusGameTwoHands {
                 let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
                 InfoSetWriter(&mut game.descarte_str[turno % 2]).descarte(&descartes);
                 game.history_str.push('C');
-                match descartes.len() {
-                    1 => game.iter_descartes::<1>(&estado_baraja),
-                    2 => game.iter_descartes::<2>(&estado_baraja),
-                    3 => game.iter_descartes::<3>(&estado_baraja),
-                    4 => game.iter_descartes::<4>(&estado_baraja),
+                let games = match descartes.len() {
+                    1 => game.iter_descartes::<1>(estado_baraja),
+                    2 => game.iter_descartes::<2>(estado_baraja),
+                    3 => game.iter_descartes::<3>(estado_baraja),
+                    4 => game.iter_descartes::<4>(estado_baraja),
                     _ => unreachable!(),
-                }
-                .into_iter()
+                };
+
+                Either::Right(games.into_iter())
             }
         }
     }
@@ -691,7 +668,7 @@ impl Game for MusGameTwoHands {
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
                 || self.mus_rounds < self.max_mus_rounds,
-            "Nodo de jugador en la fase de mus sin rondas disponibles:              falta un salir_de_mus_si_agotado tras resolver el descarte."
+            "Nodo de jugador en la fase de mus sin rondas disponibles:              falta un enforce_max_mus_rounds tras resolver el descarte."
         );
         actions(partida)
     }
@@ -891,17 +868,17 @@ impl MusGameTwoPlayers {
 
     fn iter_descartes<const N: usize>(
         &self,
-        estado_baraja: &[(Carta, u8); 8],
+        estado_baraja: [(Carta, u8); 8],
     ) -> Vec<(MusGameTwoPlayers, f64)> {
         let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N>::new(estado_baraja);
+        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
         while let Some((nuevas, probability)) = iter.next() {
             let mut game = self.clone();
             game.partida
                 .as_mut()
-                .unwrap()
+                .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
-                .unwrap();
+                .expect("Game must be expecting a discard but it doesn't");
             let Some(CardSource::Iterable(dist)) = &mut game.cards else {
                 unreachable!()
             };
@@ -982,24 +959,17 @@ impl Game for MusGameTwoPlayers {
     fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         match &self.partida {
             None => {
-                let mut partidas = Vec::new();
-                let mut iter = DistribucionDobleCartaIter::new(&Baraja::FREC_BARAJA_MUS);
-                while let Some((mano1, mano2, probability)) = iter.next() {
-                    let mut game = MusGameTwoPlayers::new(
-                        self.tantos,
-                        self.abstract_game,
-                        self.max_mus_rounds,
-                    )
-                    .with_hands([Mano::new(mano1), Mano::new(mano2)]);
-                    let mut dist = Baraja::FREC_BARAJA_MUS;
-                    let freq = iter.current_frequencies();
-                    for (d, f) in std::iter::zip(&mut dist, freq) {
-                        d.1 = *f as u8;
-                    }
-                    game.set_card_source(CardSource::Iterable(dist));
-                    partidas.push((game, probability));
-                }
-                partidas.into_iter()
+                let (tantos, abstract_game, max_mus_rounds) =
+                    (self.tantos, self.abstract_game, self.max_mus_rounds);
+                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).map(
+                    move |(mano1, mano2, probability, dist)| {
+                        let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
+                            .with_hands([Mano::new(mano1), Mano::new(mano2)]);
+                        game.set_card_source(CardSource::Iterable(dist));
+                        (game, probability)
+                    },
+                );
+                Either::Left(partidas)
             }
             Some(p) => {
                 let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
@@ -1016,14 +986,14 @@ impl Game for MusGameTwoPlayers {
                 let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
                 InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
                 game.history_str.push('C');
-                match descartes.len() {
-                    1 => game.iter_descartes::<1>(&estado_baraja),
-                    2 => game.iter_descartes::<2>(&estado_baraja),
-                    3 => game.iter_descartes::<3>(&estado_baraja),
-                    4 => game.iter_descartes::<4>(&estado_baraja),
+                let games = match descartes.len() {
+                    1 => game.iter_descartes::<1>(estado_baraja),
+                    2 => game.iter_descartes::<2>(estado_baraja),
+                    3 => game.iter_descartes::<3>(estado_baraja),
+                    4 => game.iter_descartes::<4>(estado_baraja),
                     _ => unreachable!(),
-                }
-                .into_iter()
+                };
+                Either::Right(games.into_iter())
             }
         }
     }
@@ -1033,7 +1003,7 @@ impl Game for MusGameTwoPlayers {
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
                 || self.mus_rounds < self.max_mus_rounds,
-            "Nodo de jugador en la fase de mus sin rondas disponibles:              falta un salir_de_mus_si_agotado tras resolver el descarte."
+            "Mus phase reached and no available rounds: missing call to enforce_max_mus_rounds."
         );
         actions(partida)
     }
@@ -1196,7 +1166,7 @@ fn utility(player: usize, tantos: &[u8; 2], utility_table: Option<&[[f64; 40]; 4
                 payoff[player % 2] as f64
             } else {
                 let expected_utility = utility_table[tantos[1] as usize][tantos[0] as usize];
-                if player % 2 == 0 {
+                if player.is_multiple_of(2) {
                     -expected_utility
                 } else {
                     expected_utility
@@ -1228,23 +1198,26 @@ fn push_jugadas_lance(
     }
 }
 
-/// Dos manos repartidas, su probabilidad y la distribución de cartas que queda en la baraja tras
-/// repartirlas.
-type RepartoDoble = ([Carta; 4], [Carta; 4], f64, [(Carta, u8); 8]);
+type DoubleDeal = ([Carta; 4], [Carta; 4], f64, [(Carta, u8); 8]);
 
-/// Enumera todos los repartos de dos manos con su probabilidad y la distribución de cartas que
-/// queda en la baraja tras repartirlas.
-fn repartos_dobles(cartas: &[(Carta, u8); 8]) -> Vec<RepartoDoble> {
-    let mut repartos = Vec::new();
-    let mut iter = DistribucionDobleCartaIter::new(cartas);
-    while let Some((mano1, mano2, probability)) = iter.next() {
-        let mut dist = *cartas;
-        for (d, f) in std::iter::zip(&mut dist, iter.current_frequencies()) {
-            d.1 = *f as u8;
+fn double_deal(cartas: [(Carta, u8); 8]) -> impl Iterator<Item = DoubleDeal> {
+    struct DoubleDealIter(DistribucionDobleCartaIter<4, 8>);
+
+    impl Iterator for DoubleDealIter {
+        type Item = DoubleDeal;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let (mano1, mano2, prob) = self.0.next()?;
+
+            let mut dist = self.0.cartas();
+            for (d, f) in std::iter::zip(&mut dist, self.0.current_frequencies()) {
+                d.1 = *f as u8;
+            }
+
+            Some((mano1, mano2, prob, dist))
         }
-        repartos.push((mano1, mano2, probability, dist));
     }
-    repartos
+    DoubleDealIter(DistribucionDobleCartaIter::new(cartas))
 }
 
 fn jugadas_manos(manos: &[Mano]) -> (ArrayString<4>, ArrayString<4>) {
@@ -1514,10 +1487,7 @@ mod tests {
 
         // Las cartas descartadas son privadas y la mano del prefijo ya es la nueva.
         let mano_nueva = game.partida.as_ref().unwrap().manos()[0].to_string();
-        assert_eq!(
-            game.info_set_str(0),
-            format!("0:0,{mano_nueva},5,Mmmmmd1C")
-        );
+        assert_eq!(game.info_set_str(0), format!("0:0,{mano_nueva},5,Mmmmmd1C"));
         assert_eq!(game.info_set_str(1), "0:0,RCC1,Mmmmmd1C");
 
         for _ in 0..3 {
