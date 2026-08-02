@@ -116,7 +116,7 @@ impl Game for FaseMus {
                 Fase::CompararCartas => musolver::NodeType::Terminal,
                 Fase::Mus | Fase::Repartir => musolver::NodeType::Chance,
             },
-            |turn| musolver::NodeType::Player(turn),
+            musolver::NodeType::Player,
         )
     }
 

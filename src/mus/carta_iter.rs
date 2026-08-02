@@ -86,7 +86,8 @@ impl Iterator for CombinationsWithReplacementProb {
             let next = self.iter.next();
             let indices = next?;
 
-            self.current_frequencies.clone_from(&self.max_frequencies);
+            self.current_frequencies
+                .copy_from_slice(&self.max_frequencies);
             for idx in &indices {
                 match self.current_frequencies[*idx].checked_sub(1) {
                     None => continue 'outer,

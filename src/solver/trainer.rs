@@ -103,7 +103,13 @@ impl Trainer {
     }
 }
 
-fn train_game<G>(cfr: &mut Cfr, game: &mut G, trainer_config: &TrainerConfig)
+impl Default for Trainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn train_game<G>(cfr: &mut Cfr, game: &mut G, trainer_config: &TrainerConfig) -> Vec<f64>
 where
     G: Game + Debug + Clone,
     G::Action: Eq + Copy,
@@ -117,13 +123,14 @@ where
             .unwrap()
             .progress_chars("##-"),
     );
+    let mut last_util = vec![0.; G::N_PLAYERS];
     cfr.train(
         game,
         trainer_config.method,
         trainer_config.iterations,
         |i, util| {
             pb.inc(1);
-            if i % 1000 == 0 {
+            if i.is_multiple_of(1000) {
                 pb.set_message(format!(
                     "Utility: {}",
                     util.iter()
@@ -131,9 +138,11 @@ where
                         .collect::<Vec<String>>()
                         .join(" "),
                 ));
+                last_util.copy_from_slice(util);
             }
         },
     );
     let elapsed = now.elapsed();
     println!("Elapsed: {elapsed:.2?}");
+    last_util
 }

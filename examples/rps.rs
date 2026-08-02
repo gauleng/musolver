@@ -83,10 +83,8 @@ impl Game for Rps {
     }
 
     fn current_player(&self) -> musolver::NodeType {
-        self.turn.map_or_else(
-            || musolver::NodeType::Terminal,
-            |turn| musolver::NodeType::Player(turn),
-        )
+        self.turn
+            .map_or_else(|| musolver::NodeType::Terminal, musolver::NodeType::Player)
     }
 
     fn act(&mut self, a: Self::Action) {

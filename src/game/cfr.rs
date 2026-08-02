@@ -625,8 +625,8 @@ impl Cfr {
         match game.current_player() {
             NodeType::Chance => {
                 game.new_iter()
-                    .fold(vec![0.; G::N_PLAYERS], |accum, (mut game, prob)| {
-                        std::iter::zip(accum, self.expected_utility(&mut game))
+                    .fold(vec![0.; G::N_PLAYERS], |accum, (game, prob)| {
+                        std::iter::zip(accum, self.expected_utility(&game))
                             .map(|(a, b)| a + prob * b)
                             .collect()
                     })
@@ -647,8 +647,8 @@ impl Cfr {
                         game
                     })
                     .zip(strategy)
-                    .fold(vec![0.; G::N_PLAYERS], |accum, (mut game, prob)| {
-                        std::iter::zip(accum, self.expected_utility(&mut game))
+                    .fold(vec![0.; G::N_PLAYERS], |accum, (game, prob)| {
+                        std::iter::zip(accum, self.expected_utility(&game))
                             .map(|(a, b)| a + prob * b)
                             .collect()
                     })
@@ -751,7 +751,7 @@ impl Cfr {
                         .sum()
                 }
             }
-            NodeType::Terminal => return game.utility(player),
+            NodeType::Terminal => game.utility(player),
         }
     }
 
