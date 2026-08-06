@@ -92,7 +92,7 @@ impl Baraja {
                 .enumerate()
                 .filter_map(|(idx, carta)| descartes[idx].then_some(*carta)),
         );
-        mano.reemplazar(descartes, nuevas.into_iter());
+        mano.reemplazar(descartes, nuevas);
     }
 
     pub fn descartar(&mut self, descartes: impl Iterator<Item = Carta>) -> ArrayVec<Carta, 4> {

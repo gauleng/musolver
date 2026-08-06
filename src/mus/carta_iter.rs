@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use itertools::{CombinationsWithReplacement, Itertools};
 
+use crate::mus::Baraja;
+
 use super::Carta;
 
 #[cfg(windows)]
@@ -220,6 +222,137 @@ impl<const N: usize, const M: usize> Iterator for DistribucionDobleCartaIter<N, 
     }
 }
 
+type DoubleDeal = ([Carta; 4], [Carta; 4], f64, [(Carta, u8); 8]);
+pub struct RepartoMusDosJugadoresIter {
+    inner: RepartoDosManosMusIter,
+    remaining: usize,
+}
+
+impl RepartoMusDosJugadoresIter {
+    pub fn new() -> Self {
+        Self {
+            inner: RepartoDosManosMusIter::new(Baraja::FREC_BARAJA_MUS),
+            remaining: 104_820,
+        }
+    }
+}
+
+impl Default for RepartoMusDosJugadoresIter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Iterator for RepartoMusDosJugadoresIter {
+    type Item = DoubleDeal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (mano1, mano2, prob, freq) = self.inner.next()?;
+
+        let mut dist = self.inner.cartas();
+        for (d, f) in std::iter::zip(&mut dist, &freq) {
+            d.1 = f.1;
+        }
+        self.remaining -= 1;
+
+        Some((mano1, mano2, prob, dist))
+    }
+
+    fn size_hint(&self) -> (usize, std::option::Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for RepartoMusDosJugadoresIter {}
+
+type QuadrupleDeal = (
+    [Carta; 4],
+    [Carta; 4],
+    [Carta; 4],
+    [Carta; 4],
+    f64,
+    [(Carta, u8); 8],
+);
+
+pub struct RepartoMusIter {
+    outer: RepartoDosManosMusIter,
+    /// Reparto actual de las dos primeras manos junto con el iterador sobre las
+    /// dos manos restantes que se generan a partir de la distribución sobrante.
+    actual: Option<([Carta; 4], [Carta; 4], f64, RepartoDosManosMusIter)>,
+    remaining: usize,
+}
+
+impl RepartoMusIter {
+    pub fn new() -> Self {
+        let mut outer = RepartoDosManosMusIter::new(Baraja::FREC_BARAJA_MUS);
+        let actual = outer.next().map(|(mano1, mano2, prob, dist)| {
+            (mano1, mano2, prob, RepartoDosManosMusIter::new(dist))
+        });
+        Self {
+            outer,
+            actual,
+            remaining: 7_355_552_285,
+        }
+    }
+}
+
+impl Default for RepartoMusIter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Iterator for RepartoMusIter {
+    type Item = QuadrupleDeal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (mano1, mano2, prob, inner) = self.actual.as_mut()?;
+            if let Some((mano3, mano4, prob2, dist2)) = inner.next() {
+                self.remaining -= 1;
+                return Some((*mano1, *mano2, mano3, mano4, *prob * prob2, dist2));
+            }
+            // Se han agotado las dos últimas manos para este reparto inicial:
+            // avanzamos al siguiente reparto de las dos primeras manos.
+            self.actual = self.outer.next().map(|(mano1, mano2, prob, dist)| {
+                (mano1, mano2, prob, RepartoDosManosMusIter::new(dist))
+            });
+        }
+    }
+
+    fn size_hint(&self) -> (usize, std::option::Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for RepartoMusIter {}
+
+struct RepartoDosManosMusIter(DistribucionDobleCartaIter<4, 8>);
+
+impl RepartoDosManosMusIter {
+    fn new(frequencies: [(Carta, u8); 8]) -> Self {
+        Self(DistribucionDobleCartaIter::new(frequencies))
+    }
+    fn cartas(&self) -> [(Carta, u8); 8] {
+        self.0.cartas()
+    }
+}
+
+impl Iterator for RepartoDosManosMusIter {
+    type Item = DoubleDeal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (mano1, mano2, prob) = self.0.next()?;
+
+        let mut dist = self.0.cartas();
+        for (d, f) in std::iter::zip(&mut dist, self.0.current_frequencies()) {
+            d.1 = *f as u8;
+        }
+
+        Some((mano1, mano2, prob, dist))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +427,14 @@ mod tests {
         let mut it = DistribucionDobleCartaIter::<2, 2>::new(cartas);
         it.next();
         assert_eq!(it.current_frequencies(), &[0, 0]);
+    }
+
+    #[test]
+    fn test_repartos_mus() {
+        let reparto = RepartoMusDosJugadoresIter::new();
+        assert_eq!(reparto.len(), reparto.count());
+        let reparto = RepartoMusDosJugadoresIter::new();
+        let total_probability = reparto.fold(0., |accum, (_, _, prob, _)| accum + prob);
+        assert!((total_probability - 1.).abs() < 1e-9);
     }
 }
