@@ -54,10 +54,11 @@ impl Loader {
                                 text(path),
                                 text("-"),
                                 text!(
-                                    "{:?} - {} iterations - {:?}",
+                                    "{:?} - {} iterations - {:?} - Max. mus rounds: {}",
                                     strategy_config.trainer_config.method,
                                     strategy_config.trainer_config.iterations,
-                                    strategy_config.game_config.game_type
+                                    strategy_config.game_config.game_type,
+                                    strategy_config.game_config.max_mus_rounds
                                 )
                             ]
                             .width(Fill),

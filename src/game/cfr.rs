@@ -617,41 +617,43 @@ impl Cfr {
         game_graph.node(0).data().utility
     }
 
-    pub fn expected_utility<G>(&mut self, game: &G) -> Vec<f64>
+    pub fn expected_utility<G>(&self, game: &G) -> Vec<f64>
     where
         G: Game + Clone,
         G::Action: Eq + Copy,
     {
         match game.current_player() {
             NodeType::Chance => {
-                game.new_iter()
-                    .fold(vec![0.; G::N_PLAYERS], |accum, (game, prob)| {
-                        std::iter::zip(accum, self.expected_utility(&game))
-                            .map(|(a, b)| a + prob * b)
-                            .collect()
-                    })
+                let mut utility = vec![0.; G::N_PLAYERS];
+                for (game, prob) in game.new_iter() {
+                    for (u, v) in utility.iter_mut().zip(self.expected_utility(&game)) {
+                        *u += prob * v;
+                    }
+                }
+                utility
             }
             NodeType::Player(current_player) => {
                 let actions = game.actions();
                 let info_set_str = game.info_set_str(current_player);
-                let node = self
-                    .nodes
-                    .entry(info_set_str.clone())
-                    .or_insert_with(|| Node::new(actions.len()));
-                let strategy = node.get_average_strategy();
-                actions
-                    .iter()
-                    .map(|action| {
-                        let mut game = game.clone();
-                        game.act(*action);
-                        game
-                    })
-                    .zip(strategy)
-                    .fold(vec![0.; G::N_PLAYERS], |accum, (game, prob)| {
-                        std::iter::zip(accum, self.expected_utility(&game))
-                            .map(|(a, b)| a + prob * b)
-                            .collect()
-                    })
+                let strategy = match self.nodes.get(&info_set_str) {
+                    Some(node) => node.get_average_strategy(),
+                    None => vec![1. / actions.len() as f64; actions.len()],
+                };
+                let mut utility = vec![0.; G::N_PLAYERS];
+                for (action, prob) in actions.iter().zip(strategy) {
+                    // Una acción con probabilidad nula no aporta nada a la suma, así que podar su
+                    // subárbol da el mismo resultado exacto. Tras entrenar, la estrategia media
+                    // es casi determinista y esto descarta la mayor parte del árbol.
+                    if prob == 0. {
+                        continue;
+                    }
+                    let mut game = game.clone();
+                    game.act(*action);
+                    for (u, v) in utility.iter_mut().zip(self.expected_utility(&game)) {
+                        *u += prob * v;
+                    }
+                }
+                utility
             }
             NodeType::Terminal => {
                 Vec::from_iter((0..G::N_PLAYERS).map(|player_idx| game.clone().utility(player_idx)))

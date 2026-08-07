@@ -15,18 +15,12 @@ indicatif.workspace = true
 itertools.workspace = true
 ndarray.workspace = true
 ndarray-rand.workspace = true
+num-integer.workspace = true
 rand.workspace = true
 rkyv.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 walkdir.workspace = true
-
-[target.'cfg(not(windows))'.dependencies]
-rug.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-num-bigint.workspace = true
-num-integer.workspace = true
 
 [workspace]
 members = ["arena", "inspector"]
@@ -42,12 +36,10 @@ indicatif = "0.17.8"
 itertools = "0.13.0"
 ndarray = { version = "0.16.0", features = ["approx"] }
 ndarray-rand = "0.15.0"
-num-bigint = "0.4.6"
 num-integer = "0.1.46"
 rand = "0.8.5"
 rkyv = "0.8.16"
-rug = "1.26.1"
-serde = { version = "1.0.210", features = ["derive"] }
+serde ={ version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 thiserror = "1.0.63"
 walkdir = "2.5.0"

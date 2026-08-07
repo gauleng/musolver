@@ -18,7 +18,7 @@ use iced::{
 use itertools::Itertools;
 use musolver::{
     Game,
-    mus::{Accion, Baraja, DistribucionCartaIter, Lance, Mano, RankingManos},
+    mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
         GameType, HandConfiguration, InfoSet, LanceGame, MusGameTwoPlayers, Strategy,
@@ -42,7 +42,7 @@ pub struct ActionPath {
     pub selected_strategy: Option<HandConfiguration>,
     pub strategies: Vec<HandConfiguration>,
     pub selected_actions: Vec<Option<OptionalAction>>,
-    pub actions: Vec<(Lance, u8, Vec<OptionalAction>)>,
+    pub actions: Vec<(FasePartida, u8, Vec<OptionalAction>)>,
     pub view_mode: ViewMode,
     pub one_hand_squares: Vec<(AbstractJugada, SquareData<ExplorerEvent>)>,
     pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
@@ -160,7 +160,7 @@ impl ActionPath {
         action_path
     }
 
-    fn append_action_picklists(&mut self, lance: Lance, player: u8, actions: &[Accion]) {
+    fn append_action_picklists(&mut self, lance: FasePartida, player: u8, actions: &[Accion]) {
         let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
         valores.extend(actions.iter().map(|c| OptionalAction(Some(*c))));
         self.selected_actions.push(None);
@@ -292,9 +292,12 @@ impl ActionPath {
     }
 
     fn update_squares(&mut self) {
-        let (lance, turn, actions) = self.game_state();
+        let (fase_partida, turn, actions) = self.game_state();
         if let musolver::NodeType::Player(player) = turn {
-            let has_pares = if lance == Lance::Juego || lance == Lance::Punto {
+            let has_pares = if matches!(
+                fase_partida,
+                FasePartida::Envites(Lance::Juego | Lance::Punto)
+            ) {
                 match self.selected_pares {
                     Some(HayJugada::TwoPlayers(v)) => Some(v[player]),
                     Some(HayJugada::FourPlayers(v)) => Some(v[player]),
@@ -303,7 +306,11 @@ impl ActionPath {
             } else {
                 None
             };
-            self.buckets = Buckets::new(&lance, has_pares);
+            self.buckets = if let FasePartida::Envites(lance) = fase_partida {
+                Buckets::new(&lance, has_pares)
+            } else {
+                Buckets::new(&Lance::Grande, has_pares)
+            };
 
             match self.view_mode {
                 ViewMode::OneHand => {
@@ -314,7 +321,7 @@ impl ActionPath {
                 }
             }
 
-            self.append_action_picklists(lance, player as u8, &actions);
+            self.append_action_picklists(fase_partida, player as u8, &actions);
         }
     }
 
@@ -609,7 +616,7 @@ impl ActionPath {
         top_row
     }
 
-    fn game_state(&self) -> (Lance, musolver::NodeType, Vec<Accion>) {
+    fn game_state(&self) -> (FasePartida, musolver::NodeType, Vec<Accion>) {
         let manos = self.selected_example_hands();
         match self.strategy.strategy_config.game_config.game_type {
             GameType::LanceGame(_) => todo!(),
@@ -623,13 +630,14 @@ impl ActionPath {
                         self.selected_tantos_postre.unwrap(),
                     ],
                     self.strategy.strategy_config.game_config.abstract_game,
+                    self.strategy.strategy_config.game_config.max_mus_rounds,
                 )
                 .with_hands([manos[0].clone(), manos[1].clone()]);
                 self.selected_history()
                     .into_iter()
                     .for_each(|action| game.act(action));
                 let mus_game = game.mus_game();
-                let lance = mus_game.unwrap().lance_actual().unwrap();
+                let lance = mus_game.unwrap().fase().unwrap();
                 let turno = game.current_player();
                 let actions = game.actions();
                 (lance, turno, actions)
@@ -966,7 +974,7 @@ impl Buckets {
     }
 
     fn one_hand_list(lance: &Lance) -> Vec<(Mano, f64)> {
-        let manos = DistribucionCartaIter::new(&Baraja::FREC_BARAJA_MUS)
+        let manos = DistribucionCartaIter::new(Baraja::FREC_BARAJA_MUS)
             .map(|(cards, prob)| (Mano::new(cards), prob));
         manos
             .filter(|(hand, _)| hand.jugada(lance).is_some())

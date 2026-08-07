@@ -6,14 +6,35 @@ use crate::mus::Baraja;
 
 use super::Carta;
 
-#[cfg(windows)]
-fn binomial(n: usize, k: usize) -> usize {
-    num_integer::binomial(n, k)
-}
+/// Mayor n con número combinatorio precalculado. Cubre de sobra la baraja de mus (40 cartas), que
+/// es el caso que recorren los iteradores de reparto millones de veces. Ampliarlo tiene un coste:
+/// la tabla crece de forma cuadrática y deja de caber en la caché de primer nivel.
+const MAX_BINOMIAL: usize = 40;
 
-#[cfg(not(windows))]
+const TABLA_BINOMIAL: [[usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1] = {
+    let mut t = [[0usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1];
+    let mut n = 0;
+    while n <= MAX_BINOMIAL {
+        t[n][0] = 1;
+        let mut k = 1;
+        while k <= n {
+            t[n][k] = t[n - 1][k - 1] + if k < n { t[n - 1][k] } else { 0 };
+            k += 1;
+        }
+        n += 1;
+    }
+    t
+};
+
+/// Número combinatorio de n sobre k.
+///
+/// Consulta la tabla precalculada mientras n lo permita y delega en num_integer en caso contrario,
+/// de forma que los iteradores siguen sirviendo para barajas de cualquier tamaño.
 fn binomial(n: usize, k: usize) -> usize {
-    rug::Integer::from(n).binomial(k as u32).to_usize().unwrap()
+    if n <= MAX_BINOMIAL && k <= MAX_BINOMIAL {
+        return TABLA_BINOMIAL[n][k];
+    }
+    num_integer::binomial(n, k)
 }
 
 /// Iterador de manos de cartas de mus.
@@ -54,43 +75,63 @@ impl<'a> Iterator for CartaIter<'a> {
 }
 
 #[derive(Clone)]
-pub struct CombinationsWithReplacementProb {
+pub struct CombinationsWithReplacementProb<const K: usize> {
     max_frequencies: Vec<usize>,
     current_frequencies: Vec<usize>,
     total_frequency: usize,
-    iter: CombinationsWithReplacement<Range<usize>>,
+    indices: [usize; K],
+    agotado: bool,
+    primera: bool,
 }
 
 /// Combinations with replacement of n elements and a maximum frequency for each element. The
 /// iterator returns each combination with its preobability.
-impl CombinationsWithReplacementProb {
-    /// Creates a new iterator of indices of n elements taken with replacement in groups of k. The
+impl<const K: usize> CombinationsWithReplacementProb<K> {
+    /// Creates a new iterator of indices of n elements taken with replacement in groups of K. The
     /// vector max_frequencies stores the maximum frequency for each of the n elements.
-    pub fn new(k: usize, max_frequencies: Vec<usize>) -> Self {
-        let iter: CombinationsWithReplacement<Range<usize>> =
-            (0..max_frequencies.len()).combinations_with_replacement(k);
+    pub fn new(max_frequencies: Vec<usize>) -> Self {
         let num_elements: usize = max_frequencies.iter().sum();
-        let total_frequency = binomial(num_elements, k);
         CombinationsWithReplacementProb {
-            iter,
-            total_frequency,
+            total_frequency: binomial(num_elements, K),
             current_frequencies: max_frequencies.clone(),
+            agotado: max_frequencies.is_empty() || num_elements < K,
             max_frequencies,
+            indices: [0; K],
+            primera: true,
         }
+    }
+
+    /// Avanza al siguiente conjunto de índices no decreciente. Devuelve false si se han agotado.
+    fn avanzar(&mut self) -> bool {
+        if self.primera {
+            self.primera = false;
+            return true;
+        }
+        let n = self.max_frequencies.len();
+        for i in (0..K).rev() {
+            if self.indices[i] + 1 < n {
+                let v = self.indices[i] + 1;
+                self.indices[i..].fill(v);
+                return true;
+            }
+        }
+        false
     }
 }
 
-impl Iterator for CombinationsWithReplacementProb {
-    type Item = (Vec<usize>, f64);
+impl<const K: usize> Iterator for CombinationsWithReplacementProb<K> {
+    type Item = ([usize; K], f64);
 
     fn next(&mut self) -> Option<Self::Item> {
         'outer: loop {
-            let next = self.iter.next();
-            let indices = next?;
+            if self.agotado || !self.avanzar() {
+                self.agotado = true;
+                return None;
+            }
 
             self.current_frequencies
                 .copy_from_slice(&self.max_frequencies);
-            for idx in &indices {
+            for idx in &self.indices {
                 match self.current_frequencies[*idx].checked_sub(1) {
                     None => continue 'outer,
                     Some(r) => self.current_frequencies[*idx] = r,
@@ -104,14 +145,14 @@ impl Iterator for CombinationsWithReplacementProb {
                 .map(|(count, max_freq)| binomial(*max_freq, *max_freq - *count))
                 .reduce(|acc, v| acc * v)
                 .unwrap();
-            return Some((indices, freq as f64 / self.total_frequency as f64));
+            return Some((self.indices, freq as f64 / self.total_frequency as f64));
         }
     }
 }
 
 pub struct DistribucionCartaIter<const N: usize, const M: usize> {
     cartas: [(Carta, u8); M],
-    iter: CombinationsWithReplacementProb,
+    iter: CombinationsWithReplacementProb<N>,
 }
 
 /// Iterador de manos de cartas de mus.
@@ -121,7 +162,7 @@ impl<const N: usize, const M: usize> DistribucionCartaIter<N, M> {
     /// donde el entero indica el número de cartas disponibles de ese valor.
     pub fn new(cartas: [(Carta, u8); M]) -> Self {
         let frequencies: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
-        let iter = CombinationsWithReplacementProb::new(N, frequencies);
+        let iter = CombinationsWithReplacementProb::new(frequencies);
         Self { cartas, iter }
     }
 
@@ -147,8 +188,8 @@ impl<const N: usize, const M: usize> Iterator for DistribucionCartaIter<N, M> {
 pub struct DistribucionDobleCartaIter<const N: usize, const M: usize> {
     cartas: [(Carta, u8); M],
     mano_actual1: Option<([Carta; N], f64)>,
-    iter1: CombinationsWithReplacementProb,
-    iter2: CombinationsWithReplacementProb,
+    iter1: CombinationsWithReplacementProb<N>,
+    iter2: CombinationsWithReplacementProb<N>,
 }
 ///
 /// Iterador de pares de manos de mus.
@@ -158,7 +199,7 @@ impl<const N: usize, const M: usize> DistribucionDobleCartaIter<N, M> {
     /// donde el entero indica el número de cartas disponibles de ese valor.
     pub fn new(cartas: [(Carta, u8); M]) -> Self {
         let frecuencias: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
-        let mut iter1 = CombinationsWithReplacementProb::new(N, frecuencias);
+        let mut iter1 = CombinationsWithReplacementProb::new(frecuencias);
         let idx1 = iter1.next();
         match &idx1 {
             None => Self {
@@ -171,7 +212,7 @@ impl<const N: usize, const M: usize> DistribucionDobleCartaIter<N, M> {
                 let arr_cartas = std::array::from_fn(|idx| cartas[ind.0[idx]].0);
                 let mano_actual1: Option<([Carta; N], f64)> = Some((arr_cartas, ind.1));
                 let frecuencias2 = iter1.current_frequencies.clone();
-                let iter2 = CombinationsWithReplacementProb::new(N, frecuencias2);
+                let iter2 = CombinationsWithReplacementProb::new(frecuencias2);
                 Self {
                     cartas,
                     mano_actual1,
@@ -188,7 +229,7 @@ impl<const N: usize, const M: usize> DistribucionDobleCartaIter<N, M> {
             let arr_cartas = std::array::from_fn(|i| self.cartas[idx[i]].0);
             self.mano_actual1 = Some((arr_cartas, *frec));
             let frecuencias2 = self.iter1.current_frequencies.clone();
-            self.iter2 = CombinationsWithReplacementProb::new(idx.len(), frecuencias2);
+            self.iter2 = CombinationsWithReplacementProb::new(frecuencias2);
         } else {
             self.mano_actual1 = None;
         }
@@ -353,9 +394,49 @@ impl Iterator for RepartoDosManosMusIter {
     }
 }
 
+pub struct RepartoDescarteMusIter<const N: usize>(DistribucionCartaIter<N, 8>);
+
+impl<const N: usize> RepartoDescarteMusIter<N> {
+    pub fn new(frequencies: [(Carta, u8); 8]) -> Self {
+        Self(DistribucionCartaIter::new(frequencies))
+    }
+
+    pub fn cartas(&self) -> [(Carta, u8); 8] {
+        self.0.cartas()
+    }
+}
+
+impl<const N: usize> Iterator for RepartoDescarteMusIter<N> {
+    type Item = ([Carta; N], f64, [(Carta, u8); 8]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (mano, prob) = self.0.next()?;
+
+        let mut dist = self.0.cartas();
+        for (d, f) in std::iter::zip(&mut dist, self.0.current_frequencies()) {
+            d.1 = *f as u8;
+        }
+
+        Some((mano, prob, dist))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_tabla_binomial() {
+        // La tabla precalculada debe coincidir en todo su rango con el cálculo de referencia,
+        // incluyendo los k mayores que n, que valen cero.
+        for n in 0..=MAX_BINOMIAL {
+            for k in 0..=MAX_BINOMIAL {
+                assert_eq!(binomial(n, k), num_integer::binomial(n, k), "n={n}, k={k}");
+            }
+        }
+        // Fuera de la tabla se sigue obteniendo el valor correcto.
+        assert_eq!(binomial(52, 5), 2_598_960);
+    }
 
     #[test]
     fn test_iterator() {

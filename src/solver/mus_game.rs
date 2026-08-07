@@ -6,9 +6,9 @@ use itertools::{Either, Itertools};
 use crate::{
     Game, NodeType,
     mus::{
-        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DistribucionCartaIter,
-        DistribucionDobleCartaIter, DosJugadores, FasePartida, Lance, Mano, ModalidadMus,
-        PartidaMus, Turno,
+        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DosJugadores, FasePartida, Lance, Mano,
+        ModalidadMus, PartidaMus, RepartoDescarteMusIter, RepartoMusDosJugadoresIter,
+        RepartoMusIter, Turno,
     },
     solver::ManosNormalizadas,
 };
@@ -137,31 +137,25 @@ impl MusGame {
         std::array::from_fn(|t1| std::array::from_fn(|t2| t1 as f64 - t2 as f64))
     }
 
-    fn iter_descartes<const N: usize>(
-        &self,
-        estado_baraja: [(Carta, u8); 8],
-    ) -> Vec<(MusGame, f64)> {
-        let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
-        while let Some((nuevas, probability)) = iter.next() {
-            let mut game = self.clone();
-            game.partida
+    fn iter_descartes<const N: usize>(game: Self) -> impl Iterator<Item = (Self, f64)> {
+        let Some(CardSource::Iterable(estado_baraja)) = game.cards else {
+            panic!("iter_descartes expects an iterable CardSource");
+        };
+        let iter = RepartoDescarteMusIter::<N>::new(estado_baraja);
+        iter.map(move |(nuevas, probability, dist)| {
+            let mut new_game = game.clone();
+            new_game
+                .partida
                 .as_mut()
                 .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
                 .expect("Game must be expecting a discard but it doesn't");
-            let Some(CardSource::Iterable(dist)) = &mut game.cards else {
-                unreachable!()
-            };
-            for (d, f) in std::iter::zip(dist, iter.current_frequencies()) {
-                d.1 = *f as u8;
-            }
+            new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            game.actualizar_manos(Lance::Grande);
-            game.enforce_max_mus_rounds();
-            partidas.push((game, probability));
-        }
-        partidas
+            new_game.actualizar_manos(Lance::Grande);
+            new_game.enforce_max_mus_rounds();
+            (new_game, probability)
+        })
     }
 
     fn first_player_action(&self) -> bool {
@@ -247,27 +241,22 @@ impl Game for MusGame {
             None => {
                 let (tantos, abstract_game, max_mus_rounds) =
                     (self.tantos, self.abstract_game, self.max_mus_rounds);
-                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).flat_map(
-                    move |(mano1, mano2, probability, dist)| {
-                        double_deal(dist).map(move |(mano3, mano4, probability2, dist2)| {
-                            let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
-                                .with_hands([
-                                    Mano::new(mano1),
-                                    Mano::new(mano2),
-                                    Mano::new(mano3),
-                                    Mano::new(mano4),
-                                ]);
-                            game.set_card_source(CardSource::Iterable(dist2));
-                            (game, probability * probability2)
-                        })
+                let partidas = RepartoMusIter::new().map(
+                    move |(mano1, mano2, mano3, mano4, probability, dist)| {
+                        let mut game =
+                            Self::new(tantos, abstract_game, max_mus_rounds).with_hands([
+                                Mano::new(mano1),
+                                Mano::new(mano2),
+                                Mano::new(mano3),
+                                Mano::new(mano4),
+                            ]);
+                        game.set_card_source(CardSource::Iterable(dist));
+                        (game, probability)
                     },
                 );
                 Either::Left(partidas)
             }
             Some(p) => {
-                let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
-                    todo!()
-                };
                 let turno = match p
                     .turno()
                     .expect("Some player must be active to call new_iter() after game started")
@@ -280,13 +269,13 @@ impl Game for MusGame {
                 InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
                 game.history_str.push('C');
                 let partidas = match descartes.len() {
-                    1 => game.iter_descartes::<1>(estado_baraja),
-                    2 => game.iter_descartes::<2>(estado_baraja),
-                    3 => game.iter_descartes::<3>(estado_baraja),
-                    4 => game.iter_descartes::<4>(estado_baraja),
+                    1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
+                    2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
+                    3 => Either::Right(Either::Left(Self::iter_descartes::<3>(game))),
+                    4 => Either::Right(Either::Right(Self::iter_descartes::<4>(game))),
                     _ => unreachable!(),
                 };
-                Either::Right(partidas.into_iter())
+                Either::Right(partidas)
             }
         }
     }
@@ -523,31 +512,25 @@ impl MusGameTwoHands {
         }
     }
 
-    fn iter_descartes<const N: usize>(
-        &self,
-        estado_baraja: [(Carta, u8); 8],
-    ) -> Vec<(MusGameTwoHands, f64)> {
-        let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
-        while let Some((nuevas, probability)) = iter.next() {
-            let mut game = self.clone();
-            game.partida
+    fn iter_descartes<const N: usize>(game: Self) -> impl Iterator<Item = (Self, f64)> {
+        let Some(CardSource::Iterable(estado_baraja)) = game.cards else {
+            panic!("iter_descartes expects an iterable CardSource");
+        };
+        let iter = RepartoDescarteMusIter::<N>::new(estado_baraja);
+        iter.map(move |(nuevas, probability, dist)| {
+            let mut new_game = game.clone();
+            new_game
+                .partida
                 .as_mut()
                 .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
                 .expect("Game must be expecting a discard but it doesn't");
-            let Some(CardSource::Iterable(dist)) = &mut game.cards else {
-                unreachable!()
-            };
-            for (d, f) in std::iter::zip(dist, iter.current_frequencies()) {
-                d.1 = *f as u8;
-            }
+            new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            game.actualizar_manos(Lance::Grande);
-            game.enforce_max_mus_rounds();
-            partidas.push((game, probability));
-        }
-        partidas
+            new_game.actualizar_manos(Lance::Grande);
+            new_game.enforce_max_mus_rounds();
+            (new_game, probability)
+        })
     }
 }
 
@@ -618,27 +601,22 @@ impl Game for MusGameTwoHands {
             None => {
                 let (tantos, abstract_game, max_mus_rounds) =
                     (self.tantos, self.abstract_game, self.max_mus_rounds);
-                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).flat_map(
-                    move |(mano1, mano2, probability, dist)| {
-                        double_deal(dist).map(move |(mano3, mano4, probability2, dist2)| {
-                            let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
-                                .with_hands([
-                                    Mano::new(mano1),
-                                    Mano::new(mano2),
-                                    Mano::new(mano3),
-                                    Mano::new(mano4),
-                                ]);
-                            game.set_card_source(CardSource::Iterable(dist2));
-                            (game, probability * probability2)
-                        })
+                let partidas = RepartoMusIter::new().map(
+                    move |(mano1, mano2, mano3, mano4, probability, dist)| {
+                        let mut game =
+                            Self::new(tantos, abstract_game, max_mus_rounds).with_hands([
+                                Mano::new(mano1),
+                                Mano::new(mano2),
+                                Mano::new(mano3),
+                                Mano::new(mano4),
+                            ]);
+                        game.set_card_source(CardSource::Iterable(dist));
+                        (game, probability)
                     },
                 );
                 Either::Left(partidas)
             }
             Some(p) => {
-                let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
-                    todo!()
-                };
                 let turno = match p
                     .turno()
                     .expect("Some player must be active to call new_iter() after game started")
@@ -651,14 +629,14 @@ impl Game for MusGameTwoHands {
                 InfoSetWriter(&mut game.descarte_str[turno % 2]).descarte(&descartes);
                 game.history_str.push('C');
                 let games = match descartes.len() {
-                    1 => game.iter_descartes::<1>(estado_baraja),
-                    2 => game.iter_descartes::<2>(estado_baraja),
-                    3 => game.iter_descartes::<3>(estado_baraja),
-                    4 => game.iter_descartes::<4>(estado_baraja),
+                    1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
+                    2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
+                    3 => Either::Right(Either::Left(Self::iter_descartes::<3>(game))),
+                    4 => Either::Right(Either::Right(Self::iter_descartes::<4>(game))),
                     _ => unreachable!(),
                 };
 
-                Either::Right(games.into_iter())
+                Either::Right(games)
             }
         }
     }
@@ -866,31 +844,25 @@ impl MusGameTwoPlayers {
         })
     }
 
-    fn iter_descartes<const N: usize>(
-        &self,
-        estado_baraja: [(Carta, u8); 8],
-    ) -> Vec<(MusGameTwoPlayers, f64)> {
-        let mut partidas = Vec::new();
-        let mut iter = DistribucionCartaIter::<N, 8>::new(estado_baraja);
-        while let Some((nuevas, probability)) = iter.next() {
-            let mut game = self.clone();
-            game.partida
+    fn iter_descartes<const N: usize>(game: Self) -> impl Iterator<Item = (Self, f64)> {
+        let Some(CardSource::Iterable(estado_baraja)) = game.cards else {
+            panic!("iter_descartes expects an iterable CardSource");
+        };
+        let iter = RepartoDescarteMusIter::<N>::new(estado_baraja);
+        iter.map(move |(nuevas, probability, dist)| {
+            let mut new_game = game.clone();
+            new_game
+                .partida
                 .as_mut()
                 .expect("Game must exist in descartes phase")
                 .descartar_con_nuevas(&nuevas)
                 .expect("Game must be expecting a discard but it doesn't");
-            let Some(CardSource::Iterable(dist)) = &mut game.cards else {
-                unreachable!()
-            };
-            for (d, f) in std::iter::zip(dist, iter.current_frequencies()) {
-                d.1 = *f as u8;
-            }
+            new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            game.actualizar_manos(Lance::Grande);
-            game.enforce_max_mus_rounds();
-            partidas.push((game, probability));
-        }
-        partidas
+            new_game.actualizar_manos(Lance::Grande);
+            new_game.enforce_max_mus_rounds();
+            (new_game, probability)
+        })
     }
 }
 
@@ -961,7 +933,7 @@ impl Game for MusGameTwoPlayers {
             None => {
                 let (tantos, abstract_game, max_mus_rounds) =
                     (self.tantos, self.abstract_game, self.max_mus_rounds);
-                let partidas = double_deal(Baraja::FREC_BARAJA_MUS).map(
+                let games = RepartoMusDosJugadoresIter::new().map(
                     move |(mano1, mano2, probability, dist)| {
                         let mut game = Self::new(tantos, abstract_game, max_mus_rounds)
                             .with_hands([Mano::new(mano1), Mano::new(mano2)]);
@@ -969,12 +941,9 @@ impl Game for MusGameTwoPlayers {
                         (game, probability)
                     },
                 );
-                Either::Left(partidas)
+                Either::Left(games)
             }
             Some(p) => {
-                let Some(CardSource::Iterable(estado_baraja)) = self.cards else {
-                    todo!()
-                };
                 let turno = match p
                     .turno()
                     .expect("Some player must be active to call new_iter() after game started")
@@ -987,13 +956,13 @@ impl Game for MusGameTwoPlayers {
                 InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
                 game.history_str.push('C');
                 let games = match descartes.len() {
-                    1 => game.iter_descartes::<1>(estado_baraja),
-                    2 => game.iter_descartes::<2>(estado_baraja),
-                    3 => game.iter_descartes::<3>(estado_baraja),
-                    4 => game.iter_descartes::<4>(estado_baraja),
+                    1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
+                    2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
+                    3 => Either::Right(Either::Left(Self::iter_descartes::<3>(game))),
+                    4 => Either::Right(Either::Right(Self::iter_descartes::<4>(game))),
                     _ => unreachable!(),
                 };
-                Either::Right(games.into_iter())
+                Either::Right(games)
             }
         }
     }
@@ -1196,28 +1165,6 @@ fn push_jugadas_lance(
         }
         _ => {}
     }
-}
-
-type DoubleDeal = ([Carta; 4], [Carta; 4], f64, [(Carta, u8); 8]);
-
-fn double_deal(cartas: [(Carta, u8); 8]) -> impl Iterator<Item = DoubleDeal> {
-    struct DoubleDealIter(DistribucionDobleCartaIter<4, 8>);
-
-    impl Iterator for DoubleDealIter {
-        type Item = DoubleDeal;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let (mano1, mano2, prob) = self.0.next()?;
-
-            let mut dist = self.0.cartas();
-            for (d, f) in std::iter::zip(&mut dist, self.0.current_frequencies()) {
-                d.1 = *f as u8;
-            }
-
-            Some((mano1, mano2, prob, dist))
-        }
-    }
-    DoubleDealIter(DistribucionDobleCartaIter::new(cartas))
 }
 
 fn jugadas_manos(manos: &[Mano]) -> (ArrayString<4>, ArrayString<4>) {
