@@ -380,7 +380,7 @@ impl ActionPath {
                 match avg_probability(probabilities) {
                     Some((actions, avg_probability)) => {
                         square.update_with_node(&actions, &avg_probability);
-                        square.mano = format!("{jugada1},{jugada2}");
+                        square.label = format!("{jugada1},{jugada2}");
                     }
                     None => square.reset_probabilities(),
                 }
@@ -427,38 +427,20 @@ impl ActionPath {
                 |bucket_id| {
                     //let jugada = self.one_hand_squares[bucket_id];
                     //let bucket_probability = 100. * self.buckets.probability(&jugada).unwrap();
-                    column![
-                        // text!(
-                        //     "{} ({bucket_probability:.1}%)",
-                        //     self.one_hand_squares[bucket_id].1.mano
-                        // )
-                        // .center()
-                        // .size(20),
-                        text!(
-                            "Paso: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.paso * 100.
-                        ),
-                        text!(
-                            "Quiero: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.quiero * 100.
-                        ),
-                        text!(
-                            "Envido 2: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.envido2 * 100.
-                        ),
-                        text!(
-                            "Envido 5: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.envido5 * 100.
-                        ),
-                        text!(
-                            "Envido 10: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.envido10 * 100.
-                        ),
-                        text!(
-                            "Órdago: {:.1}%",
-                            self.one_hand_squares[bucket_id].1.ordago * 100.
-                        ),
-                    ]
+                    column(
+                        self.one_hand_squares[bucket_id]
+                            .1
+                            .dist
+                            .iter()
+                            .map(|(action, probability)| {
+                                text(format!(
+                                    "{}: {:.1}%",
+                                    action_style(action).1,
+                                    probability * 100.
+                                ))
+                            })
+                            .map(Element::from),
+                    )
                 },
             )
             .width(300)
@@ -790,30 +772,47 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
     }
 }
 
+fn action_style(action: &Accion) -> (Color, String) {
+    match action {
+        Accion::Paso => (Color::parse("006E90").unwrap(), "Paso".to_string()),
+        Accion::Quiero => (Color::parse("2F9332").unwrap(), "Quiero".to_string()),
+        Accion::Envido(2) => (Color::parse("FABC3F").unwrap(), "Envido 2".to_string()),
+        Accion::Envido(5) => (Color::parse("E85C0D").unwrap(), "Envido 5".to_string()),
+        Accion::Envido(10) => (Color::parse("C7253E").unwrap(), "Envido 10".to_string()),
+        Accion::Ordago => (Color::parse("821131").unwrap(), "Órdago".to_string()),
+        Accion::Mus => (Color::parse("ADD8E6").unwrap(), "Mus".to_string()),
+        Accion::NoMus => (Color::parse("6495ED").unwrap(), "No mus".to_string()),
+        Accion::Descartar(_) => (Color::parse("800000").unwrap(), "Descartar".to_string()),
+        _ => (Color::new(0., 0., 0., 0.), "".to_string()),
+    }
+}
+
+fn draw_order(action: &Accion) -> u8 {
+    match action {
+        Accion::Paso => 3,
+        Accion::Quiero => 4,
+        Accion::Envido(2) => 5,
+        Accion::Envido(5) => 6,
+        Accion::Envido(10) => 7,
+        Accion::Ordago => 8,
+        Accion::Mus => 0,
+        Accion::NoMus => 1,
+        Accion::Descartar(_) => 2,
+        _ => 100,
+    }
+}
 pub struct SquareData<Message> {
-    pub paso: f64,
-    pub quiero: f64,
-    pub envido2: f64,
-    pub envido5: f64,
-    pub envido10: f64,
-    pub ordago: f64,
-    pub resto: f64,
-    pub mano: String,
+    dist: Vec<(Accion, f64)>,
+    pub label: String,
     pub cache: canvas::Cache,
     on_hover: Option<Box<dyn Fn() -> Message + 'static>>,
 }
 
 impl<Message> SquareData<Message> {
-    pub fn new(mano: String) -> Self {
+    pub fn new(label: String) -> Self {
         Self {
-            paso: 0.,
-            quiero: 0.,
-            envido2: 0.,
-            envido5: 0.,
-            envido10: 0.,
-            ordago: 0.,
-            resto: 0.,
-            mano,
+            dist: vec![],
+            label,
             cache: canvas::Cache::default(),
             on_hover: None,
         }
@@ -823,34 +822,18 @@ impl<Message> SquareData<Message> {
         self.on_hover = Some(Box::new(on_hover));
         self
     }
-}
 
-impl<Message> SquareData<Message> {
     pub fn update_with_node(&mut self, actions: &[Accion], probabilities: &[f64]) {
         self.reset_probabilities();
         self.cache.clear();
-        actions
-            .iter()
-            .zip(probabilities.iter())
-            .for_each(|(c, p)| match c {
-                Accion::Paso => self.paso = *p,
-                Accion::Envido(2) => self.envido2 = *p,
-                Accion::Envido(5) => self.envido5 = *p,
-                Accion::Envido(10) => self.envido10 = *p,
-                Accion::Quiero => self.quiero = *p,
-                Accion::Ordago => self.ordago = *p,
-                _ => self.resto = *p,
-            });
+        self.dist = std::iter::zip(actions, probabilities)
+            .map(|(a, b)| (*a, *b))
+            .sorted_by_key(|(a, _)| draw_order(a))
+            .collect();
     }
 
     pub fn reset_probabilities(&mut self) {
-        self.paso = 0.;
-        self.quiero = 0.;
-        self.envido2 = 0.;
-        self.envido5 = 0.;
-        self.envido10 = 0.;
-        self.ordago = 0.;
-        self.resto = 0.;
+        self.dist.clear();
     }
 }
 
@@ -868,15 +851,16 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
         let content = self.cache.draw(renderer, bounds.size(), |frame| {
             let height = bounds.height;
             let width = bounds.width;
-            let region_widths = [
-                width * self.paso as f32,
-                width * self.quiero as f32,
-                width * self.envido2 as f32,
-                width * self.envido5 as f32,
-                width * self.envido10 as f32,
-                width * self.ordago as f32,
-            ];
-            let region_colors = Legend::legend_palette();
+            let region_widths: Vec<f32> = self
+                .dist
+                .iter()
+                .map(|(_, probability)| *probability as f32 * width)
+                .collect();
+            let region_colors: Vec<Color> = self
+                .dist
+                .iter()
+                .map(|(action, _)| action_style(action).0)
+                .collect();
             let region_x_position: Vec<f32> = region_widths
                 .iter()
                 .scan(0., |x_pos, width| {
@@ -898,7 +882,7 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
                 Stroke::default().with_color(Color::BLACK).with_width(2.),
             );
             let mut text = iced::widget::canvas::Text {
-                content: String::from(&self.mano),
+                content: String::from(&self.label),
                 position: Point::new(width / 2.0, height / 2.0),
                 color: theme.palette().text,
                 ..iced::widget::canvas::Text::default()

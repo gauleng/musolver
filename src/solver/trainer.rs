@@ -61,8 +61,13 @@ impl Trainer {
                             game_config.max_mus_rounds,
                         )
                         .with_utility_table(Rc::new(utility_table));
-                        train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        let expected_utility_players =
+                            train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility = (expected_utility_players[0]
+                            + expected_utility_players[2]
+                            - expected_utility_players[1]
+                            - expected_utility_players[3])
+                            / 4.;
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                         expected_utility
                     }
@@ -73,8 +78,10 @@ impl Trainer {
                             game_config.max_mus_rounds,
                         )
                         .with_utility_table(Rc::new(utility_table));
-                        train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        let expected_utility_players =
+                            train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility =
+                            (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                         expected_utility
                     }
@@ -85,8 +92,10 @@ impl Trainer {
                             game_config.max_mus_rounds,
                         )
                         .with_utility_table(Rc::new(utility_table));
-                        train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility = cfr.expected_utility(&mus_game)[0];
+                        let expected_utility_players =
+                            train_game(&mut cfr, &mut mus_game, trainer_config);
+                        let expected_utility =
+                            (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                         utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                         expected_utility
                     }
