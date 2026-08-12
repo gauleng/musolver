@@ -114,6 +114,10 @@ impl MusGame {
         self.cards = Some(cartas);
     }
 
+    pub fn mus_game(&self) -> Option<&PartidaMus<CuatroJugadores>> {
+        self.partida.as_ref()
+    }
+
     fn info_set_prefix(
         manos: &[Mano; 4],
         tantos: &[u8; 2],

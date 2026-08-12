@@ -21,7 +21,7 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameType, HandConfiguration, InfoSet, LanceGame, MusGameTwoPlayers, Strategy,
+        GameType, HandConfiguration, InfoSet, LanceGame, MusGame, MusGameTwoPlayers, Strategy,
     },
 };
 
@@ -152,9 +152,9 @@ impl ActionPath {
             selected_pares,
             selected_juego,
         };
-        let (lance, turn, actions) = action_path.game_state();
+        let (fase_partida, turn, actions) = action_path.game_state();
         if let musolver::NodeType::Player(player) = turn {
-            action_path.append_action_picklists(lance, player as u8, &actions);
+            action_path.append_action_picklists(fase_partida, player as u8, &actions);
         }
         action_path.update_squares();
         action_path
@@ -603,7 +603,30 @@ impl ActionPath {
         match self.strategy.strategy_config.game_config.game_type {
             GameType::LanceGame(_) => todo!(),
             GameType::LanceGameTwoHands(_) => todo!(),
-            GameType::MusGame => todo!(),
+            GameType::MusGame => {
+                let mut game = MusGame::new(
+                    [
+                        self.selected_tantos_mano.unwrap(),
+                        self.selected_tantos_postre.unwrap(),
+                    ],
+                    self.strategy.strategy_config.game_config.abstract_game,
+                    self.strategy.strategy_config.game_config.max_mus_rounds,
+                )
+                .with_hands([
+                    manos[0].clone(),
+                    manos[1].clone(),
+                    manos[2].clone(),
+                    manos[3].clone(),
+                ]);
+                self.selected_history()
+                    .into_iter()
+                    .for_each(|action| game.act(action));
+                let mus_game = game.mus_game();
+                let lance = mus_game.unwrap().fase().unwrap();
+                let turno = game.current_player();
+                let actions = game.actions();
+                (lance, turno, actions)
+            }
             GameType::MusGameTwoHands => todo!(),
             GameType::MusGameTwoPlayers => {
                 let mut game = MusGameTwoPlayers::new(
