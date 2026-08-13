@@ -4,7 +4,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
     Cfr, CfrMethod, Game,
-    solver::{GameConfig, GameType, LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
+    mus::Lance,
+    solver::{LanceGame, MusGame, MusGameTwoHands, MusGameTwoPlayers},
 };
 
 pub struct Trainer {
@@ -34,7 +35,40 @@ impl Trainer {
         Self { tantos }
     }
 
-    pub fn train(&self, game_config: &GameConfig, trainer_config: &TrainerConfig) -> Cfr {
+    pub fn train_lance_game(
+        &self,
+        lance: Lance,
+        abstract_game: bool,
+        trainer_config: &TrainerConfig,
+    ) -> Cfr<LanceGame> {
+        let mut cfr = Cfr::new();
+        let target = self.tantos;
+        (0..40).rev().for_each(|t1| {
+            for t2 in 0..(40 - t1) {
+                let tantos = [t1 + t2, 39 - t2];
+                if tantos[0] < target[0] || tantos[1] < target[1] {
+                    continue;
+                }
+                let lance_game = LanceGame::new(lance, tantos, abstract_game);
+                train_game(&mut cfr, &lance_game, trainer_config);
+                let expected_utility = cfr.expected_utility(&lance_game)[0];
+                println!("Finished training.");
+                println!(
+                    "Expected utility {}-{}: {}",
+                    tantos[0], tantos[1], expected_utility
+                );
+                println!();
+            }
+        });
+        cfr
+    }
+
+    pub fn train_mus_game(
+        &self,
+        abstract_game: bool,
+        max_mus_rounds: u8,
+        trainer_config: &TrainerConfig,
+    ) -> Cfr<MusGame> {
         let mut cfr = Cfr::new();
         let mut utility_table = MusGame::default_utility_table();
         let target = self.tantos;
@@ -44,62 +78,78 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                let expected_utility = match game_config.game_type {
-                    GameType::LanceGame(lance) => {
-                        let mut lance_game =
-                            LanceGame::new(lance, tantos, game_config.abstract_game);
-                        train_game(&mut cfr, &mut lance_game, trainer_config);
-                        let expected_utility = cfr.expected_utility(&lance_game)[0];
-                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
-                        expected_utility
-                    }
-                    GameType::LanceGameTwoHands(_) => todo!(),
-                    GameType::MusGame => {
-                        let mut mus_game = MusGame::new(
-                            tantos,
-                            game_config.abstract_game,
-                            game_config.max_mus_rounds,
-                        )
-                        .with_utility_table(Rc::new(utility_table));
-                        let expected_utility_players =
-                            train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility = (expected_utility_players[0]
-                            + expected_utility_players[2]
-                            - expected_utility_players[1]
-                            - expected_utility_players[3])
-                            / 4.;
-                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
-                        expected_utility
-                    }
-                    GameType::MusGameTwoHands => {
-                        let mut mus_game = MusGameTwoHands::new(
-                            tantos,
-                            game_config.abstract_game,
-                            game_config.max_mus_rounds,
-                        )
-                        .with_utility_table(Rc::new(utility_table));
-                        let expected_utility_players =
-                            train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility =
-                            (expected_utility_players[0] - expected_utility_players[1]) / 2.;
-                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
-                        expected_utility
-                    }
-                    GameType::MusGameTwoPlayers => {
-                        let mut mus_game = MusGameTwoPlayers::new(
-                            tantos,
-                            game_config.abstract_game,
-                            game_config.max_mus_rounds,
-                        )
-                        .with_utility_table(Rc::new(utility_table));
-                        let expected_utility_players =
-                            train_game(&mut cfr, &mut mus_game, trainer_config);
-                        let expected_utility =
-                            (expected_utility_players[0] - expected_utility_players[1]) / 2.;
-                        utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
-                        expected_utility
-                    }
-                };
+                let mus_game = MusGame::new(tantos, abstract_game, max_mus_rounds)
+                    .with_utility_table(Rc::new(utility_table));
+                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility = (expected_utility_players[0] + expected_utility_players[2]
+                    - expected_utility_players[1]
+                    - expected_utility_players[3])
+                    / 4.;
+                utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                println!("Finished training.");
+                println!(
+                    "Expected utility {}-{}: {}",
+                    tantos[0], tantos[1], expected_utility
+                );
+                println!();
+            }
+        });
+        cfr
+    }
+
+    pub fn train_mus_game_two_hands(
+        &self,
+        abstract_game: bool,
+        max_mus_rounds: u8,
+        trainer_config: &TrainerConfig,
+    ) -> Cfr<MusGameTwoHands> {
+        let mut cfr = Cfr::new();
+        let mut utility_table = MusGame::default_utility_table();
+        let target = self.tantos;
+        (0..40).rev().for_each(|t1| {
+            for t2 in 0..(40 - t1) {
+                let tantos = [t1 + t2, 39 - t2];
+                if tantos[0] < target[0] || tantos[1] < target[1] {
+                    continue;
+                }
+                let mus_game = MusGameTwoHands::new(tantos, abstract_game, max_mus_rounds)
+                    .with_utility_table(Rc::new(utility_table));
+                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility =
+                    (expected_utility_players[0] - expected_utility_players[1]) / 2.;
+                utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                println!("Finished training.");
+                println!(
+                    "Expected utility {}-{}: {}",
+                    tantos[0], tantos[1], expected_utility
+                );
+                println!();
+            }
+        });
+        cfr
+    }
+
+    pub fn train_mus_game_two_players(
+        &self,
+        abstract_game: bool,
+        max_mus_rounds: u8,
+        trainer_config: &TrainerConfig,
+    ) -> Cfr<MusGameTwoPlayers> {
+        let mut cfr = Cfr::new();
+        let mut utility_table = MusGame::default_utility_table();
+        let target = self.tantos;
+        (0..40).rev().for_each(|t1| {
+            for t2 in 0..(40 - t1) {
+                let tantos = [t1 + t2, 39 - t2];
+                if tantos[0] < target[0] || tantos[1] < target[1] {
+                    continue;
+                }
+                let mus_game = MusGameTwoPlayers::new(tantos, abstract_game, max_mus_rounds)
+                    .with_utility_table(Rc::new(utility_table));
+                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility =
+                    (expected_utility_players[0] - expected_utility_players[1]) / 2.;
+                utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
                 println!("Finished training.");
                 println!(
                     "Expected utility {}-{}: {}",
@@ -118,10 +168,9 @@ impl Default for Trainer {
     }
 }
 
-fn train_game<G>(cfr: &mut Cfr, game: &mut G, trainer_config: &TrainerConfig) -> Vec<f64>
+fn train_game<G>(cfr: &mut Cfr<G>, game: &G, trainer_config: &TrainerConfig) -> Vec<f64>
 where
     G: Game + Debug + Clone,
-    G::Action: Eq + Copy,
 {
     use std::time::Instant;
 

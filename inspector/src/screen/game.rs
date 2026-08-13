@@ -8,7 +8,6 @@ use iced::{
 };
 use image::GenericImageView;
 use musolver::{
-    Game,
     mus::{
         Accion, CuatroJugadores, DosJugadores, Lance, Mano, ModalidadMus,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
@@ -444,13 +443,13 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
                         MusGameTwoPlayers::new(*partida_mus.tantos(), false, todo!())
                             .with_hands(partida_mus.manos().clone());
                     for action in self.history.lock().unwrap().iter() {
-                        mus_game.act(*action);
+                        mus_game.act_with_action(*action);
                     }
                     mus_game.actions()
                 };
                 let _ = self
                     .sender
-                    .try_send(ArenaMessage::ActionRequested(next_actions));
+                    .try_send(ArenaMessage::ActionRequested(next_actions.to_vec()));
                 if let ArenaCommand::PickAction(action) = self.receiver.next().await.unwrap() {
                     action
                 } else {
@@ -467,12 +466,12 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             ) -> musolver::mus::Accion {
                 let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
                 for action in self.history.lock().unwrap().iter() {
-                    lance_game.act(*action);
+                    lance_game.act_with_action(*action);
                 }
                 let next_actions = lance_game.actions();
                 let _ = self
                     .sender
-                    .try_send(ArenaMessage::ActionRequested(next_actions));
+                    .try_send(ArenaMessage::ActionRequested(next_actions.to_vec()));
                 if let ArenaCommand::PickAction(action) = self.receiver.next().await.unwrap() {
                     action
                 } else {

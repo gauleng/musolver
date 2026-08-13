@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, iter::zip, str::FromStr};
+use std::{collections::HashMap, fmt::Display, iter::zip};
 
 use iced::{
     Color, Element,
@@ -17,11 +17,10 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    Game,
     mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameType, HandConfiguration, InfoSet, LanceGame, MusGame, MusGameTwoPlayers, Strategy,
+        GameStateResult, GameType, HandConfiguration, Strategy,
     },
 };
 
@@ -152,8 +151,8 @@ impl ActionPath {
             selected_pares,
             selected_juego,
         };
-        let (fase_partida, turn, actions) = action_path.game_state();
-        if let musolver::NodeType::Player(player) = turn {
+        let GameStateResult(fase_partida, turn, actions) = action_path.game_state();
+        if let musolver::NodeType::Player(player, _) = turn {
             action_path.append_action_picklists(fase_partida, player as u8, &actions);
         }
         action_path.update_squares();
@@ -167,58 +166,15 @@ impl ActionPath {
         self.actions.push((lance, player, valores));
     }
 
-    fn strategy_node(
-        &self,
-        turno: u8,
-        mano1: &Mano,
-        mano2: Option<&Mano>,
-    ) -> Option<(Vec<Accion>, Vec<f64>)> {
-        let mut manos = self.selected_example_hands();
-        let game_type = self.strategy.strategy_config.game_config.game_type;
+    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
         let history: Vec<Accion> = self.selected_history();
-        let abstract_game = self.strategy.strategy_config.game_config.abstract_game;
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
             self.selected_tantos_postre.unwrap_or_default(),
         ];
-        match game_type {
-            GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => {
-                let tipo_estrategia = self.selected_strategy.unwrap();
-                let abstract_game_lance = if abstract_game { Some(lance) } else { None };
-                let mut lance_game = LanceGame::new(lance, tantos, abstract_game);
-                lance_game.new_with_configuration(tipo_estrategia);
-                for action in &history {
-                    lance_game.act(*action);
-                }
-                let info_set = InfoSet::str(
-                    &tipo_estrategia,
-                    &tantos,
-                    mano1,
-                    mano2,
-                    &[],
-                    abstract_game_lance,
-                );
-                Some(lance_game.actions()).zip(
-                    self.strategy
-                        .nodes
-                        .get(&(info_set + &lance_game.history_str()))
-                        .cloned(),
-                )
-            }
-            GameType::MusGame => {
-                manos[turno as usize] = mano1.clone();
-                self.strategy.actions(&manos, tantos, &history)
-            }
-            GameType::MusGameTwoHands => {
-                manos[turno as usize] = mano1.clone();
-                manos[turno as usize + 2] = mano2.unwrap().clone();
-                self.strategy.actions(&manos, tantos, &history)
-            }
-            GameType::MusGameTwoPlayers => {
-                manos[turno as usize] = mano1.clone();
-                self.strategy.actions(&manos, tantos, &history)
-            }
-        }
+        let jugadas = self.selected_jugadas();
+        self.strategy
+            .strategy_node(mano1, mano2, tantos, &jugadas, &history)
     }
 
     fn selected_history(&self) -> Vec<Accion> {
@@ -292,8 +248,8 @@ impl ActionPath {
     }
 
     fn update_squares(&mut self) {
-        let (fase_partida, turn, actions) = self.game_state();
-        if let musolver::NodeType::Player(player) = turn {
+        let GameStateResult(fase_partida, turn, actions) = self.game_state();
+        if let musolver::NodeType::Player(player, _) = turn {
             let has_pares = if matches!(
                 fase_partida,
                 FasePartida::Envites(Lance::Juego | Lance::Punto)
@@ -314,10 +270,10 @@ impl ActionPath {
 
             match self.view_mode {
                 ViewMode::OneHand => {
-                    self.update_squares_one_hand(player as u8);
+                    self.update_squares_one_hand();
                 }
                 ViewMode::TwoHands => {
-                    self.update_squares_two_hands(player as u8);
+                    self.update_squares_two_hands();
                 }
             }
 
@@ -325,7 +281,7 @@ impl ActionPath {
         }
     }
 
-    fn update_squares_two_hands(&mut self, player: u8) {
+    fn update_squares_two_hands(&mut self) {
         let avg_probability = |probabilities: Vec<(Vec<_>, Vec<_>)>| {
             let n_hands = probabilities.len();
             if n_hands > 0 {
@@ -374,7 +330,7 @@ impl ActionPath {
                 let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
                     .iter()
                     .cartesian_product(manos2.iter())
-                    .filter_map(|(hand1, hand2)| self.strategy_node(player, hand1, Some(hand2)))
+                    .filter_map(|(hand1, hand2)| self.strategy_node(hand1, Some(hand2)))
                     .collect();
                 let square = &mut self.two_hands_squares[row][column];
                 match avg_probability(probabilities) {
@@ -388,7 +344,7 @@ impl ActionPath {
         }
     }
 
-    fn update_squares_one_hand(&mut self, player: u8) {
+    fn update_squares_one_hand(&mut self) {
         let n_jugadas = self.buckets.jugadas().len();
         let mut one_hand_squares = Vec::with_capacity(n_jugadas);
         let mut bucket_id = 0;
@@ -399,7 +355,7 @@ impl ActionPath {
             one_hand_squares.extend(hands.iter().map(|hand| {
                 let mut square_data = SquareData::new(hand.to_string())
                     .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
-                if let Some((actions, probabilities)) = self.strategy_node(player, hand, None) {
+                if let Some((actions, probabilities)) = self.strategy_node(hand, None) {
                     square_data.update_with_node(&actions, &probabilities);
                 }
                 let square = (jugada.to_owned(), square_data);
@@ -598,83 +554,27 @@ impl ActionPath {
         top_row
     }
 
-    fn game_state(&self) -> (FasePartida, musolver::NodeType, Vec<Accion>) {
-        let manos = self.selected_example_hands();
-        match self.strategy.strategy_config.game_config.game_type {
-            GameType::LanceGame(_) => todo!(),
-            GameType::LanceGameTwoHands(_) => todo!(),
-            GameType::MusGame => {
-                let mut game = MusGame::new(
-                    [
-                        self.selected_tantos_mano.unwrap(),
-                        self.selected_tantos_postre.unwrap(),
-                    ],
-                    self.strategy.strategy_config.game_config.abstract_game,
-                    self.strategy.strategy_config.game_config.max_mus_rounds,
-                )
-                .with_hands([
-                    manos[0].clone(),
-                    manos[1].clone(),
-                    manos[2].clone(),
-                    manos[3].clone(),
-                ]);
-                self.selected_history()
-                    .into_iter()
-                    .for_each(|action| game.act(action));
-                let mus_game = game.mus_game();
-                let lance = mus_game.unwrap().fase().unwrap();
-                let turno = game.current_player();
-                let actions = game.actions();
-                (lance, turno, actions)
-            }
-            GameType::MusGameTwoHands => todo!(),
-            GameType::MusGameTwoPlayers => {
-                let mut game = MusGameTwoPlayers::new(
-                    [
-                        self.selected_tantos_mano.unwrap(),
-                        self.selected_tantos_postre.unwrap(),
-                    ],
-                    self.strategy.strategy_config.game_config.abstract_game,
-                    self.strategy.strategy_config.game_config.max_mus_rounds,
-                )
-                .with_hands([manos[0].clone(), manos[1].clone()]);
-                self.selected_history()
-                    .into_iter()
-                    .for_each(|action| game.act(action));
-                let mus_game = game.mus_game();
-                let lance = mus_game.unwrap().fase().unwrap();
-                let turno = game.current_player();
-                let actions = game.actions();
-                (lance, turno, actions)
-            }
-        }
+    fn game_state(&self) -> GameStateResult {
+        let tantos = [
+            self.selected_tantos_mano.unwrap(),
+            self.selected_tantos_postre.unwrap(),
+        ];
+        let history = self.selected_history();
+        let jugadas = self.selected_jugadas();
+        self.strategy.game_state(tantos, &jugadas, &history)
     }
 
-    fn example_hand(pares: bool, juego: bool) -> Mano {
-        match (pares, juego) {
-            (false, false) => Mano::from_str("6541").unwrap(),
-            (true, false) => Mano::from_str("1111").unwrap(),
-            (false, true) => Mano::from_str("RCS1").unwrap(),
-            (true, true) => Mano::from_str("RRRR").unwrap(),
-        }
-    }
-
-    fn selected_example_hands(&self) -> Vec<Mano> {
+    fn selected_jugadas(&self) -> Vec<(bool, bool)> {
         let (pares, juego) = (self.selected_pares, self.selected_juego);
         match (pares, juego) {
             (Some(HayJugada::TwoPlayers([p1, p2])), Some(HayJugada::TwoPlayers([j1, j2]))) => {
-                vec![Self::example_hand(p1, j1), Self::example_hand(p2, j2)]
+                vec![(p1, j1), (p2, j2)]
             }
             (
                 Some(HayJugada::FourPlayers([p1, p2, p3, p4])),
                 Some(HayJugada::FourPlayers([j1, j2, j3, j4])),
             ) => {
-                vec![
-                    Self::example_hand(p1, j1),
-                    Self::example_hand(p2, j2),
-                    Self::example_hand(p3, j3),
-                    Self::example_hand(p4, j4),
-                ]
+                vec![(p1, j1), (p2, j2), (p3, j3), (p4, j4)]
             }
             _ => {
                 vec![]

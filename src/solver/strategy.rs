@@ -5,15 +5,44 @@ use std::{
     path::Path,
 };
 
+use arrayvec::ArrayVec;
 use walkdir::WalkDir;
 
 use crate::{
     Cfr, Game, NodeType,
-    mus::{Accion, Lance, Mano},
+    mus::{Accion, Carta, FasePartida, Lance, Mano},
     solver::{MusGame, MusGameTwoPlayers},
 };
 
 use super::{SolverError, TrainerConfig};
+
+/// Juegos que exponen sus acciones legales como `Accion`, además de las operaciones genéricas de
+/// [`Game`]. Necesario para poder repetir un historial y consultar la estrategia sin duplicar
+/// [`Strategy::actions_for_game`] por cada tipo concreto de partida.
+trait ActionsGame: Game<InfoSet = String> {
+    fn actions(&self) -> ArrayVec<Accion, 6>;
+    fn act_with_action(&mut self, action: Accion);
+}
+
+impl ActionsGame for MusGame {
+    fn actions(&self) -> ArrayVec<Accion, 6> {
+        MusGame::actions(self)
+    }
+
+    fn act_with_action(&mut self, action: Accion) {
+        self.act_with_action(action);
+    }
+}
+
+impl ActionsGame for MusGameTwoPlayers {
+    fn actions(&self) -> ArrayVec<Accion, 6> {
+        MusGameTwoPlayers::actions(self)
+    }
+
+    fn act_with_action(&mut self, action: Accion) {
+        self.act_with_action(action);
+    }
+}
 
 #[derive(
     Debug,
@@ -78,8 +107,14 @@ pub struct Strategy {
     pub nodes: HashMap<String, Vec<f64>>,
 }
 
+pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
+
 impl Strategy {
-    pub fn new(cfr: &Cfr, trainer_config: &TrainerConfig, game_config: &GameConfig) -> Self {
+    pub fn new<G: Game<InfoSet = String>>(
+        cfr: &Cfr<G>,
+        trainer_config: &TrainerConfig,
+        game_config: &GameConfig,
+    ) -> Self {
         let nodes = cfr
             .nodes()
             .iter()
@@ -101,6 +136,42 @@ impl Strategy {
         }
     }
 
+    pub fn strategy_node(
+        &self,
+        mano1: &Mano,
+        mano2: Option<&Mano>,
+        tantos: [u8; 2],
+        jugadas: &[(bool, bool)],
+        history: &[Accion],
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+        let mut manos: Vec<Mano> = jugadas
+            .iter()
+            .map(|(pares, juego)| Self::example_hand(*pares, *juego))
+            .collect();
+        let game_type = self.strategy_config.game_config.game_type;
+        let GameStateResult(_, NodeType::Player(player_id, _), _) =
+            self.game_state(tantos, jugadas, history)
+        else {
+            return None;
+        };
+        match game_type {
+            GameType::MusGame => {
+                manos[player_id as usize] = mano1.clone();
+                self.actions(&manos, tantos, &history)
+            }
+            GameType::MusGameTwoHands => {
+                manos[player_id as usize] = mano1.clone();
+                manos[player_id as usize + 2] = mano2.unwrap().clone();
+                self.actions(&manos, tantos, &history)
+            }
+            GameType::MusGameTwoPlayers => {
+                manos[player_id as usize] = mano1.clone();
+                self.actions(&manos, tantos, &history)
+            }
+            _ => todo!(),
+        }
+    }
+
     pub fn actions(
         &self,
         manos: &[Mano],
@@ -117,42 +188,106 @@ impl Strategy {
                     manos[2].clone(),
                     manos[3].clone(),
                 ];
-                let mut mus_game = MusGame::new(
+                let mus_game = MusGame::new(
                     tantos,
                     self.strategy_config.game_config.abstract_game,
                     self.strategy_config.game_config.max_mus_rounds,
                 )
-                .with_hands(manos.clone());
-                self.actions_for_game(&mut mus_game, history)
+                .with_hands(manos);
+                self.actions_for_game(mus_game, history)
             }
             GameType::MusGameTwoHands => todo!(),
             GameType::MusGameTwoPlayers => {
                 let manos = [manos[0].clone(), manos[1].clone()];
-                let mut mus_game = MusGameTwoPlayers::new(
+                let mus_game = MusGameTwoPlayers::new(
                     tantos,
                     self.strategy_config.game_config.abstract_game,
                     self.strategy_config.game_config.max_mus_rounds,
                 )
-                .with_hands(manos.clone());
-                self.actions_for_game(&mut mus_game, history)
+                .with_hands(manos);
+                self.actions_for_game(mus_game, history)
             }
         }
     }
 
-    fn actions_for_game(
+    pub fn game_state(
         &self,
-        game: &mut impl Game<Action = Accion>,
+        tantos: [u8; 2],
+        jugadas: &[(bool, bool)],
+        history: &[Accion],
+    ) -> GameStateResult {
+        let manos: Vec<Mano> = jugadas
+            .iter()
+            .map(|(pares, juego)| Self::example_hand(*pares, *juego))
+            .collect();
+        match self.strategy_config.game_config.game_type {
+            GameType::LanceGame(_) => todo!(),
+            GameType::LanceGameTwoHands(_) => todo!(),
+            GameType::MusGame => {
+                let mut game = MusGame::new(
+                    tantos,
+                    self.strategy_config.game_config.abstract_game,
+                    self.strategy_config.game_config.max_mus_rounds,
+                )
+                .with_hands([
+                    manos[0].clone(),
+                    manos[1].clone(),
+                    manos[2].clone(),
+                    manos[3].clone(),
+                ]);
+                history
+                    .iter()
+                    .for_each(|action| game.act_with_action(*action));
+                let mus_game = game.mus_game();
+                let lance = mus_game.unwrap().fase().unwrap();
+                let turno = game.current_player();
+                let actions = game.actions();
+                GameStateResult(lance, turno, actions.to_vec())
+            }
+            GameType::MusGameTwoHands => todo!(),
+            GameType::MusGameTwoPlayers => {
+                let mut game = MusGameTwoPlayers::new(
+                    tantos,
+                    self.strategy_config.game_config.abstract_game,
+                    self.strategy_config.game_config.max_mus_rounds,
+                )
+                .with_hands([manos[0].clone(), manos[1].clone()]);
+                history
+                    .iter()
+                    .for_each(|action| game.act_with_action(*action));
+                let mus_game = game.mus_game();
+                let lance = mus_game.unwrap().fase().unwrap();
+                let turno = game.current_player();
+                let actions = game.actions();
+                GameStateResult(lance, turno, actions.to_vec())
+            }
+        }
+    }
+
+    fn example_hand(pares: bool, juego: bool) -> Mano {
+        match (pares, juego) {
+            (false, false) => Mano::new([Carta::Seis, Carta::Cinco, Carta::Cuatro, Carta::As]),
+            (true, false) => Mano::new([Carta::As, Carta::As, Carta::As, Carta::As]),
+            (false, true) => Mano::new([Carta::Rey, Carta::Caballo, Carta::Sota, Carta::As]),
+            (true, true) => Mano::new([Carta::Rey, Carta::Rey, Carta::Rey, Carta::Rey]),
+        }
+    }
+
+    fn actions_for_game<G: ActionsGame>(
+        &self,
+        game: G,
         history: &[Accion],
     ) -> Option<(Vec<Accion>, Vec<f64>)> {
+        let mut game = game;
         for action in history {
-            game.act(*action);
+            game.act_with_action(*action);
         }
-        let actions = game.actions();
         let turno = match game.current_player() {
-            NodeType::Player(t) => t,
+            NodeType::Player(t, _) => t,
             NodeType::Terminal | NodeType::Chance => return None,
         };
-        let info_set = game.info_set_str(turno as usize);
+        let actions = game.actions().to_vec();
+        let info_set = game.info_set(turno);
         let strategy = self.nodes.get(&info_set).cloned();
         Some(actions).zip(strategy)
     }

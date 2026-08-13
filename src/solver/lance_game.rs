@@ -397,13 +397,80 @@ impl LanceGame {
     //     self.estado_lance.push(p);
     //     self.pareja_mano = turno_inicial;
     // }
+
+    pub fn actions(&self) -> ArrayVec<Accion, 6> {
+        let partida = self.estado_lance.as_ref().unwrap();
+        let turno = partida.turno().unwrap();
+        let ultimo_envite: Apuesta = partida.ultima_apuesta();
+        let mut acciones: ArrayVec<Accion, 6> = match ultimo_envite {
+            Apuesta::Tantos(0) => [
+                Accion::Paso,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ]
+            .into_iter()
+            .collect(),
+            Apuesta::Tantos(2) => [
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(2),
+                Accion::Envido(5),
+                Accion::Envido(10),
+                Accion::Ordago,
+            ]
+            .into_iter()
+            .collect(),
+            Apuesta::Tantos(4..=5) => [
+                Accion::Paso,
+                Accion::Quiero,
+                Accion::Envido(10),
+                Accion::Ordago,
+            ]
+            .into_iter()
+            .collect(),
+            Apuesta::Ordago => [Accion::Paso, Accion::Quiero].into_iter().collect(),
+            _ => [Accion::Paso, Accion::Quiero, Accion::Ordago]
+                .into_iter()
+                .collect(),
+        };
+        if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
+            acciones.retain(|a| *a >= self.last_action.unwrap());
+        }
+        acciones
+    }
+
+    pub fn act_with_action(&mut self, a: Accion) {
+        self.last_action = Some(a);
+        let turno = self
+            .estado_lance
+            .as_ref()
+            .expect("At least one EstadoLance must be available.")
+            .turno()
+            .unwrap();
+        match turno {
+            Turno::Pareja(2) | Turno::Pareja(3) => {
+                self.history_str.pop();
+            }
+            _ => {}
+        };
+        let action_str = match turno {
+            Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
+            _ => a.to_string(),
+        };
+        self.history_str
+            .push(ArrayString::<4>::from(&action_str).unwrap());
+        let _ = self.estado_lance.as_mut().unwrap().actuar(a);
+    }
 }
 
 impl Game for LanceGame {
-    type Action = Accion;
+    type InfoSet = String;
     const N_PLAYERS: usize = 4;
 
-    fn new_random(&mut self) {
+    fn chance_sample(&self) -> Self {
+        let mut new_game = self.clone();
         let mut baraja = Baraja::baraja_mus();
         loop {
             let manos = baraja.repartir_manos();
@@ -414,29 +481,22 @@ impl Game for LanceGame {
                 FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
             );
             if intento_partida.turno().is_some() {
-                self.estado_lance = Some(intento_partida);
-                self.info_set_prefix = LanceGame::info_set_prefix(
+                new_game.estado_lance = Some(intento_partida);
+                new_game.info_set_prefix = LanceGame::info_set_prefix(
                     &self.lance,
                     &manos,
                     &self.tantos,
                     self.abstract_game,
                 );
-                self.pareja_mano = turno_inicial;
-                self.history_str.push(ArrayString::from("M").unwrap());
+                new_game.pareja_mano = turno_inicial;
+                new_game.history_str.push(ArrayString::from("M").unwrap());
                 break;
             }
         }
+        new_game
     }
 
-    fn reset(&mut self) {
-        self.estado_lance = None;
-        self.info_set_prefix = None;
-        self.pareja_mano = 0;
-        self.last_action = None;
-        self.history_str.clear();
-    }
-
-    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         DistribucionDobleCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS).flat_map(
             move |(_mano1, _mano2, prob)| {
                 DistribucionDobleCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS).map(
@@ -515,8 +575,8 @@ impl Game for LanceGame {
     //     }
     //}
 
-    fn utility(&mut self, player: usize) -> f64 {
-        let estado_lance = self.estado_lance.as_mut().unwrap();
+    fn utility(&self, player: usize) -> f64 {
+        let mut estado_lance = self.estado_lance.clone().unwrap();
         let ganador = estado_lance.resolver_lance();
         let tantos_ganador = match estado_lance.tantos_apostados() {
             Apuesta::Tantos(t) => t,
@@ -538,7 +598,7 @@ impl Game for LanceGame {
         payoff[player % 2] as f64
     }
 
-    fn info_set_str(&self, player: usize) -> String {
+    fn info_set(&self, player: usize) -> String {
         let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
         let mut output = String::with_capacity(15 + self.history_str.len() + 1);
         output.push_str(info_set_prefix);
@@ -548,74 +608,23 @@ impl Game for LanceGame {
         output
     }
 
-    fn actions(&self) -> Vec<Accion> {
-        let partida = self.estado_lance.as_ref().unwrap();
-        let turno = partida.turno().unwrap();
-        let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        let mut acciones = match ultimo_envite {
-            Apuesta::Tantos(0) => vec![
-                Accion::Paso,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(2) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Tantos(4..=5) => vec![
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(10),
-                Accion::Ordago,
-            ],
-            Apuesta::Ordago => vec![Accion::Paso, Accion::Quiero],
-            _ => vec![Accion::Paso, Accion::Quiero, Accion::Ordago],
-        };
-        if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
-            acciones.retain(|a| a >= self.last_action.as_ref().unwrap());
-        }
-        acciones
-    }
-
     fn current_player(&self) -> NodeType {
         match &self.estado_lance {
             None => NodeType::Chance,
             Some(estado_lance) => match estado_lance.turno() {
                 None => NodeType::Terminal,
                 Some(Turno::Jugador(player_id)) | Some(Turno::Pareja(player_id)) => {
-                    NodeType::Player(player_id as usize)
+                    NodeType::Player(player_id as usize, self.actions().len())
                 }
             },
         }
     }
 
-    fn act(&mut self, a: Accion) {
-        self.last_action = Some(a);
-        let turno = self
-            .estado_lance
-            .as_ref()
-            .expect("At least one EstadoLance must be available.")
-            .turno()
-            .unwrap();
-        match turno {
-            Turno::Pareja(2) | Turno::Pareja(3) => {
-                self.history_str.pop();
-            }
-            _ => {}
-        };
-        let action_str = match turno {
-            Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
-            _ => a.to_string(),
-        };
-        self.history_str
-            .push(ArrayString::<4>::from(&action_str).unwrap());
-        let _ = self.estado_lance.as_mut().unwrap().actuar(a);
+    fn act(&self, action_id: usize) -> Self {
+        let a = self.actions()[action_id];
+        let mut new_game = self.clone();
+        new_game.act_with_action(a);
+        new_game
     }
 
     fn history_str(&self) -> String {

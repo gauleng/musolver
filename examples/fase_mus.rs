@@ -4,11 +4,11 @@ use musolver::{Cfr, Game};
 use rand::Rng;
 
 fn main() {
-    let mut fase_mus = FaseMus::new(10);
+    let fase_mus = FaseMus::new(10);
     let mut cfr = Cfr::new();
 
     cfr.train(
-        &mut fase_mus,
+        &fase_mus,
         musolver::CfrMethod::FsiCfr,
         10000000,
         |_player, _utility| {},
@@ -62,27 +62,34 @@ impl FaseMus {
         let mut rng = rand::thread_rng();
         array::from_fn(|_| rng.gen_range(0..num_cartas))
     }
+
+    fn actions(&self) -> Vec<MusAction> {
+        vec![MusAction::Mus, MusAction::Cortar]
+    }
 }
 
 impl Game for FaseMus {
-    type Action = MusAction;
+    type InfoSet = String;
     const N_PLAYERS: usize = 4;
 
-    fn act(&mut self, a: Self::Action) {
-        self.history.push(format!("{:?}", a));
+    fn act(&self, action_idx: usize) -> Self {
+        let a = self.actions()[action_idx];
+        let mut new_game = self.clone();
+        new_game.history.push(format!("{:?}", a));
         if a == MusAction::Cortar {
-            self.fase = Fase::CompararCartas;
-            self.turn = None;
+            new_game.fase = Fase::CompararCartas;
+            new_game.turn = None;
         } else {
-            self.turn = match self.turn {
+            new_game.turn = match new_game.turn {
                 Some(3) => None,
                 Some(i) => Some(i + 1),
                 _ => None,
             };
         }
+        new_game
     }
 
-    fn utility(&mut self, player: usize) -> f64 {
+    fn utility(&self, player: usize) -> f64 {
         assert!(
             self.fase == Fase::CompararCartas,
             "Utility can only be calculated in the CompararCartas phase"
@@ -99,11 +106,7 @@ impl Game for FaseMus {
         }
     }
 
-    fn actions(&self) -> Vec<Self::Action> {
-        vec![MusAction::Mus, MusAction::Cortar]
-    }
-
-    fn info_set_str(&self, player: usize) -> String {
+    fn info_set(&self, player: usize) -> String {
         self.manos
             .expect("Tiene que haber manos para obtener el info_set_str")[player]
             .to_string()
@@ -116,7 +119,7 @@ impl Game for FaseMus {
                 Fase::CompararCartas => musolver::NodeType::Terminal,
                 Fase::Mus | Fase::Repartir => musolver::NodeType::Chance,
             },
-            musolver::NodeType::Player,
+            |turn| musolver::NodeType::Player(turn, self.actions().len()),
         )
     }
 
@@ -128,31 +131,26 @@ impl Game for FaseMus {
             .join(",")
     }
 
-    fn new_random(&mut self) {
-        match self.fase {
+    fn chance_sample(&self) -> Self {
+        let mut new_game = self.clone();
+        match new_game.fase {
             Fase::Repartir => {
-                self.turn = Some(0);
-                self.fase = Fase::Mus;
+                new_game.turn = Some(0);
+                new_game.fase = Fase::Mus;
             }
             Fase::Mus => {
-                self.fase = Fase::CompararCartas;
+                new_game.fase = Fase::CompararCartas;
             }
             Fase::CompararCartas => {
-                panic!("Llamada a new_random en estado terminal CompararCartas.");
+                panic!("Llamada a chance_sample en estado terminal CompararCartas.");
             }
         }
-        self.history.push("R".into());
-        self.manos = Some(Self::repartir_cartas(self.num_cartas));
+        new_game.history.push("R".into());
+        new_game.manos = Some(Self::repartir_cartas(new_game.num_cartas));
+        new_game
     }
 
-    fn reset(&mut self) {
-        self.history.clear();
-        self.turn = None;
-        self.fase = Fase::Repartir;
-        self.manos = None;
-    }
-
-    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         std::iter::empty()
     }
 }

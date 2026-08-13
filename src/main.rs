@@ -108,17 +108,46 @@ fn main() {
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
 
     let trainer = Trainer::new().with_tantos(tantos);
-    let cfr = trainer.train(&game_config, &trainer_config);
     let curr_time = Utc::now();
     output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
     println!("Exportando estrategias a {output_path:?}...");
-    export_cfr(&output_path, &cfr, &trainer_config, &game_config)
-        .expect("Error exportando estrategias.");
+    match game_config.game_type {
+        GameType::LanceGame(lance) => {
+            let cfr = trainer.train_lance_game(lance, game_config.abstract_game, &trainer_config);
+            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+        }
+        GameType::LanceGameTwoHands(_) => todo!(),
+        GameType::MusGame => {
+            let cfr = trainer.train_mus_game(
+                game_config.abstract_game,
+                game_config.max_mus_rounds,
+                &trainer_config,
+            );
+            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+        }
+        GameType::MusGameTwoHands => {
+            let cfr = trainer.train_mus_game_two_hands(
+                game_config.abstract_game,
+                game_config.max_mus_rounds,
+                &trainer_config,
+            );
+            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+        }
+        GameType::MusGameTwoPlayers => {
+            let cfr = trainer.train_mus_game_two_players(
+                game_config.abstract_game,
+                game_config.max_mus_rounds,
+                &trainer_config,
+            );
+            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+        }
+    }
+    .expect("Error exportando estrategias.");
 }
 
-pub fn export_cfr(
+pub fn export_cfr<G: musolver::Game<InfoSet = String>>(
     path: &Path,
-    cfr: &Cfr,
+    cfr: &Cfr<G>,
     trainer_config: &TrainerConfig,
     game_config: &GameConfig,
 ) -> Result<(), SolverError> {

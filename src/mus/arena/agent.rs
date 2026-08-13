@@ -31,7 +31,12 @@ impl Agent<CuatroJugadores> for AgenteAleatorio {
         let mut lance_game = LanceGame::from_partida_mus(partida_mus, true).unwrap();
         let history = self.history.lock().unwrap().clone();
         for action in &history {
-            lance_game.act(*action);
+            let idx = lance_game
+                .actions()
+                .iter()
+                .position(|a| a == action)
+                .expect("La acción del historial no está entre las legales.");
+            lance_game = lance_game.act(idx);
         }
         let actions = lance_game.actions();
         if actions.is_empty() {

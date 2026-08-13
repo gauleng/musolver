@@ -1,11 +1,11 @@
 use musolver::{Cfr, Game};
 
 fn main() {
-    let mut rps = Rps::new();
+    let rps = Rps::new();
     let mut cfr = Cfr::new();
 
     cfr.train(
-        &mut rps,
+        &rps,
         musolver::CfrMethod::FsiCfr,
         10000,
         |_player, _utility| {},
@@ -14,12 +14,12 @@ fn main() {
     let strategy1: Vec<(_, _)> = rps
         .actions()
         .into_iter()
-        .zip(cfr.nodes()["0"].get_average_strategy())
+        .zip(cfr.nodes()[&0].get_average_strategy())
         .collect();
     let strategy2: Vec<(_, _)> = rps
         .actions()
         .into_iter()
-        .zip(cfr.nodes()["1"].get_average_strategy())
+        .zip(cfr.nodes()[&1].get_average_strategy())
         .collect();
     println!("Strategy player 1: {strategy1:?}");
     println!("Strategy player 2: {strategy2:?}");
@@ -45,14 +45,18 @@ impl Rps {
             turn: Some(0),
         }
     }
+
+    fn actions(&self) -> Vec<RpsAction> {
+        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+    }
 }
 
 impl Game for Rps {
-    type Action = RpsAction;
+    type InfoSet = usize;
 
     const N_PLAYERS: usize = 2;
 
-    fn utility(&mut self, player: usize) -> f64 {
+    fn utility(&self, player: usize) -> f64 {
         let (action1, action2) = (&self.history[0], &self.history[1]);
         let payoff = match (action1, action2) {
             (RpsAction::Rock, RpsAction::Scissors) => 1.,
@@ -66,8 +70,8 @@ impl Game for Rps {
         if player == 0 { payoff } else { -payoff }
     }
 
-    fn info_set_str(&self, player: usize) -> String {
-        player.to_string()
+    fn info_set(&self, player: usize) -> usize {
+        player
     }
 
     fn history_str(&self) -> String {
@@ -78,33 +82,29 @@ impl Game for Rps {
             .join(",")
     }
 
-    fn actions(&self) -> Vec<Self::Action> {
-        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
-    }
-
     fn current_player(&self) -> musolver::NodeType {
-        self.turn
-            .map_or_else(|| musolver::NodeType::Terminal, musolver::NodeType::Player)
+        self.turn.map_or_else(
+            || musolver::NodeType::Terminal,
+            |turn| musolver::NodeType::Player(turn, self.actions().len()),
+        )
     }
 
-    fn act(&mut self, a: Self::Action) {
-        self.history.push(a);
-        self.turn = match self.turn {
+    fn act(&self, action_idx: usize) -> Self {
+        let a = self.actions()[action_idx];
+        let mut new_game = self.clone();
+        new_game.history.push(a);
+        new_game.turn = match new_game.turn {
             Some(0) => Some(1),
             _ => None,
         };
+        new_game
     }
 
-    fn new_random(&mut self) {
+    fn chance_sample(&self) -> Self {
         todo!()
     }
 
-    fn reset(&mut self) {
-        self.history.clear();
-        self.turn = Some(0);
-    }
-
-    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)> {
         std::iter::empty()
     }
 }

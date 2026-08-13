@@ -1,6 +1,7 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 use std::{collections::HashMap, str::FromStr};
 
 use super::{GameError, GameGraph};
@@ -72,17 +73,26 @@ struct CfrData {
     utility: f64,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+/// Type of nodes in the game tree.
+///
+/// * Chance: chance node.
+/// * Player: player node with the player id to act and the number of available actions
+/// for this player.
+/// * Terminal: terminal node.
+#[derive(Debug)]
 pub enum NodeType {
     Chance,
-    Player(usize),
+    Player(usize, usize),
     Terminal,
 }
 
 /// Trait implemented by games that can be trained with the CFR algorithm.
 ///
-/// There are two bound types, `N_PLAYERS` with the number of players of the game,
-/// and `Action`, with the available actions.
+/// `N_PLAYERS` gives the number of players of the game. Actions are referred to by their
+/// index among the ones returned by the concrete type's own `actions()` method (not part of
+/// this trait, since it depends on the concrete action type); `InfoSet` is whatever type the
+/// game uses as the key identifying an information set — a plain `usize` is enough for games
+/// like Rock, Paper, Scissors below, while richer games may need a `String` or similar.
 ///
 /// For example, for the Rock, Paper, Scissors game, the following actions are available:
 ///
@@ -108,13 +118,20 @@ pub enum NodeType {
 ///    history: Vec<RpsAction>,
 ///    turn: Option<usize>,
 /// }
+///
+/// impl Rps {
+///    fn actions(&self) -> Vec<RpsAction> {
+///        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+///    }
+/// }
+///
 /// use musolver::Game;
 ///
 /// impl Game for Rps {
-///    type Action = RpsAction;
+///    type InfoSet = usize;
 ///    const N_PLAYERS: usize = 2;
 ///
-///    fn utility(&mut self, player: usize) -> f64 {
+///    fn utility(&self, player: usize) -> f64 {
 ///        let (action1, action2) = (&self.history[0], &self.history[1]);
 ///        let payoff = match (action1, action2) {
 ///            (RpsAction::Rock, RpsAction::Scissors) => 1.,
@@ -132,27 +149,26 @@ pub enum NodeType {
 ///        }
 ///    }
 ///
-///    fn info_set_str(&self, player: usize) -> String {
-///        player.to_string()
-///    }
-///
-///    fn actions(&self) -> Vec<Self::Action> {
-///        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+///    fn info_set(&self, player: usize) -> usize {
+///        player
 ///    }
 ///
 ///    fn current_player(&self) -> musolver::NodeType {
 ///        self.turn.map_or_else(
 ///            || musolver::NodeType::Terminal,
-///            |turn| musolver::NodeType::Player(turn),
+///            |turn| musolver::NodeType::Player(turn, self.actions().len()),
 ///        )
 ///    }
 ///
-///    fn act(&mut self, a: Self::Action) {
-///        self.history.push(a);
-///        self.turn = match self.turn {
+///    fn act(&self, action_idx: usize) -> Self {
+///        let a = self.actions()[action_idx];
+///        let mut new_game = self.clone();
+///        new_game.history.push(a);
+///        new_game.turn = match new_game.turn {
 ///            Some(0) => Some(1),
 ///            _ => None,
 ///        };
+///        new_game
 ///    }
 ///
 ///    # fn history_str(&self) -> String {
@@ -163,48 +179,41 @@ pub enum NodeType {
 ///    #         .join(",")
 ///    # }
 ///    #
-///    # fn new_random(&mut self) {
+///    # fn chance_sample(&self) -> Self {
+///    #     self.clone()
 ///    # }
 ///    #
-///    # fn new_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+///    # fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)> {
 ///    #     std::iter::empty()
-///    # }
-///    #
-///    # fn reset(&mut self) {
 ///    # }
 ///    // ...rest of implementation
 /// }
 /// ```
 pub trait Game: Sized {
-    type Action;
+    type InfoSet: Eq + Hash;
+
     const N_PLAYERS: usize;
 
     /// Utility function for the player P after the actions considered in the history slice.
-    fn utility(&mut self, player: usize) -> f64;
+    fn utility(&self, player: usize) -> f64;
 
     /// Sring representation of the information set for player P after the actions considered in
     /// the history slice.
-    fn info_set_str(&self, player: usize) -> String;
+    fn info_set(&self, player: usize) -> Self::InfoSet;
 
     fn history_str(&self) -> String;
-
-    /// Actions available in the current state of the game.
-    fn actions(&self) -> Vec<Self::Action>;
 
     // Returns if the current node is a chance, terminal or player node.
     fn current_player(&self) -> NodeType;
 
     /// Advance the state with the given action for the current player.
-    fn act(&mut self, a: Self::Action);
+    fn act(&self, action_idx: usize) -> Self;
 
     /// Picks a random action in chance nodes.
-    fn new_random(&mut self);
-
-    /// Resets the game to its initial state.
-    fn reset(&mut self);
+    fn chance_sample(&self) -> Self;
 
     /// Iterates over all available actions in chance nodes.
-    fn new_iter(&self) -> impl Iterator<Item = (Self, f64)>;
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)>;
 }
 
 #[derive(
@@ -253,27 +262,26 @@ impl FromStr for CfrMethod {
 ///        |_player, _utility| {},
 ///    );
 /// ```
-#[derive(Debug, Clone)]
-pub struct Cfr {
-    nodes: HashMap<String, Node>,
+#[derive(Debug)]
+pub struct Cfr<G: Game> {
+    nodes: HashMap<G::InfoSet, Node>,
 }
 
-impl Cfr {
+impl<G: Game> Cfr<G> {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
         }
     }
 
-    pub fn train<G, F>(
+    pub fn train<F>(
         &mut self,
-        game: &mut G,
+        game: &G,
         cfr_method: CfrMethod,
         iterations: usize,
         mut iteration_callback: F,
     ) where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
+        G: Clone,
         F: FnMut(&usize, &[f64]),
     {
         let mut util = vec![0.; G::N_PLAYERS];
@@ -282,8 +290,6 @@ impl Cfr {
             CfrMethod::ChanceSampling | CfrMethod::ExternalSampling | CfrMethod::FsiCfr => 100_000,
         };
         for i in 0..iterations {
-            game.reset();
-
             match cfr_method {
                 CfrMethod::Cfr => {
                     for (player_idx, u) in util.iter_mut().enumerate() {
@@ -304,7 +310,7 @@ impl Cfr {
                     }
                 }
                 CfrMethod::FsiCfr => {
-                    let mut game_graph = GameGraph::new(game.clone());
+                    let mut game_graph = GameGraph::new(game);
                     game_graph.inflate();
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.fsicfr(&mut game_graph, player_idx);
@@ -333,50 +339,43 @@ impl Cfr {
     }
 
     /// Chance sampling CFR algorithm.
-    fn cfr<G>(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
-    where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
-    {
+    fn cfr(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
         match game.current_player() {
             NodeType::Chance => {
                 return game
-                    .new_iter()
+                    .chance_iter()
                     .map(|(mut new_game, prob)| {
                         prob * self.cfr(&mut new_game, player, pi, po * prob)
                     })
                     .sum();
             }
-            NodeType::Player(current_player) => {
-                let actions: Vec<<G as Game>::Action> = game.actions();
-                let info_set_str = game.info_set_str(current_player);
-                let node = match self.nodes.get_mut(&info_set_str) {
-                    Some(node) => node,
-                    None => self
-                        .nodes
-                        .entry(info_set_str.clone())
-                        .or_insert_with(|| Node::new(actions.len())),
-                };
-                let strategy = node.strategy().clone();
+            NodeType::Player(current_player, num_actions) => {
+                let info_set_str = game.info_set(current_player);
+                let strategy = self
+                    .nodes
+                    .get(&info_set_str)
+                    .map(|node| node.strategy().clone())
+                    .unwrap_or_else(|| vec![1. / num_actions as f64; num_actions]);
 
-                let util: Vec<f64> = actions
+                let util: Vec<f64> = strategy
                     .iter()
-                    .zip(strategy.iter())
+                    .enumerate()
                     .map(|(a, s)| {
-                        let mut new_game = game.clone();
-                        new_game.act(*a);
+                        let new_game = game.act(a);
                         if current_player == player {
-                            self.cfr(&mut new_game, player, pi * s, po)
+                            self.cfr(&new_game, player, pi * s, po)
                         } else {
-                            self.cfr(&mut new_game, player, pi, po * s)
+                            self.cfr(&new_game, player, pi, po * s)
                         }
                     })
                     .collect();
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-                if let Some(node) = self.nodes.get_mut(&info_set_str)
-                    && current_player == player
-                {
+                let node = self
+                    .nodes
+                    .entry(info_set_str)
+                    .or_insert_with(|| Node::new(num_actions));
+                if current_player == player {
                     node.regret_sum
                         .iter_mut()
                         .zip(util.iter())
@@ -391,47 +390,39 @@ impl Cfr {
         }
     }
     /// Chance sampling CFR algorithm.
-    fn chance_sampling<G>(&mut self, game: &mut G, player: usize, pi: f64, po: f64) -> f64
-    where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
-    {
+    fn chance_sampling(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
         match game.current_player() {
             NodeType::Chance => {
-                let mut new_game = game.clone();
-                new_game.new_random();
-                self.chance_sampling(&mut new_game, player, pi, po)
+                let new_game = game.chance_sample();
+                self.chance_sampling(&new_game, player, pi, po)
             }
-            NodeType::Player(current_player) => {
-                let actions: Vec<<G as Game>::Action> = game.actions();
-                let info_set_str = game.info_set_str(current_player);
-                let node = match self.nodes.get_mut(&info_set_str) {
-                    Some(node) => node,
-                    None => self
-                        .nodes
-                        .entry(info_set_str.clone())
-                        .or_insert_with(|| Node::new(actions.len())),
-                };
-                let strategy = node.strategy().clone();
+            NodeType::Player(current_player, num_actions) => {
+                let info_set_str = game.info_set(current_player);
+                let strategy = self
+                    .nodes
+                    .get(&info_set_str)
+                    .map(|node| node.strategy().clone())
+                    .unwrap_or_else(|| vec![1. / num_actions as f64; num_actions]);
 
-                let util: Vec<f64> = actions
+                let util: Vec<f64> = strategy
                     .iter()
-                    .zip(strategy.iter())
+                    .enumerate()
                     .map(|(a, s)| {
-                        let mut new_game = game.clone();
-                        new_game.act(*a);
+                        let new_game = game.act(a);
                         if current_player == player {
-                            self.chance_sampling(&mut new_game, player, pi * s, po)
+                            self.chance_sampling(&new_game, player, pi * s, po)
                         } else {
-                            self.chance_sampling(&mut new_game, player, pi, po * s)
+                            self.chance_sampling(&new_game, player, pi, po * s)
                         }
                     })
                     .collect();
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-                if let Some(node) = self.nodes.get_mut(&info_set_str)
-                    && current_player == player
-                {
+                let node = self
+                    .nodes
+                    .entry(info_set_str)
+                    .or_insert_with(|| Node::new(num_actions));
+                if current_player == player {
                     node.regret_sum
                         .iter_mut()
                         .zip(util.iter())
@@ -447,35 +438,27 @@ impl Cfr {
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling<G>(&mut self, game: &mut G, player: usize) -> f64
-    where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
-    {
+    fn external_sampling(&mut self, game: &G, player: usize) -> f64 {
         match game.current_player() {
             NodeType::Chance => {
-                let mut new_game = game.clone();
-                new_game.new_random();
-                self.external_sampling(&mut new_game, player)
+                let new_game = game.chance_sample();
+                self.external_sampling(&new_game, player)
             }
-            NodeType::Player(current_player) => {
-                let info_set_str = game.info_set_str(current_player);
-                let actions: Vec<<G as Game>::Action> = game.actions();
+            NodeType::Player(current_player, num_actions) => {
+                let info_set_str = game.info_set(current_player);
                 if current_player == player {
-                    let util: Vec<f64> = actions
-                        .iter()
+                    let util: Vec<f64> = (0..num_actions)
                         .map(|action| {
-                            let mut new_game = game.clone();
-                            new_game.act(*action);
-                            self.external_sampling(&mut new_game, player)
+                            let new_game = game.act(action);
+                            self.external_sampling(&new_game, player)
                         })
                         .collect();
                     let node = match self.nodes.get_mut(&info_set_str) {
                         Some(node) => node,
                         None => self
                             .nodes
-                            .entry(info_set_str.clone())
-                            .or_insert_with(|| Node::new(actions.len())),
+                            .entry(info_set_str)
+                            .or_insert_with(|| Node::new(num_actions)),
                     };
                     let strategy = node.update_strategy();
 
@@ -490,33 +473,29 @@ impl Cfr {
                         Some(node) => node,
                         None => self
                             .nodes
-                            .entry(info_set_str.clone())
-                            .or_insert_with(|| Node::new(actions.len())),
+                            .entry(info_set_str)
+                            .or_insert_with(|| Node::new(num_actions)),
                     };
 
                     node.update_strategy();
                     node.update_strategy_sum(1.);
                     let s = node.get_random_action();
-                    let action = actions.get(s).unwrap();
-
-                    let mut new_game = game.clone();
-                    new_game.act(*action);
-                    self.external_sampling(&mut new_game, player)
+                    let new_game = game.act(s);
+                    self.external_sampling(&new_game, player)
                 }
             }
             NodeType::Terminal => game.utility(player),
         }
     }
 
-    fn fsicfr<G>(
+    fn fsicfr(
         &mut self,
         game_graph: &mut GameGraph<G, CfrData>,
         player: usize,
         //round_weight: f64,
     ) -> f64
     where
-        G: Game + Clone,
-        G::Action: Copy,
+        G: Clone,
     {
         game_graph.node_mut(0).data_mut().reach_player = 1.;
         game_graph.node_mut(0).data_mut().reach_opponent = 1.;
@@ -524,7 +503,7 @@ impl Cfr {
             let game_node = &mut game_graph.node(idx);
             let game = &mut game_node.game();
             match game.current_player() {
-                NodeType::Player(current_player) => {
+                NodeType::Player(current_player, num_actions) => {
                     let info_set_str = game_node
                         .info_set_str()
                         .expect("InfoSet must be valid in non terminal nodes.");
@@ -532,8 +511,8 @@ impl Cfr {
                         Some(node) => node,
                         None => self
                             .nodes
-                            .entry(info_set_str.to_string())
-                            .or_insert_with(|| Node::new(game.actions().len())),
+                            .entry(game.info_set(current_player))
+                            .or_insert_with(|| Node::new(num_actions)),
                     };
                     let strategy = node.strategy();
                     for (i, s) in strategy.iter().enumerate() {
@@ -569,7 +548,7 @@ impl Cfr {
                 NodeType::Terminal => {
                     game_graph.node_mut(idx).data_mut().utility = game.utility(player);
                 }
-                NodeType::Player(current_player) => {
+                NodeType::Player(current_player, _) => {
                     let info_set_str = game_graph
                         .node(idx)
                         .info_set_str()
@@ -614,38 +593,32 @@ impl Cfr {
         game_graph.node(0).data().utility
     }
 
-    pub fn expected_utility<G>(&self, game: &G) -> Vec<f64>
-    where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
-    {
+    pub fn expected_utility(&self, game: &G) -> Vec<f64> {
         match game.current_player() {
             NodeType::Chance => {
                 let mut utility = vec![0.; G::N_PLAYERS];
-                for (game, prob) in game.new_iter() {
+                for (game, prob) in game.chance_iter() {
                     for (u, v) in utility.iter_mut().zip(self.expected_utility(&game)) {
                         *u += prob * v;
                     }
                 }
                 utility
             }
-            NodeType::Player(current_player) => {
-                let actions = game.actions();
-                let info_set_str = game.info_set_str(current_player);
+            NodeType::Player(current_player, num_actions) => {
+                let info_set_str = game.info_set(current_player);
                 let strategy = match self.nodes.get(&info_set_str) {
                     Some(node) => node.get_average_strategy(),
-                    None => vec![1. / actions.len() as f64; actions.len()],
+                    None => vec![1. / num_actions as f64; num_actions],
                 };
                 let mut utility = vec![0.; G::N_PLAYERS];
-                for (action, prob) in actions.iter().zip(strategy) {
+                for (action, prob) in strategy.iter().enumerate() {
                     // Una acción con probabilidad nula no aporta nada a la suma, así que podar su
                     // subárbol da el mismo resultado exacto. Tras entrenar, la estrategia media
                     // es casi determinista y esto descarta la mayor parte del árbol.
-                    if prob == 0. {
+                    if *prob == 0. {
                         continue;
                     }
-                    let mut game = game.clone();
-                    game.act(*action);
+                    let game = game.act(action);
                     for (u, v) in utility.iter_mut().zip(self.expected_utility(&game)) {
                         *u += prob * v;
                     }
@@ -653,15 +626,14 @@ impl Cfr {
                 utility
             }
             NodeType::Terminal => {
-                Vec::from_iter((0..G::N_PLAYERS).map(|player_idx| game.clone().utility(player_idx)))
+                Vec::from_iter((0..G::N_PLAYERS).map(|player_idx| game.utility(player_idx)))
             }
         }
     }
 
-    pub fn exploitability<G>(&mut self, game: &mut G) -> f64
+    pub fn exploitability(&mut self, game: &G) -> f64
     where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
+        G: Clone,
     {
         let info_sets = self.info_sets(game);
         let mut br_strategies = HashMap::new();
@@ -672,44 +644,38 @@ impl Cfr {
             .sum()
     }
 
-    pub fn best_response_value<G>(
+    pub fn best_response_value(
         &mut self,
-        game: &mut G,
+        game: &G,
         player: usize,
-        info_sets: &HashMap<String, Vec<(G, f64)>>,
-        br_strategies: &mut HashMap<String, usize>,
-    ) -> f64
-    where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
-    {
+        info_sets: &HashMap<G::InfoSet, Vec<(G, f64)>>,
+        br_strategies: &mut HashMap<G::InfoSet, usize>,
+    ) -> f64 {
         match game.current_player() {
             NodeType::Chance => game
-                .new_iter()
+                .chance_iter()
                 .map(|(mut game, prob)| {
                     prob * self.best_response_value(&mut game, player, info_sets, br_strategies)
                 })
                 .sum(),
-            NodeType::Player(current_player) => {
-                let actions = game.actions();
-                let info_set_str = game.info_set_str(current_player);
+            NodeType::Player(current_player, num_actions) => {
+                let info_set_str = game.info_set(current_player);
                 if player == current_player {
                     let action_idx = match br_strategies.get(&info_set_str) {
                         Some(action_idx) => action_idx,
                         None => {
-                            let mut action_values = vec![0.; game.actions().len()];
+                            let mut action_values = vec![0.; num_actions];
                             if let Some(games) = info_sets.get(&info_set_str) {
                                 games.iter().for_each(|(game, po)| {
-                                    game.actions().iter().enumerate().for_each(|(idx, action)| {
-                                        let mut new_game = game.clone();
-                                        new_game.act(*action);
+                                    (0..num_actions).for_each(|action| {
+                                        let new_game = game.act(action);
                                         let br = self.best_response_value(
-                                            &mut new_game,
+                                            &new_game,
                                             player,
                                             info_sets,
                                             br_strategies,
                                         );
-                                        action_values[idx] += po * br;
+                                        action_values[action] += po * br;
                                     });
                                 });
                             }
@@ -723,29 +689,23 @@ impl Cfr {
                             br_strategies.entry(info_set_str).or_insert(br_action)
                         }
                     };
-                    let best_action = actions[*action_idx];
-                    let mut game = game.clone();
-                    game.act(best_action);
-                    self.best_response_value(&mut game, player, info_sets, br_strategies)
+                    let game = game.act(*action_idx);
+                    self.best_response_value(&game, player, info_sets, br_strategies)
                 } else {
                     let node = self
                         .nodes
                         .entry(info_set_str)
-                        .or_insert_with(|| Node::new(actions.len()));
+                        .or_insert_with(|| Node::new(num_actions));
                     let strategy = node.get_average_strategy();
-                    std::iter::zip(actions, strategy)
+                    strategy
+                        .iter()
+                        .enumerate()
                         .map(|(action, prob)| {
-                            if prob == 0. {
+                            if *prob == 0. {
                                 return 0.;
                             }
-                            let mut game = game.clone();
-                            game.act(action);
-                            prob * self.best_response_value(
-                                &mut game,
-                                player,
-                                info_sets,
-                                br_strategies,
-                            )
+                            let game = game.act(action);
+                            prob * self.best_response_value(&game, player, info_sets, br_strategies)
                         })
                         .sum()
                 }
@@ -754,10 +714,9 @@ impl Cfr {
         }
     }
 
-    fn info_sets<G>(&mut self, game: &mut G) -> HashMap<String, Vec<(G, f64)>>
+    fn info_sets(&mut self, game: &G) -> HashMap<G::InfoSet, Vec<(G, f64)>>
     where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
+        G: Clone,
     {
         let mut info_sets = HashMap::new();
         info_sets.reserve(self.nodes().len());
@@ -769,49 +728,44 @@ impl Cfr {
         info_sets
     }
 
-    fn info_sets_player<G>(
+    fn info_sets_player(
         &mut self,
-        game: &mut G,
+        game: &G,
         player: usize,
         po: f64,
-        info_sets: &mut HashMap<String, Vec<(G, f64)>>,
+        info_sets: &mut HashMap<G::InfoSet, Vec<(G, f64)>>,
     ) where
-        G: Game + Clone,
-        G::Action: Eq + Copy,
+        G: Clone,
     {
         match game.current_player() {
             NodeType::Chance => {
-                game.new_iter().for_each(|(mut game, prob)| {
-                    self.info_sets_player(&mut game, player, po * prob, info_sets);
+                game.chance_iter().for_each(|(new_game, prob)| {
+                    self.info_sets_player(&new_game, player, po * prob, info_sets);
                 });
             }
-            NodeType::Player(current_player) => {
+            NodeType::Player(current_player, num_actions) => {
                 if player == current_player {
-                    let info_set_str = game.info_set_str(current_player);
+                    let info_set_str = game.info_set(current_player);
                     let info_set = info_sets
                         .entry(info_set_str)
                         .or_insert_with(|| Vec::with_capacity(500));
                     info_set.push((game.clone(), po));
                 }
-                let actions = game.actions();
                 if player == current_player {
-                    for action in actions {
-                        let mut next_game = game.clone();
-                        next_game.act(action);
-                        self.info_sets_player(&mut next_game, player, po, info_sets);
+                    for action in 0..num_actions {
+                        let next_game = game.act(action);
+                        self.info_sets_player(&next_game, player, po, info_sets);
                     }
                 } else {
-                    let n_actions = actions.len();
-                    let info_set_str = game.info_set_str(current_player);
+                    let info_set_str = game.info_set(current_player);
                     let node = self
                         .nodes
                         .entry(info_set_str)
-                        .or_insert_with(|| Node::new(n_actions));
+                        .or_insert_with(|| Node::new(num_actions));
                     let strategy = node.get_average_strategy();
-                    for (action, prob) in std::iter::zip(actions, strategy) {
-                        let mut next_game = game.clone();
-                        next_game.act(action);
-                        self.info_sets_player(&mut next_game, player, po * prob, info_sets);
+                    for (action, prob) in strategy.iter().enumerate() {
+                        let next_game = game.act(action);
+                        self.info_sets_player(&next_game, player, po * prob, info_sets);
                     }
                 }
             }
@@ -819,7 +773,7 @@ impl Cfr {
         }
     }
 
-    pub fn nodes(&self) -> &HashMap<String, Node> {
+    pub fn nodes(&self) -> &HashMap<G::InfoSet, Node> {
         &self.nodes
     }
 
@@ -830,7 +784,7 @@ impl Cfr {
     }
 }
 
-impl Default for Cfr {
+impl<G: Game> Default for Cfr<G> {
     fn default() -> Self {
         Self::new()
     }
