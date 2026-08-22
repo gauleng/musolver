@@ -1,3 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use musolver::{Cfr, Game};
 
 fn main() {
@@ -25,7 +28,7 @@ fn main() {
     println!("Strategy player 2: {strategy2:?}");
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum RpsAction {
     Rock,
     Paper,
@@ -75,7 +78,9 @@ impl Game for Rps {
     }
 
     fn node_key(&self) -> u64 {
-        self.turn.unwrap() as u64
+        let mut hasher = DefaultHasher::new();
+        self.history.hash(&mut hasher);
+        hasher.finish()
     }
 
     fn current_node(&self) -> musolver::NodeType {
