@@ -496,7 +496,8 @@ impl<G: Game> Cfr<G> {
     {
         game_graph.node_mut(0).data_mut().reach_player = 1.;
         game_graph.node_mut(0).data_mut().reach_opponent = 1.;
-        for idx in 0..game_graph.num_nodes() {
+        let order = game_graph.order().to_vec();
+        for &idx in &order {
             let game_node = &mut game_graph.node(idx);
             let game = &mut game_node.game();
             match game.current_node() {
@@ -539,7 +540,7 @@ impl<G: Game> Cfr<G> {
             }
         }
 
-        for idx in (0..game_graph.num_nodes()).rev() {
+        for idx in order.into_iter().rev() {
             let game = &mut game_graph.node_mut(idx).game_mut();
             match game.current_node() {
                 NodeType::Terminal => {

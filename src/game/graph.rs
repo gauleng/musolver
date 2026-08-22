@@ -44,6 +44,7 @@ pub struct GameGraph<G: Game, D> {
     game: G,
     node_ids: HashMap<u64, usize>,
     game_nodes: Vec<GameNode<G, D>>,
+    order: Vec<usize>,
 }
 
 impl<G, D> GameGraph<G, D>
@@ -56,6 +57,7 @@ where
             game: game.clone(),
             node_ids: HashMap::new(),
             game_nodes: Vec::new(),
+            order: Vec::new(),
         };
         new_graph.seed_game();
         new_graph
@@ -64,6 +66,7 @@ where
     pub fn reset(&mut self) {
         self.node_ids.clear();
         self.game_nodes.clear();
+        self.order.clear();
         self.seed_game();
     }
 
@@ -88,6 +91,7 @@ where
         while let Some(parent_idx) = game_list.pop_front() {
             self.next_nodes(parent_idx, &mut game_list);
         }
+        self.topological_order();
     }
 
     pub fn nodes(&self) -> &[GameNode<G, D>] {
@@ -108,6 +112,10 @@ where
 
     pub fn num_nodes(&self) -> usize {
         self.game_nodes.len()
+    }
+
+    pub fn order(&self) -> &[usize] {
+        &self.order
     }
 
     fn next_nodes(&mut self, idx: usize, new_nodes: &mut VecDeque<usize>) {
@@ -168,12 +176,16 @@ where
             }
         }
 
-        let ordered = vec![0usize; num_nodes];
-        let mut queue: VecDeque<usize> = (0..num_nodes)
-            .filter(|&idx| num_parents[idx] == 0)
-            .collect();
-
-        while let Some(node) = queue.pop_front() {}
-        //self.game_nodes = ordered;
+        let mut queue: VecDeque<usize> = VecDeque::from([0]);
+        while let Some(node) = queue.pop_front() {
+            self.order.push(node);
+            for &child in self.game_nodes[node].children() {
+                num_parents[child] -= 1;
+                if num_parents[child] == 0 {
+                    queue.push_back(child);
+                }
+            }
+        }
+        debug_assert_eq!(self.order.len(), num_nodes)
     }
 }
