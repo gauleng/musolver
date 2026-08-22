@@ -36,29 +36,33 @@ cargo run --release -p inspector
 The crate provides a generic framework for solving imperfect information games using CFR variants. The main trait is `Game`:
 
 ```rust
-pub trait Game {
-    type Action;
+pub trait Game: Sized {
+    /// Type used as a key to identify information sets.
+    type InfoSet: Eq + Hash;
+
+    /// Number of players of the game.
     const N_PLAYERS: usize;
 
-    // Returns utility/payoff for given player in current state
-    fn utility(&mut self, player: usize) -> f64;
+    /// Utility function for the given player in a terminal node.
+    fn utility(&self, player: usize) -> f64;
 
-    // String representation of information set for given player
-    fn info_set_str(&self, player: usize) -> String; 
+    /// Key identifying the information set for the current player.
+    fn info_set(&self, player: usize) -> Self::InfoSet;
 
-    // Available actions in current state
-    fn actions(&self) -> Vec<Self::Action>;
+    // String representation of the history leading to the current state.
+    fn history_str(&self) -> String;
 
     // Returns if the current node is a chance, terminal or player node.
-    fn current_player(&self) -> NodeType;
+    fn current_node(&self) -> NodeType;
 
-    // Advance game state with given action
-    fn act(&mut self, a: Self::Action);
+    /// Advance the state with the given action index for the current player.
+    fn act(&self, action_idx: usize) -> Self;
 
     // Picks a random action in chance nodes.
-    fn new_random(&mut self);
+    fn chance_sample(&self) -> Self;
 
-
+    /// Returns an iterator for all available actions in chance nodes.
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)>;
 }
 ```
 
@@ -80,11 +84,17 @@ struct Rps {
     turn: Option<usize>,
 }
 
-impl Game for RPS {
-    type Action = RpsAction;
+impl Rps {
+    fn actions(&self) -> Vec<RpsAction> {
+        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+    }
+}
+
+impl Game for Rps {
+    type InfoSet = usize;
     const N_PLAYERS: usize = 2;
 
-    fn utility(&mut self, player: usize) -> f64 {
+    fn utility(&self, player: usize) -> f64 {
         let (action1, action2) = (&self.history[0], &self.history[1]);
         let payoff = match (action1, action2) {
             (RpsAction::Rock, RpsAction::Scissors) => 1.,
@@ -95,41 +105,50 @@ impl Game for RPS {
             (RpsAction::Scissors, RpsAction::Paper) => 1.,
             _ => 0.,
         };
-        if player == 0 {
-            payoff
-        } else {
-            -payoff
-        }
+        if player == 0 { payoff } else { -payoff }
     }
 
-    fn info_set_str(&self, player: usize) -> String {
-        player.to_string()
+    fn info_set(&self, player: usize) -> usize {
+        player
     }
 
-    fn actions(&self) -> Vec<Self::Action> {
-        vec![RpsAction::Rock, RpsAction::Paper, RpsAction::Scissors]
+    fn history_str(&self) -> String {
+        self.history
+            .iter()
+            .map(|action| format!("{action:?}"))
+            .collect::<Vec<String>>()
+            .join(",")
     }
 
-    fn current_player(&self) -> musolver::NodeType {
+    fn current_node(&self) -> musolver::NodeType {
         self.turn.map_or_else(
             || musolver::NodeType::Terminal,
-            |turn| musolver::NodeType::Player(turn),
+            |turn| musolver::NodeType::Player(turn, self.actions().len()),
         )
     }
 
-    fn act(&mut self, a: Self::Action) {
-        self.history.push(a);
-        self.turn = match self.turn {
+    fn act(&self, action_idx: usize) -> Self {
+        let a = self.actions()[action_idx];
+        let mut new_game = self.clone();
+        new_game.history.push(a);
+        new_game.turn = match new_game.turn {
             Some(0) => Some(1),
             _ => None,
         };
+        new_game
     }
-    
-    // ...rest of implementation
+
+    fn chance_sample(&self) -> Self {
+        todo!()
+    }
+
+    fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)> {
+        std::iter::empty()
+    }
 }
 ```
 
-Run the exampe with
+Run the example with
 
 ```bash
 cargo run --example rps

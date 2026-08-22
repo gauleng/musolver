@@ -291,8 +291,8 @@ impl Lance {
     pub fn hay_lance(&self, manos: &[Mano]) -> bool {
         match self {
             Lance::Grande | Lance::Chica => true,
-            Lance::Pares => manos.iter().map(|m| m.hay_pares()).any(|b| b),
-            Lance::Juego => manos.iter().map(|m| m.hay_juego()).any(|b| b),
+            Lance::Pares => manos.iter().any(|m| m.hay_pares()),
+            Lance::Juego => manos.iter().any(|m| m.hay_juego()),
             Lance::Punto => !Lance::Juego.hay_lance(manos),
         }
     }
@@ -347,6 +347,14 @@ pub enum Turno {
     /// acción de los dos jugadores de la pareja. Solo se tomará en consideración la acción mayor
     /// de las dos.
     Pareja(u8),
+}
+
+impl Turno {
+    pub fn player_id(&self) -> u8 {
+        match self {
+            Turno::Jugador(t) | Turno::Pareja(t) => *t,
+        }
+    }
 }
 
 /// Simula la secuencia de envites de un lance suponiendo que los jugadores juegan por parejas. Si
@@ -586,7 +594,7 @@ impl EstadoLance<DosJugadores> {
             self.turno = None;
             return Ok(None);
         }
-        self.turno = Some(Turno::Jugador(self.idx_turno as u8));
+        self.turno = Some(Turno::Jugador(self.idx_turno));
         Ok(self.turno)
     }
 }

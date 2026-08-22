@@ -4,7 +4,7 @@ use chrono::Utc;
 use musolver::{
     Cfr, CfrMethod,
     mus::Lance,
-    solver::{GameConfig, GameType, SolverError, Strategy, Trainer, TrainerConfig},
+    solver::{GameConfig, GameType, MusInfoSet, SolverError, Strategy, Trainer, TrainerConfig},
 };
 
 use clap::{Parser, ValueEnum};
@@ -145,7 +145,7 @@ fn main() {
     .expect("Error exportando estrategias.");
 }
 
-pub fn export_cfr<G: musolver::Game<InfoSet = String>>(
+pub fn export_cfr<G: musolver::Game<InfoSet = MusInfoSet>>(
     path: &Path,
     cfr: &Cfr<G>,
     trainer_config: &TrainerConfig,

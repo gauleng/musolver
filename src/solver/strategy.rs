@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use crate::{
     Cfr, Game, NodeType,
     mus::{Accion, Carta, FasePartida, Lance, Mano},
-    solver::{MusGame, MusGameTwoPlayers},
+    solver::{MusGame, MusGameTwoPlayers, MusInfoSet},
 };
 
 use super::{SolverError, TrainerConfig};
@@ -19,7 +19,7 @@ use super::{SolverError, TrainerConfig};
 /// Juegos que exponen sus acciones legales como `Accion`, además de las operaciones genéricas de
 /// [`Game`]. Necesario para poder repetir un historial y consultar la estrategia sin duplicar
 /// [`Strategy::actions_for_game`] por cada tipo concreto de partida.
-trait ActionsGame: Game<InfoSet = String> {
+trait ActionsGame: Game<InfoSet = MusInfoSet> {
     fn actions(&self) -> ArrayVec<Accion, 6>;
     fn act_with_action(&mut self, action: Accion);
 }
@@ -104,13 +104,13 @@ pub struct StrategyConfig {
 )]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<String, Vec<f64>>,
+    pub nodes: HashMap<MusInfoSet, Vec<u8>>,
 }
 
 pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
 
 impl Strategy {
-    pub fn new<G: Game<InfoSet = String>>(
+    pub fn new<G: Game<InfoSet = MusInfoSet>>(
         cfr: &Cfr<G>,
         trainer_config: &TrainerConfig,
         game_config: &GameConfig,
@@ -119,10 +119,10 @@ impl Strategy {
             .nodes()
             .iter()
             .map(|(info_set, node)| {
-                let avg_strategy: Vec<f64> = node
+                let avg_strategy: Vec<u8> = node
                     .get_average_strategy()
                     .into_iter()
-                    .map(|v| (v * 100.).round() / 100.)
+                    .map(|v| (v * 100.).round() as u8)
                     .collect();
                 (info_set.to_owned(), avg_strategy)
             })
@@ -143,7 +143,7 @@ impl Strategy {
         tantos: [u8; 2],
         jugadas: &[(bool, bool)],
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+    ) -> Option<(Vec<Accion>, Vec<u8>)> {
         let mut manos: Vec<Mano> = jugadas
             .iter()
             .map(|(pares, juego)| Self::example_hand(*pares, *juego))
@@ -156,17 +156,17 @@ impl Strategy {
         };
         match game_type {
             GameType::MusGame => {
-                manos[player_id as usize] = mano1.clone();
-                self.actions(&manos, tantos, &history)
+                manos[player_id] = mano1.clone();
+                self.actions(&manos, tantos, history)
             }
             GameType::MusGameTwoHands => {
-                manos[player_id as usize] = mano1.clone();
-                manos[player_id as usize + 2] = mano2.unwrap().clone();
-                self.actions(&manos, tantos, &history)
+                manos[player_id] = mano1.clone();
+                manos[player_id + 2] = mano2.unwrap().clone();
+                self.actions(&manos, tantos, history)
             }
             GameType::MusGameTwoPlayers => {
-                manos[player_id as usize] = mano1.clone();
-                self.actions(&manos, tantos, &history)
+                manos[player_id] = mano1.clone();
+                self.actions(&manos, tantos, history)
             }
             _ => todo!(),
         }
@@ -177,7 +177,7 @@ impl Strategy {
         manos: &[Mano],
         tantos: [u8; 2],
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+    ) -> Option<(Vec<Accion>, Vec<u8>)> {
         match self.strategy_config.game_config.game_type {
             GameType::LanceGame(_) => todo!(),
             GameType::LanceGameTwoHands(_) => todo!(),
@@ -240,7 +240,7 @@ impl Strategy {
                     .for_each(|action| game.act_with_action(*action));
                 let mus_game = game.mus_game();
                 let lance = mus_game.unwrap().fase().unwrap();
-                let turno = game.current_player();
+                let turno = game.current_node();
                 let actions = game.actions();
                 GameStateResult(lance, turno, actions.to_vec())
             }
@@ -257,7 +257,7 @@ impl Strategy {
                     .for_each(|action| game.act_with_action(*action));
                 let mus_game = game.mus_game();
                 let lance = mus_game.unwrap().fase().unwrap();
-                let turno = game.current_player();
+                let turno = game.current_node();
                 let actions = game.actions();
                 GameStateResult(lance, turno, actions.to_vec())
             }
@@ -277,12 +277,12 @@ impl Strategy {
         &self,
         game: G,
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<f64>)> {
+    ) -> Option<(Vec<Accion>, Vec<u8>)> {
         let mut game = game;
         for action in history {
             game.act_with_action(*action);
         }
-        let turno = match game.current_player() {
+        let turno = match game.current_node() {
             NodeType::Player(t, _) => t,
             NodeType::Terminal | NodeType::Chance => return None,
         };

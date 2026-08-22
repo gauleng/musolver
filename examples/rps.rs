@@ -74,15 +74,11 @@ impl Game for Rps {
         player
     }
 
-    fn history_str(&self) -> String {
-        self.history
-            .iter()
-            .map(|action| format!("{action:?}"))
-            .collect::<Vec<String>>()
-            .join(",")
+    fn node_key(&self) -> u64 {
+        self.turn.unwrap() as u64
     }
 
-    fn current_player(&self) -> musolver::NodeType {
+    fn current_node(&self) -> musolver::NodeType {
         self.turn.map_or_else(
             || musolver::NodeType::Terminal,
             |turn| musolver::NodeType::Player(turn, self.actions().len()),

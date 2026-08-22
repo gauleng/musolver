@@ -1,6 +1,6 @@
 use std::fmt::{Display, Write};
 
-use crate::mus::{Carta, Juego, Mano, Pares};
+use crate::mus::{Carta, Juego, Lance, Mano, Pares};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub enum AbstractJugada {
@@ -9,6 +9,18 @@ pub enum AbstractJugada {
     AbstractPares(AbstractPares),
     AbstractJuego(AbstractJuego),
     AbstractPunto(AbstractPunto),
+}
+
+impl AbstractJugada {
+    pub fn to_abstract(mano: &Mano, lance: &Lance) -> Option<AbstractJugada> {
+        match lance {
+            Lance::Grande => Some(AbstractGrande::abstract_hand(mano)),
+            Lance::Chica => Some(AbstractChica::abstract_hand(mano)),
+            Lance::Punto => Some(AbstractPunto::abstract_hand(mano)),
+            Lance::Pares => AbstractPares::abstract_hand(mano),
+            Lance::Juego => AbstractJuego::abstract_hand(mano),
+        }
+    }
 }
 
 impl Display for AbstractJugada {
@@ -285,6 +297,8 @@ impl Display for AbstractPunto {
 #[cfg(test)]
 mod tests {
 
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
@@ -305,6 +319,13 @@ mod tests {
             AbstractGrande::abstract_hand(&"C411".try_into().unwrap()),
             AbstractJugada::AbstractGrande(AbstractGrande::NoCerdos(Carta::Caballo))
         );
+        let mano_a = Mano::from_str("S655").unwrap();
+        let mano_b = Mano::from_str("S544").unwrap();
+        assert_eq!(
+            AbstractJugada::to_abstract(&mano_a, &Lance::Grande),
+            AbstractJugada::to_abstract(&mano_b, &Lance::Grande)
+        );
+        assert_ne!(mano_a, mano_b);
     }
 
     #[test]

@@ -1,39 +1,35 @@
-use std::{fmt::Write, rc::Rc};
+use std::collections::{BTreeSet, HashMap};
+use std::{rc::Rc, sync::Arc};
 
-use arrayvec::{ArrayString, ArrayVec};
-use itertools::{Either, Itertools};
+use arrayvec::ArrayVec;
+use itertools::Either;
 
 use crate::{
     Game, NodeType,
     mus::{
-        Accion, Apuesta, Baraja, Carta, CuatroJugadores, DosJugadores, FasePartida, Lance, Mano,
-        ModalidadMus, PartidaMus, RepartoDescarteMusIter, RepartoMusDosJugadoresIter,
-        RepartoMusIter, Turno,
+        Accion, Apuesta, Baraja, Carta, CartaIter, CuatroJugadores, DosJugadores, EstadoLance,
+        FasePartida, Lance, Mano, ModalidadMus, PartidaMus, RepartoDescarteMusIter,
+        RepartoMusDosJugadoresIter, RepartoMusIter, Turno,
     },
-    solver::ManosNormalizadas,
+    solver::AbstractJugada,
 };
 
-/// Número máximo de rondas de mus admitido por [`MusGame`], [`MusGameTwoHands`] y
-/// [`MusGameTwoPlayers`]. El límite viene dado por el tamaño de los buffers del conjunto de
-/// información: cada ronda añade un descarte por mano y unas pocas acciones al historial. Subirlo
-/// obliga a agrandar `descarte_str` (5 bytes por mano y ronda) y `history_str`.
-pub const MAX_RONDAS_MUS: u8 = 4;
+/// Maximum number of rounds of the mus phase in [`MusGame`], [`MusGameTwoHands`] and
+/// [`MusGameTwoPlayers`].
+pub const MAX_RONDAS_MUS: u8 = 1;
 
 #[derive(Debug, Clone)]
 pub struct MusGame {
     tantos: [u8; 2],
     cards: Option<CardSource>,
     partida: Option<PartidaMus<CuatroJugadores>>,
-    history_str: ArrayString<192>,
-    info_set_prefix: [ArrayString<16>; 4],
-    // Una mano por jugador, hasta 5 bytes por descarte y ronda.
-    descarte_str: [ArrayString<{ 5 * MAX_RONDAS_MUS as usize }>; 4],
-    last_action: Option<Accion>,
-    manos_pares: ArrayString<4>,
-    manos_juego: ArrayString<4>,
     mus_rounds: u8,
     max_mus_rounds: u8,
     abstract_game: bool,
+    info_set_builder: MusInfoSetBuilder,
+    /// Acción del primer miembro de la pareja, pendiente de que responda el compañero. Solo se
+    /// usa para restringir las acciones legales del segundo miembro en [`MusGame::actions`].
+    last_action: Option<Accion>,
     utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
@@ -50,15 +46,11 @@ impl MusGame {
             partida: None,
             cards: None,
             tantos,
-            history_str: ArrayString::new(),
-            info_set_prefix: [ArrayString::new(); 4],
-            descarte_str: [ArrayString::new(); 4],
-            last_action: None,
-            manos_pares: ArrayString::new(),
-            manos_juego: ArrayString::new(),
             mus_rounds: 0,
             max_mus_rounds,
             abstract_game,
+            info_set_builder: MusInfoSetBuilder::new(abstract_game),
+            last_action: None,
             utility_table: None,
         }
     }
@@ -71,10 +63,8 @@ impl MusGame {
 
     fn set_hands(&mut self, manos: [Mano; 4]) {
         self.partida = Some(PartidaMus::<CuatroJugadores>::new(manos, self.tantos));
-        self.actualizar_manos(Lance::Grande);
-        // La 'M' marca el reparto, no la fase de mus: distingue la partida repartida del nodo
-        // de azar inicial, que es el que `GameGraph` indexa con el historial vacío.
-        self.history_str = ArrayString::<192>::from("M").unwrap();
+        self.update_hands(Lance::Grande);
+        self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
 
@@ -92,22 +82,25 @@ impl MusGame {
         }
         let _ = partida.actuar(Accion::NoMus);
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
-            self.actualizar_manos(lance);
+            // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
+            // apuestas del primer lance igual que haría la transición Mus -> Envites.
+            self.info_set_builder.begin_lance(&lance);
+            self.update_hands(lance);
         }
     }
 
-    /// Refresca el prefijo del conjunto de información y los indicadores de pares y juego con las
-    /// manos que hay ahora sobre la mesa. Se llama al entrar en la fase de envites porque los
-    /// descartes pueden haber cambiado las manos repartidas.
-    fn actualizar_manos(&mut self, lance: Lance) {
+    /// Refresca las manos del conjunto de información con las que hay ahora sobre la mesa. Se
+    /// llama al entrar en la fase de envites porque los descartes pueden haber cambiado las manos
+    /// repartidas.
+    fn update_hands(&mut self, lance: Lance) {
         let manos = self
             .partida
             .as_ref()
             .expect("La partida debe estar repartida.")
             .manos();
-        self.info_set_prefix =
-            MusGame::info_set_prefix(manos, &self.tantos, self.abstract_game.then_some(lance));
-        (self.manos_pares, self.manos_juego) = jugadas_manos(manos);
+        for (player_idx, mano) in manos.iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &lance);
+        }
     }
 
     fn set_card_source(&mut self, cartas: CardSource) {
@@ -116,18 +109,6 @@ impl MusGame {
 
     pub fn mus_game(&self) -> Option<&PartidaMus<CuatroJugadores>> {
         self.partida.as_ref()
-    }
-
-    fn info_set_prefix(
-        manos: &[Mano; 4],
-        tantos: &[u8; 2],
-        abstracto: Option<Lance>,
-    ) -> [ArrayString<16>; 4] {
-        core::array::from_fn(|i| {
-            let mut w = InfoSetWriter(ArrayString::<16>::new());
-            w.tantos(tantos).mano(&manos[i], abstracto);
-            w.into_inner()
-        })
     }
 
     pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
@@ -156,16 +137,9 @@ impl MusGame {
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            new_game.actualizar_manos(Lance::Grande);
+            new_game.update_hands(Lance::Grande);
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
-        })
-    }
-
-    fn first_player_action(&self) -> bool {
-        self.partida.as_ref().is_some_and(|partida| {
-            matches!(partida.fase(), Some(FasePartida::Envites(_)))
-                && matches!(partida.turno(), Some(Turno::Pareja(0 | 1)))
         })
     }
 
@@ -174,56 +148,6 @@ impl MusGame {
             matches!(partida.fase(), Some(FasePartida::Envites(_)))
                 && matches!(partida.turno(), Some(Turno::Pareja(2 | 3)))
         })
-    }
-
-    pub fn act_with_action(&mut self, a: Accion) {
-        self.last_action = Some(a);
-        if !self.first_player_action() {
-            self.history_str.push_str(&a.to_string());
-        }
-        let fase = self
-            .partida
-            .as_ref()
-            .expect("At least one PartidaMus must be available.")
-            .fase();
-        let partida = self.partida.as_mut().unwrap();
-        match fase {
-            Some(FasePartida::Descartes) => {
-                let _ = partida.actuar(a);
-            }
-            Some(FasePartida::Mus) => {
-                // Cada jugador vota por separado, incluidos los dos miembros de una pareja: no
-                // hay acción de pareja en la fase de mus.
-                let _ = partida.actuar(a);
-                match partida.fase() {
-                    // Todos han pedido mus: se consume una ronda.
-                    Some(FasePartida::Descartes) => self.mus_rounds += 1,
-                    Some(FasePartida::Envites(lance)) => self.actualizar_manos(lance),
-                    _ => {}
-                }
-            }
-            Some(FasePartida::Envites(lance_previo)) => {
-                let _ = partida.actuar(a);
-                let Some(FasePartida::Envites(lance_siguiente)) = partida.fase() else {
-                    return;
-                };
-                if lance_previo != lance_siguiente {
-                    self.info_set_prefix = MusGame::info_set_prefix(
-                        self.partida.as_ref().unwrap().manos(),
-                        &self.tantos,
-                        self.abstract_game.then_some(lance_siguiente),
-                    );
-                    push_jugadas_lance(
-                        &mut self.history_str,
-                        &lance_previo,
-                        &lance_siguiente,
-                        &self.manos_pares,
-                        &self.manos_juego,
-                    );
-                }
-            }
-            _ => todo!(),
-        }
     }
 
     pub fn actions(&self) -> ArrayVec<Accion, 6> {
@@ -244,10 +168,19 @@ impl MusGame {
         }
         acciones
     }
+
+    pub fn act_with_action(&mut self, action: Accion) {
+        let action_id = self
+            .actions()
+            .iter()
+            .position(|a| *a == action)
+            .expect("received action must be among the provided by actions()");
+        *self = self.act(action_id);
+    }
 }
 
 impl Game for MusGame {
-    type InfoSet = String;
+    type InfoSet = MusInfoSet;
     const N_PLAYERS: usize = 4;
 
     fn utility(&self, player: usize) -> f64 {
@@ -255,12 +188,8 @@ impl Game for MusGame {
         utility(player, &tantos, self.utility_table.as_deref())
     }
 
-    fn info_set(&self, player: usize) -> String {
-        let mut output = String::with_capacity(15 + self.history_str.len());
-        output.push_str(&self.info_set_prefix[player]);
-        output.push_str(&self.descarte_str[player]);
-        output.push_str(&self.history_str());
-        output
+    fn info_set(&self, player: usize) -> Self::InfoSet {
+        self.info_set_builder.to_mus_infoset(player)
     }
 
     fn chance_sample(&self) -> Self {
@@ -274,20 +203,11 @@ impl Game for MusGame {
             }
             Some(p) => {
                 if let Some(CardSource::Baraja(baraja)) = &mut new_game.cards {
-                    let turno = match p
-                        .turno()
-                        .expect("Some player must be active to call new_random() after game start")
-                    {
-                        Turno::Jugador(t) => t,
-                        Turno::Pareja(_) => unreachable!("Los descartes son individuales."),
-                    } as usize;
                     let descartes = p.descartadas().unwrap();
-                    InfoSetWriter(&mut new_game.descarte_str[turno]).descarte(&descartes);
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
-                    new_game.history_str.push('C');
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.actualizar_manos(Lance::Grande);
+                    new_game.update_hands(Lance::Grande);
                 }
             }
         }
@@ -316,18 +236,9 @@ impl Game for MusGame {
                 );
                 Either::Left(partidas)
             }
-            Some(p) => {
-                let turno = match p
-                    .turno()
-                    .expect("Some player must be active to call new_iter() after game started")
-                {
-                    Turno::Jugador(t) => t,
-                    Turno::Pareja(_) => unreachable!("Los descartes son individuales."),
-                } as usize;
-                let mut game = self.clone();
+            Some(_) => {
+                let game = self.clone();
                 let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
-                InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
-                game.history_str.push('C');
                 let partidas = match descartes.len() {
                     1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
                     2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
@@ -340,7 +251,7 @@ impl Game for MusGame {
         }
     }
 
-    fn current_player(&self) -> NodeType {
+    fn current_node(&self) -> NodeType {
         match &self.partida {
             None => NodeType::Chance,
             Some(partida) => match partida.fase() {
@@ -359,18 +270,86 @@ impl Game for MusGame {
     }
 
     fn act(&self, action_id: usize) -> Self {
-        let a = self.actions()[action_id];
         let mut new_game = self.clone();
-        new_game.act_with_action(a);
+        let action = new_game.actions()[action_id];
+        new_game.last_action = Some(action);
+        let (turno, phase, new_phase) = {
+            let partida = new_game
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act");
+            let phase = partida.fase();
+            let turno = partida.turno().expect("some player must be active");
+            let _ = partida.actuar(action);
+            let new_phase = partida.fase();
+            (turno, phase, new_phase)
+        };
+        let is_first_partner = matches!(turno, Turno::Pareja(0 | 1));
+        match phase {
+            Some(FasePartida::Mus) => {
+                if is_first_partner && action != Accion::NoMus {
+                    new_game.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    // Un NoMus del primer miembro corta el mus de inmediato: cierra la decisión de
+                    // la pareja sin que el compañero llegue a votar.
+                    new_game.info_set_builder.step_mus(action);
+                    new_game.info_set_builder.set_hidden_action(None);
+                }
+            }
+            Some(FasePartida::Envites(_)) => {
+                if is_first_partner {
+                    new_game.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    new_game.info_set_builder.step_lance(action);
+                    new_game.info_set_builder.set_hidden_action(None);
+                }
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                new_game.info_set_builder.begin_descartes();
+                new_game.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                new_game.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
+                new_game
+                    .info_set_builder
+                    .set_descartes(turno.player_id() as usize, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                new_game.info_set_builder.begin_lance(&lance);
+                new_game.update_hands(lance);
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                new_game.info_set_builder.begin_lance(&lance_siguiente);
+                new_game.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                new_game
+                    .info_set_builder
+                    .set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
         new_game
     }
 
-    fn history_str(&self) -> String {
-        if self.second_player_turn() {
-            format!("{}{}*", self.history_str, self.last_action.unwrap())
-        } else {
-            self.history_str.to_string()
+    fn node_key(&self) -> u64 {
+        let mut key = self.info_set_builder.public_history;
+        if matches!(self.current_node(), NodeType::Chance) {
+            key |= 1 << 63;
         }
+        key
     }
 }
 
@@ -379,22 +358,14 @@ pub struct MusGameTwoHands {
     tantos: [u8; 2],
     cards: Option<CardSource>,
     partida: Option<PartidaMus<CuatroJugadores>>,
-    history_str: ArrayString<192>,
-    info_set_prefix: [ArrayString<24>; 2],
-    // Dos manos por jugador, hasta 5 bytes por descarte y ronda.
-    descarte_str: [ArrayString<{ 10 * MAX_RONDAS_MUS as usize }>; 2],
-    manos_pares: ArrayString<4>,
-    manos_juego: ArrayString<4>,
     mus_rounds: u8,
     max_mus_rounds: u8,
     abstract_game: bool,
+    info_set_builder: MusInfoSetBuilder,
     utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
 impl MusGameTwoHands {
-    /// `max_rondas_mus` acota cuántas rondas de mus pueden jugarse, hasta [`MAX_RONDAS_MUS`]. Con
-    /// cero rondas la partida se juega a primeras dadas y la fase de mus no forma parte del
-    /// árbol de juego.
     pub fn new(tantos: [u8; 2], abstract_game: bool, max_mus_rounds: u8) -> Self {
         assert!(
             max_mus_rounds <= MAX_RONDAS_MUS,
@@ -404,14 +375,10 @@ impl MusGameTwoHands {
             partida: None,
             cards: None,
             tantos,
-            history_str: ArrayString::new(),
-            info_set_prefix: [ArrayString::new(); 2],
-            descarte_str: [ArrayString::new(); 2],
-            manos_pares: ArrayString::new(),
-            manos_juego: ArrayString::new(),
             mus_rounds: 0,
             max_mus_rounds,
             abstract_game,
+            info_set_builder: MusInfoSetBuilder::new(abstract_game),
             utility_table: None,
         }
     }
@@ -423,10 +390,8 @@ impl MusGameTwoHands {
 
     fn set_hands(&mut self, manos: [Mano; 4]) {
         self.partida = Some(PartidaMus::<CuatroJugadores>::new(manos, self.tantos));
-        self.actualizar_manos(Lance::Grande);
-        // La 'M' marca el reparto, no la fase de mus: distingue la partida repartida del nodo
-        // de azar inicial, que es el que `GameGraph` indexa con el historial vacío.
-        self.history_str = ArrayString::<192>::from("M").unwrap();
+        self.update_hands(Lance::Grande);
+        self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
 
@@ -450,57 +415,29 @@ impl MusGameTwoHands {
         }
         let _ = partida.actuar(Accion::NoMus);
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
-            self.actualizar_manos(lance);
+            // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
+            // apuestas del primer lance igual que haría la transición Mus -> Envites.
+            self.info_set_builder.begin_lance(&lance);
+            self.update_hands(lance);
         }
     }
 
-    /// Refresca el prefijo del conjunto de información y los indicadores de pares y juego con las
-    /// manos que hay ahora sobre la mesa. Se llama al entrar en la fase de envites porque los
-    /// descartes pueden haber cambiado las manos repartidas.
-    fn actualizar_manos(&mut self, lance: Lance) {
+    /// Refresca las manos del conjunto de información con las que hay ahora sobre la mesa. Se
+    /// llama al entrar en la fase de envites porque los descartes pueden haber cambiado las manos
+    /// repartidas.
+    fn update_hands(&mut self, lance: Lance) {
         let manos = self
             .partida
             .as_ref()
             .expect("La partida debe estar repartida.")
             .manos();
-        self.info_set_prefix = MusGameTwoHands::info_set_prefix(
-            manos,
-            &self.tantos,
-            self.abstract_game.then_some(lance),
-        );
-        (self.manos_pares, self.manos_juego) = jugadas_manos(manos);
+        for (player_idx, mano) in manos.iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &lance);
+        }
     }
 
     fn set_card_source(&mut self, cartas: CardSource) {
         self.cards = Some(cartas);
-    }
-
-    fn info_set_prefix(
-        manos: &[Mano; 4],
-        tantos: &[u8; 2],
-        abstracto: Option<Lance>,
-    ) -> [ArrayString<24>; 2] {
-        core::array::from_fn(|i| {
-            if let Some(lance) = abstracto {
-                let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(&manos[i], &lance);
-                let mano_abstracta2 =
-                    ManosNormalizadas::mano_to_abstract_string(&manos[i + 2], &lance);
-                ArrayString::from(&format!(
-                    "{}:{},{},{},",
-                    tantos[0], tantos[1], mano_abstracta, mano_abstracta2
-                ))
-                .unwrap()
-            } else {
-                ArrayString::from(&format!(
-                    "{}:{},{},{},",
-                    tantos[0],
-                    tantos[1],
-                    manos[i],
-                    manos[i + 2]
-                ))
-                .unwrap()
-            }
-        })
     }
 
     pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
@@ -525,7 +462,7 @@ impl MusGameTwoHands {
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            new_game.actualizar_manos(Lance::Grande);
+            new_game.update_hands(Lance::Grande);
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
         })
@@ -541,54 +478,18 @@ impl MusGameTwoHands {
         actions(partida)
     }
 
-    pub fn act_with_action(&mut self, a: Accion) {
-        self.history_str.push_str(&a.to_string());
-        if let Some(partida) = self.partida.as_mut() {
-            match &partida.fase() {
-                Some(FasePartida::Descartes) => {
-                    let _ = partida.actuar(a);
-                }
-                Some(FasePartida::Mus) => {
-                    let _ = partida.actuar(a);
-                    match partida.fase() {
-                        // Todos han pedido mus: se consume una ronda.
-                        Some(FasePartida::Descartes) => self.mus_rounds += 1,
-                        Some(FasePartida::Envites(lance)) => self.actualizar_manos(lance),
-                        _ => {}
-                    }
-                }
-                Some(FasePartida::Envites(lance_previo)) => {
-                    if let Turno::Pareja(_) = partida.turno().expect("some player must be playing")
-                    {
-                        let _ = partida.actuar(a);
-                    }
-                    let _ = partida.actuar(a);
-                    let Some(FasePartida::Envites(lance_siguiente)) = partida.fase() else {
-                        return;
-                    };
-                    if lance_previo != &lance_siguiente {
-                        self.info_set_prefix = MusGameTwoHands::info_set_prefix(
-                            self.partida.as_ref().unwrap().manos(),
-                            &self.tantos,
-                            self.abstract_game.then_some(lance_siguiente),
-                        );
-                        push_jugadas_lance(
-                            &mut self.history_str,
-                            lance_previo,
-                            &lance_siguiente,
-                            &self.manos_pares,
-                            &self.manos_juego,
-                        );
-                    }
-                }
-                _ => todo!(),
-            }
-        }
+    pub fn act_with_action(&mut self, action: Accion) {
+        let action_id = self
+            .actions()
+            .iter()
+            .position(|a| *a == action)
+            .expect("received action must be among the provided by actions()");
+        *self = self.act(action_id);
     }
 }
 
 impl Game for MusGameTwoHands {
-    type InfoSet = String;
+    type InfoSet = MusInfoSet;
     const N_PLAYERS: usize = 2;
 
     fn utility(&self, player: usize) -> f64 {
@@ -596,12 +497,10 @@ impl Game for MusGameTwoHands {
         utility(player, &tantos, self.utility_table.as_deref())
     }
 
-    fn info_set(&self, player: usize) -> String {
-        let mut output = String::with_capacity(15 + self.history_str.len());
-        output.push_str(&self.info_set_prefix[player]);
-        output.push_str(&self.descarte_str[player]);
-        output.push_str(&self.history_str());
-        output
+    fn info_set(&self, player: usize) -> Self::InfoSet {
+        // Cada jugador ve las dos manos de su pareja (puestos `player` y `player + 2`), que se
+        // empaquetan en la mitad baja y alta de la parte privada del conjunto de información.
+        self.info_set_builder.to_mus_infoset_two_hands(player)
     }
 
     fn chance_sample(&self) -> Self {
@@ -615,20 +514,11 @@ impl Game for MusGameTwoHands {
             }
             Some(p) => {
                 if let Some(CardSource::Baraja(baraja)) = &mut new_game.cards {
-                    let turno = match p
-                        .turno()
-                        .expect("Some player must be active to call new_random() after game start")
-                    {
-                        Turno::Jugador(t) => t,
-                        Turno::Pareja(_) => todo!(),
-                    } as usize;
                     let descartes = p.descartadas().unwrap();
-                    InfoSetWriter(&mut new_game.descarte_str[turno % 2]).descarte(&descartes);
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
-                    new_game.history_str.push('C');
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.actualizar_manos(Lance::Grande);
+                    new_game.update_hands(Lance::Grande);
                 }
             }
         }
@@ -657,18 +547,9 @@ impl Game for MusGameTwoHands {
                 );
                 Either::Left(partidas)
             }
-            Some(p) => {
-                let turno = match p
-                    .turno()
-                    .expect("Some player must be active to call new_iter() after game started")
-                {
-                    Turno::Jugador(t) => t,
-                    Turno::Pareja(_) => todo!(),
-                } as usize;
-                let mut game = self.clone();
+            Some(_) => {
+                let game = self.clone();
                 let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
-                InfoSetWriter(&mut game.descarte_str[turno % 2]).descarte(&descartes);
-                game.history_str.push('C');
                 let games = match descartes.len() {
                     1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
                     2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
@@ -682,7 +563,7 @@ impl Game for MusGameTwoHands {
         }
     }
 
-    fn current_player(&self) -> NodeType {
+    fn current_node(&self) -> NodeType {
         match &self.partida {
             None => NodeType::Chance,
             Some(partida) => match partida.fase() {
@@ -701,14 +582,87 @@ impl Game for MusGameTwoHands {
     }
 
     fn act(&self, action_id: usize) -> Self {
-        let a = self.actions()[action_id];
         let mut new_game = self.clone();
-        new_game.act_with_action(a);
+        let action = new_game.actions()[action_id];
+        let (player_id, phase, new_phase) = {
+            let partida = new_game
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act");
+            let phase = partida.fase();
+            let turno = partida.turno().expect("some player must be active");
+            let player_id = turno.player_id() as usize;
+            let _ = partida.actuar(action);
+            if matches!(turno, Turno::Pareja(_)) {
+                // En envites el jugador controla las dos manos de la pareja y decide por ambas a
+                // la vez, así que la acción se aplica dos veces.
+                let _ = partida.actuar(action);
+            }
+            let new_phase = partida.fase();
+            (player_id, phase, new_phase)
+        };
+        // Los puestos 0 y 1 son el primer voto de cada pareja: quedan ocultos hasta que responde
+        // el segundo puesto (2 y 3), que cierra la decisión pública de la pareja. En la fase de
+        // envites el jugador decide por la pareja completa en una sola acción y no hay ocultación.
+        let is_first_partner = player_id == 0 || player_id == 1;
+        match phase {
+            Some(FasePartida::Mus) => {
+                if is_first_partner && action != Accion::NoMus {
+                    new_game.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    new_game.info_set_builder.step_mus(action);
+                    new_game.info_set_builder.set_hidden_action(None);
+                }
+            }
+            Some(FasePartida::Envites(_)) => {
+                new_game.info_set_builder.step_lance(action);
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                new_game.info_set_builder.begin_descartes();
+                new_game.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                new_game.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
+                new_game
+                    .info_set_builder
+                    .set_descartes(player_id, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                new_game.info_set_builder.begin_lance(&lance);
+                new_game.update_hands(lance);
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                new_game.info_set_builder.begin_lance(&lance_siguiente);
+                new_game.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                new_game
+                    .info_set_builder
+                    .set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
         new_game
     }
 
-    fn history_str(&self) -> String {
-        self.history_str.to_string()
+    fn node_key(&self) -> u64 {
+        let mut key = self.info_set_builder.public_history;
+        if matches!(self.current_node(), NodeType::Chance) {
+            key |= 1 << 63;
+        }
+        key
     }
 }
 
@@ -717,15 +671,10 @@ pub struct MusGameTwoPlayers {
     tantos: [u8; 2],
     cards: Option<CardSource>,
     partida: Option<PartidaMus<DosJugadores>>,
-    history_str: ArrayString<192>,
-    info_set_prefix: [ArrayString<16>; 2],
-    // Una mano por jugador, hasta 5 bytes por descarte y ronda.
-    descarte_str: [ArrayString<{ 5 * MAX_RONDAS_MUS as usize }>; 2],
-    manos_pares: ArrayString<4>,
-    manos_juego: ArrayString<4>,
     mus_rounds: u8,
     max_mus_rounds: u8,
     abstract_game: bool,
+    info_set_builder: MusInfoSetBuilder,
     utility_table: Option<Rc<[[f64; 40]; 40]>>,
 }
 
@@ -742,14 +691,10 @@ impl MusGameTwoPlayers {
             partida: None,
             cards: None,
             tantos,
-            history_str: ArrayString::new(),
-            info_set_prefix: [ArrayString::new(); 2],
-            descarte_str: [ArrayString::new(); 2],
-            manos_pares: ArrayString::new(),
-            manos_juego: ArrayString::new(),
             mus_rounds: 0,
             max_mus_rounds,
             abstract_game,
+            info_set_builder: MusInfoSetBuilder::new(abstract_game),
             utility_table: None,
         }
     }
@@ -763,16 +708,14 @@ impl MusGameTwoPlayers {
 
     pub fn with_hands(self, manos: [Mano; 2]) -> Self {
         let mut new_game = self.clone();
-        new_game.set_hands(manos);
+        new_game.init_partida_mus(manos);
         new_game
     }
 
-    fn set_hands(&mut self, manos: [Mano; 2]) {
+    fn init_partida_mus(&mut self, manos: [Mano; 2]) {
         self.partida = Some(PartidaMus::<DosJugadores>::new(manos, self.tantos));
-        self.actualizar_manos(Lance::Grande);
-        // La 'M' marca el reparto, no la fase de mus: distingue la partida repartida del nodo
-        // de azar inicial, que es el que `GameGraph` indexa con el historial vacío.
-        self.history_str = ArrayString::<192>::from("M").unwrap();
+        self.update_hands(Lance::Grande);
+        self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
 
@@ -796,25 +739,32 @@ impl MusGameTwoPlayers {
         }
         let _ = partida.actuar(Accion::NoMus);
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
-            self.actualizar_manos(lance);
+            // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
+            // apuestas del primer lance igual que haría la transición Mus -> Envites.
+            self.info_set_builder.begin_lance(&lance);
+            self.update_hands(lance);
         }
     }
 
-    /// Refresca el prefijo del conjunto de información y los indicadores de pares y juego con las
-    /// manos que hay ahora sobre la mesa. Se llama al entrar en la fase de envites porque los
-    /// descartes pueden haber cambiado las manos repartidas.
-    fn actualizar_manos(&mut self, lance: Lance) {
+    fn update_hands(&mut self, lance: Lance) {
         let manos = self
             .partida
             .as_ref()
             .expect("La partida debe estar repartida.")
             .manos();
-        self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
-            manos,
-            &self.tantos,
-            self.abstract_game.then_some(lance),
-        );
-        (self.manos_pares, self.manos_juego) = jugadas_manos(manos);
+        for (player_idx, mano) in manos.iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &lance);
+        }
+    }
+
+    fn update_hand(&mut self, player_id: usize, lance: Lance) {
+        let manos = self
+            .partida
+            .as_ref()
+            .expect("La partida debe estar repartida.")
+            .manos();
+        self.info_set_builder
+            .set_hand(player_id, &manos[player_id], &lance);
     }
 
     fn set_card_source(&mut self, cartas: CardSource) {
@@ -823,18 +773,6 @@ impl MusGameTwoPlayers {
 
     pub fn mus_game(&self) -> Option<&PartidaMus<DosJugadores>> {
         self.partida.as_ref()
-    }
-
-    fn info_set_prefix(
-        manos: &[Mano; 2],
-        tantos: &[u8; 2],
-        abstracto: Option<Lance>,
-    ) -> [ArrayString<16>; 2] {
-        core::array::from_fn(|i| {
-            let mut w = InfoSetWriter(ArrayString::<16>::new());
-            w.tantos(tantos).mano(&manos[i], abstracto);
-            w.into_inner()
-        })
     }
 
     fn iter_descartes<const N: usize>(game: Self) -> impl Iterator<Item = (Self, f64)> {
@@ -852,7 +790,7 @@ impl MusGameTwoPlayers {
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            new_game.actualizar_manos(Lance::Grande);
+            new_game.update_hands(Lance::Grande);
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
         })
@@ -869,49 +807,17 @@ impl MusGameTwoPlayers {
     }
 
     pub fn act_with_action(&mut self, action: Accion) {
-        self.history_str.push_str(&action.to_string());
-        if let Some(partida) = self.partida.as_mut() {
-            match &partida.fase() {
-                Some(FasePartida::Descartes) => {
-                    let _ = partida.actuar(action);
-                }
-                Some(FasePartida::Mus) => {
-                    let _ = partida.actuar(action);
-                    match partida.fase() {
-                        // Todos han pedido mus: se consume una ronda.
-                        Some(FasePartida::Descartes) => self.mus_rounds += 1,
-                        Some(FasePartida::Envites(lance)) => self.actualizar_manos(lance),
-                        _ => {}
-                    }
-                }
-                Some(FasePartida::Envites(lance_previo)) => {
-                    let _ = partida.actuar(action);
-                    let Some(FasePartida::Envites(lance_siguiente)) = partida.fase() else {
-                        return;
-                    };
-                    if lance_previo != &lance_siguiente {
-                        self.info_set_prefix = MusGameTwoPlayers::info_set_prefix(
-                            self.partida.as_ref().unwrap().manos(),
-                            &self.tantos,
-                            self.abstract_game.then_some(lance_siguiente),
-                        );
-                        push_jugadas_lance(
-                            &mut self.history_str,
-                            lance_previo,
-                            &lance_siguiente,
-                            &self.manos_pares,
-                            &self.manos_juego,
-                        );
-                    }
-                }
-                _ => todo!(),
-            }
-        }
+        let action_id = self
+            .actions()
+            .iter()
+            .position(|a| *a == action)
+            .expect("received action must be among the provided by actions()");
+        *self = self.act(action_id);
     }
 }
 
 impl Game for MusGameTwoPlayers {
-    type InfoSet = String;
+    type InfoSet = MusInfoSet;
     const N_PLAYERS: usize = 2;
 
     fn utility(&self, player: usize) -> f64 {
@@ -919,12 +825,8 @@ impl Game for MusGameTwoPlayers {
         utility(player, &tantos, self.utility_table.as_deref())
     }
 
-    fn info_set(&self, player: usize) -> String {
-        let mut output = String::with_capacity(15 + self.history_str.len());
-        output.push_str(&self.info_set_prefix[player]);
-        output.push_str(&self.descarte_str[player]);
-        output.push_str(&self.history_str());
-        output
+    fn info_set(&self, player: usize) -> Self::InfoSet {
+        self.info_set_builder.to_mus_infoset(player)
     }
 
     fn chance_sample(&self) -> Self {
@@ -933,25 +835,16 @@ impl Game for MusGameTwoPlayers {
             None => {
                 let mut baraja = Baraja::baraja_mus();
                 let manos = baraja.repartir_manos();
-                new_game.set_hands(manos);
+                new_game.init_partida_mus(manos);
                 new_game.set_card_source(CardSource::Baraja(baraja));
             }
             Some(p) => {
                 if let Some(CardSource::Baraja(baraja)) = &mut new_game.cards {
-                    let turno = match p
-                        .turno()
-                        .expect("Some player must be active to call new_random() after game start")
-                    {
-                        Turno::Jugador(t) => t,
-                        Turno::Pareja(_) => todo!(),
-                    } as usize;
                     let descartes = p.descartadas().unwrap();
-                    InfoSetWriter(&mut new_game.descarte_str[turno]).descarte(&descartes);
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
-                    new_game.history_str.push('C');
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.actualizar_manos(Lance::Grande);
+                    new_game.update_hands(Lance::Grande);
                 }
             }
         }
@@ -975,23 +868,14 @@ impl Game for MusGameTwoPlayers {
                 );
                 Either::Left(games)
             }
-            Some(p) => {
-                let turno = match p
-                    .turno()
-                    .expect("Some player must be active to call new_iter() after game started")
-                {
-                    Turno::Jugador(t) => t,
-                    Turno::Pareja(_) => todo!(),
-                } as usize;
-                let mut game = self.clone();
-                let descartes = game.partida.as_ref().unwrap().descartadas().unwrap();
-                InfoSetWriter(&mut game.descarte_str[turno]).descarte(&descartes);
-                game.history_str.push('C');
+            Some(_) => {
+                let new_game = self.clone();
+                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
                 let games = match descartes.len() {
-                    1 => Either::Left(Either::Left(Self::iter_descartes::<1>(game))),
-                    2 => Either::Left(Either::Right(Self::iter_descartes::<2>(game))),
-                    3 => Either::Right(Either::Left(Self::iter_descartes::<3>(game))),
-                    4 => Either::Right(Either::Right(Self::iter_descartes::<4>(game))),
+                    1 => Either::Left(Either::Left(Self::iter_descartes::<1>(new_game))),
+                    2 => Either::Left(Either::Right(Self::iter_descartes::<2>(new_game))),
+                    3 => Either::Right(Either::Left(Self::iter_descartes::<3>(new_game))),
+                    4 => Either::Right(Either::Right(Self::iter_descartes::<4>(new_game))),
                     _ => unreachable!(),
                 };
                 Either::Right(games)
@@ -999,7 +883,7 @@ impl Game for MusGameTwoPlayers {
         }
     }
 
-    fn current_player(&self) -> NodeType {
+    fn current_node(&self) -> NodeType {
         match &self.partida {
             None => NodeType::Chance,
             Some(partida) => match partida.fase() {
@@ -1018,31 +902,84 @@ impl Game for MusGameTwoPlayers {
     }
 
     fn act(&self, action_id: usize) -> Self {
-        let action = self.actions()[action_id];
         let mut new_game = self.clone();
-        new_game.act_with_action(action);
+        let action = new_game.actions()[action_id];
+        let (turno, phase, new_phase) = {
+            let partida = new_game
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act_with_action");
+            let phase = partida.fase();
+            let turno = partida
+                .turno()
+                .expect("some player must be active in descartes phase")
+                .player_id() as usize;
+            let _ = partida.actuar(action);
+            let new_phase = partida.fase();
+            (turno, phase, new_phase)
+        };
+        match phase {
+            Some(FasePartida::Mus) => {
+                new_game.info_set_builder.step_mus(action);
+            }
+            Some(FasePartida::Envites(_)) => {
+                new_game.info_set_builder.step_lance(action);
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                new_game.info_set_builder.begin_descartes();
+                new_game.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                new_game.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
+                new_game.info_set_builder.set_descartes(turno, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                new_game.info_set_builder.begin_lance(&lance);
+                new_game.update_hands(lance)
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                new_game.info_set_builder.begin_lance(&lance_siguiente);
+                new_game.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                new_game
+                    .info_set_builder
+                    .set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
         new_game
     }
 
-    fn history_str(&self) -> String {
-        self.history_str.to_string()
+    fn node_key(&self) -> u64 {
+        let mut key = self.info_set_builder.public_history;
+        if matches!(self.current_node(), NodeType::Chance) {
+            key |= 1 << 63;
+        }
+        key
     }
 }
 
-/// Acciones legales en el estado actual. Solo se llega a un nodo de jugador en la fase de mus
-/// mientras queden rondas por jugar: al agotarse, `salir_de_mus_si_agotado` fuerza el `NoMus` en
-/// vez de dejar aquí un nodo con una única acción.
 fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
     match partida.fase() {
         Some(FasePartida::Mus) => [Accion::Mus, Accion::NoMus].into_iter().collect(),
         Some(FasePartida::Descartes) => {
-            let turno = match partida
+            let turno = partida
                 .turno()
                 .expect("Some player must be active to call actions()")
-            {
-                Turno::Jugador(t) => t,
-                Turno::Pareja(t) => t,
-            } as usize;
+                .player_id() as usize;
             let mano = &partida.manos().as_ref()[turno];
             let mut descartes = [false; 4];
             for (idx, carta) in mano.iter().enumerate() {
@@ -1057,46 +994,7 @@ fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
             let fase_envites = partida.fase_envites().unwrap();
             let ultimo_envite: Apuesta = fase_envites.ultima_apuesta();
             let apuesta_maxima = fase_envites.apuesta_maxima();
-            let mut actions: ArrayVec<Accion, 6> = match ultimo_envite {
-                Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
-                    return [Accion::Paso, Accion::Quiero, Accion::Ordago]
-                        .into_iter()
-                        .collect();
-                }
-                Apuesta::Tantos(0) => [
-                    Accion::Paso,
-                    Accion::Envido(2),
-                    Accion::Envido(5),
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ]
-                .into_iter()
-                .collect(),
-                Apuesta::Tantos(2) => [
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(2),
-                    Accion::Envido(5),
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ]
-                .into_iter()
-                .collect(),
-                Apuesta::Tantos(4..=5) => [
-                    Accion::Paso,
-                    Accion::Quiero,
-                    Accion::Envido(10),
-                    Accion::Ordago,
-                ]
-                .into_iter()
-                .collect(),
-                Apuesta::Ordago => return [Accion::Paso, Accion::Quiero].into_iter().collect(),
-                _ => {
-                    return [Accion::Paso, Accion::Quiero, Accion::Ordago]
-                        .into_iter()
-                        .collect();
-                }
-            };
+            let mut actions = actions_envite(ultimo_envite, apuesta_maxima);
             actions.retain(|action| {
                 if let Apuesta::Tantos(tantos) = ultimo_envite
                     && let Accion::Envido(v) = action
@@ -1110,6 +1008,66 @@ fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
         }
         Some(FasePartida::DescartePendiente) => ArrayVec::new(),
         None => todo!(),
+    }
+}
+
+/// Índice canónico de cada acción, fijo e independiente de qué acciones estén disponibles en cada
+/// momento. Es el hijo con el que se indexan `mus_sequence` y `lance_sequence`, de modo que una
+/// misma acción (p. ej. órdago) siempre recorre el mismo hijo del árbol, sin que el marcador o la
+/// configuración de manos desplacen los índices y provoquen colisiones. Mus y envites usan árboles
+/// distintos, así que sus códigos pueden solaparse.
+fn canonical_envite_action(action: Accion) -> usize {
+    match action {
+        Accion::NoMus => 0,
+        Accion::Mus => 1,
+        Accion::Paso => 0,
+        Accion::Quiero => 1,
+        Accion::Envido(2) => 2,
+        Accion::Envido(5) => 3,
+        Accion::Envido(10) => 4,
+        Accion::Ordago => 5,
+        other => unreachable!("acción inesperada en el árbol de apuestas: {other:?}"),
+    }
+}
+
+fn actions_envite(ultimo_envite: Apuesta, apuesta_maxima: u8) -> ArrayVec<Accion, 6> {
+    match ultimo_envite {
+        Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
+            [Accion::Paso, Accion::Quiero, Accion::Ordago]
+                .into_iter()
+                .collect()
+        }
+        Apuesta::Tantos(0) => [
+            Accion::Paso,
+            Accion::Envido(2),
+            Accion::Envido(5),
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Tantos(2) => [
+            Accion::Paso,
+            Accion::Quiero,
+            Accion::Envido(2),
+            Accion::Envido(5),
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Tantos(4..=5) => [
+            Accion::Paso,
+            Accion::Quiero,
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Ordago => [Accion::Paso, Accion::Quiero].into_iter().collect(),
+        _ => [Accion::Paso, Accion::Quiero, Accion::Ordago]
+            .into_iter()
+            .collect(),
     }
 }
 
@@ -1143,177 +1101,389 @@ fn utility(player: usize, tantos: &[u8; 2], utility_table: Option<&[[f64; 40]; 4
     )
 }
 
-/// Añade al historial los indicadores de pares y juego cuando el lance en curso cambia. Son
-/// información pública: al llegar a pares se sabe qué manos tienen pares, y al llegar a juego o
-/// punto, además, cuáles tienen juego.
-fn push_jugadas_lance(
-    history_str: &mut ArrayString<192>,
-    lance_previo: &Lance,
-    lance_siguiente: &Lance,
-    manos_pares: &ArrayString<4>,
-    manos_juego: &ArrayString<4>,
-) {
-    match lance_siguiente {
-        Lance::Pares => history_str.push_str(manos_pares),
-        Lance::Punto | Lance::Juego => {
-            if lance_previo != &Lance::Pares {
-                history_str.push_str(manos_pares);
-            }
-            history_str.push_str(manos_juego);
-        }
-        _ => {}
-    }
-}
-
-fn jugadas_manos(manos: &[Mano]) -> (ArrayString<4>, ArrayString<4>) {
-    let manos_pares = manos
-        .iter()
-        .map(|m| if m.pares().is_some() { '1' } else { '0' })
-        .join("");
-    let manos_juego = manos
-        .iter()
-        .map(|m| if m.juego().is_some() { '1' } else { '0' })
-        .join("");
-
-    (
-        ArrayString::from(&manos_pares).unwrap(),
-        ArrayString::from(&manos_juego).unwrap(),
-    )
-}
-
 #[derive(Debug, Clone)]
 enum CardSource {
     Baraja(Baraja),
     Iterable([(Carta, u8); 8]),
 }
 
-struct InfoSetWriter<W: Write>(W);
+pub type MusInfoSet = (u64, u64);
 
-impl<W: Write> InfoSetWriter<W> {
-    fn tantos(&mut self, tantos: &[u8; 2]) -> &mut Self {
-        let _ = write!(self.0, "{}:{},", tantos[0], tantos[1]);
-        self
+#[derive(Debug, Clone)]
+struct MusInfoSetBuilder {
+    public_history: u64,
+    private_history: [u64; 4],
+
+    tables: Arc<MusInfoSetTables>,
+    current_lance: Option<u8>,
+    current_node: u32,
+}
+
+impl MusInfoSetBuilder {
+    fn to_mus_infoset(&self, player_id: usize) -> MusInfoSet {
+        (self.public_history, self.private_history[player_id])
     }
 
-    fn mano(&mut self, mano: &Mano, abstracto: Option<Lance>) -> &mut Self {
-        if let Some(lance) = abstracto {
-            let mano_abstracta = ManosNormalizadas::mano_to_abstract_string(mano, &lance);
-            let _ = write!(self.0, "{},", mano_abstracta);
+    fn to_mus_infoset_two_hands(&self, player_id: usize) -> MusInfoSet {
+        (
+            self.public_history,
+            self.private_history[player_id] | (self.private_history[player_id + 2] << 32),
+        )
+    }
 
-            self
-        } else {
-            let _ = write!(self.0, "{},", mano);
+    fn set_hand(&mut self, player_id: usize, mano: &Mano, lance: &Lance) {
+        let value = self.tables.rank_hand(mano, lance);
+        Self::put(
+            &mut self.private_history[player_id],
+            value,
+            self.tables.mano.offset,
+            self.tables.mano.width,
+        );
+    }
 
-            self
+    fn set_descartes(&mut self, player_id: usize, descartes: &[Carta]) {
+        let code_offset = match descartes.len() {
+            1 => 1,
+            2 => 9,
+            3 => 45,
+            4 => 165,
+            _ => 0,
+        };
+
+        Self::put(
+            &mut self.private_history[player_id],
+            code_offset + self.tables.rank_complete_hand(descartes),
+            self.tables.descartes.offset,
+            self.tables.descartes.width,
+        );
+        self.step_descartes(descartes.len());
+    }
+
+    fn begin_mus(&mut self) {
+        self.current_node = 0;
+    }
+
+    fn step_mus(&mut self, action: Accion) {
+        self.current_node = self.tables.mus_sequence.step(self.current_node, action);
+        Self::put(
+            &mut self.public_history,
+            self.current_node as u64,
+            self.tables.history_mus.offset,
+            self.tables.history_mus.width,
+        )
+    }
+
+    fn begin_descartes(&mut self) {
+        self.current_node = 1;
+    }
+
+    fn step_descartes(&mut self, num_descartes: usize) {
+        self.current_node = self.current_node * 4 + (num_descartes - 1) as u32;
+        Self::put(
+            &mut self.public_history,
+            self.current_node as u64,
+            self.tables.history_descartes.offset,
+            self.tables.history_descartes.width,
+        )
+    }
+
+    fn begin_lance(&mut self, lance: &Lance) {
+        self.current_lance = Some(match lance {
+            Lance::Grande => 0,
+            Lance::Chica => 1,
+            Lance::Pares => 2,
+            Lance::Punto => 3,
+            Lance::Juego => 3,
+        });
+        self.current_node = 0;
+    }
+
+    fn step_lance(&mut self, action: Accion) {
+        let lance_idx =
+            self.current_lance
+                .expect("begin_lance should be called before step_lance") as usize;
+        self.current_node = self.tables.lance_sequence.step(self.current_node, action);
+        Self::put(
+            &mut self.public_history,
+            self.current_node as u64,
+            self.tables.history_lance[lance_idx].offset,
+            self.tables.history_lance[lance_idx].width,
+        )
+    }
+
+    fn set_hidden_action(&mut self, action: Option<Accion>) {
+        let code = action.map_or(0, |a| 1 + canonical_envite_action(a) as u64);
+        Self::put(
+            &mut self.public_history,
+            code,
+            self.tables.hidden_action.offset,
+            self.tables.hidden_action.width,
+        )
+    }
+
+    fn set_jugada(&mut self, lance: &Lance, manos: &[Mano]) {
+        match lance {
+            Lance::Pares => {
+                let jugada = manos
+                    .iter()
+                    .map(|m| m.pares().is_some() as u8)
+                    .fold(0, |acum, v| acum << 1 | v);
+                Self::put(
+                    &mut self.public_history,
+                    jugada as u64,
+                    self.tables.jugadas_pares.offset,
+                    self.tables.jugadas_pares.width,
+                )
+            }
+
+            Lance::Juego => {
+                let jugada = manos
+                    .iter()
+                    .map(|m| m.juego().is_some() as u8)
+                    .fold(0, |acum, v| acum << 1 | v);
+                Self::put(
+                    &mut self.public_history,
+                    jugada as u64,
+                    self.tables.jugadas_juego.offset,
+                    self.tables.jugadas_juego.width,
+                )
+            }
+            _ => {}
         }
     }
 
-    fn descarte(&mut self, descartes: &[Carta]) -> &mut Self {
-        for d in descartes {
-            let _ = write!(self.0, "{}", char::from(d));
-        }
-        let _ = write!(self.0, ",");
-
-        self
+    fn put(dest: &mut u64, value: u64, offset: u32, width: u32) {
+        debug_assert!(value < (1 << width), "field overflow");
+        let mask = (1 << width) - 1;
+        *dest &= !(mask << offset);
+        *dest |= value << offset;
     }
 
-    fn into_inner(self) -> W {
-        self.0
+    fn new(abstract_game: bool) -> Self {
+        Self {
+            public_history: 0,
+            private_history: [0; 4],
+            tables: Arc::new(MusInfoSetTables::new(abstract_game)),
+            current_lance: None,
+            current_node: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct BitField {
+    width: u32,
+    offset: u32,
+}
+
+#[derive(Debug)]
+pub(crate) struct MusInfoSetTables {
+    mano: BitField,
+    descartes: BitField,
+    jugadas_pares: BitField,
+    jugadas_juego: BitField,
+    history_mus: BitField,
+    history_descartes: BitField,
+    history_lance: [BitField; 4],
+    hidden_action: BitField,
+
+    combinations: [[u64; 5]; 12],
+    mus_sequence: BettingSequence,
+    lance_sequence: BettingSequence,
+    abstract_hands: Option<[HashMap<AbstractJugada, u32>; 5]>,
+}
+
+impl MusInfoSetTables {
+    pub(crate) fn new(abstract_game: bool) -> Self {
+        let combinations = Self::combinations_table();
+        let mus_sequence = BettingSequence::from_sequences(&[vec![0], vec![1, 0], vec![1, 1]]);
+        let lance_sequence = BettingSequence::from_sequences(&Self::sequences_lance());
+        let abstract_hands = abstract_game.then(Self::abstract_hands_table);
+
+        // private part
+        let mut offset = 0;
+        let mano = BitField { width: 9, offset };
+        offset += mano.width;
+        let descartes = BitField { width: 9, offset };
+
+        // public part
+        let mut offset = 0;
+        let jugadas_pares = BitField { width: 4, offset };
+        offset += jugadas_pares.width;
+        let jugadas_juego = BitField { width: 4, offset };
+        offset += jugadas_juego.width;
+        let history_mus = BitField {
+            width: u32::BITS - (mus_sequence.num_nodes() as u32).leading_zeros(),
+            offset,
+        };
+        offset += history_mus.width;
+        let history_descartes = BitField { width: 9, offset };
+        offset += history_descartes.width;
+        let width_lance = u32::BITS - (lance_sequence.num_nodes() as u32).leading_zeros();
+        let history_lance = std::array::from_fn(|_idx| {
+            let lance = BitField {
+                width: width_lance,
+                offset,
+            };
+            offset += width_lance;
+            lance
+        });
+        let hidden_action = BitField { width: 3, offset };
+        Self {
+            combinations,
+            mus_sequence,
+            lance_sequence,
+            abstract_hands,
+            mano,
+            descartes,
+            jugadas_pares,
+            jugadas_juego,
+            history_mus,
+            history_descartes,
+            history_lance,
+            hidden_action,
+        }
+    }
+
+    pub(crate) fn combinations_table() -> [[u64; 5]; 12] {
+        let mut combinations = [[1u64, 0, 0, 0, 0]; 12];
+        (1..12usize).for_each(|n| {
+            (1..5usize).for_each(|k| {
+                combinations[n][k] = num_integer::binomial(n as u64, k as u64);
+            });
+        });
+        combinations
+    }
+
+    pub(crate) fn rank_hand(&self, mano: &Mano, lance: &Lance) -> u64 {
+        match &self.abstract_hands {
+            Some(maps) => {
+                let idx = Self::lance_abstract_index(lance);
+                AbstractJugada::to_abstract(mano, lance)
+                    .and_then(|jugada| maps[idx].get(&jugada).copied())
+                    .unwrap_or(0) as u64
+            }
+            None => self.rank_complete_hand(mano.cartas()),
+        }
+    }
+
+    fn rank_complete_hand(&self, mano: &[Carta]) -> u64 {
+        let mut rank = 0;
+        for (i, c) in mano.iter().rev().enumerate() {
+            rank += self.combinations[c.valor_mus() as usize + i][i + 1];
+        }
+        rank
+    }
+
+    fn lance_abstract_index(lance: &Lance) -> usize {
+        match lance {
+            Lance::Grande => 0,
+            Lance::Chica => 1,
+            Lance::Pares => 2,
+            Lance::Juego => 3,
+            Lance::Punto => 4,
+        }
+    }
+
+    fn sequences_lance() -> Vec<Vec<u8>> {
+        let mut out = vec![];
+
+        let estado_lance = EstadoLance::<DosJugadores>::new(
+            &Lance::Grande,
+            &[
+                Mano::try_from("RRRR").unwrap(),
+                Mano::try_from("R111").unwrap(),
+            ],
+            40,
+        );
+        fn a(estado_lance: EstadoLance<DosJugadores>, path: &mut Vec<u8>, out: &mut Vec<Vec<u8>>) {
+            let actions =
+                actions_envite(estado_lance.ultima_apuesta(), estado_lance.apuesta_maxima());
+            for action in actions {
+                path.push(canonical_envite_action(action) as u8);
+                let mut new_estado_lance = estado_lance.clone();
+                match new_estado_lance.actuar(action).unwrap() {
+                    Some(_) => a(new_estado_lance, path, out),
+                    None => out.push(path.clone()),
+                }
+                path.pop();
+            }
+        }
+        a(estado_lance, &mut Vec::new(), &mut out);
+
+        out
+    }
+
+    pub(crate) fn abstract_hands_table() -> [HashMap<AbstractJugada, u32>; 5] {
+        let lances = [
+            Lance::Grande,
+            Lance::Chica,
+            Lance::Pares,
+            Lance::Juego,
+            Lance::Punto,
+        ];
+        let mut jugadas: [BTreeSet<AbstractJugada>; 5] = Default::default();
+        for cartas in CartaIter::new(&Carta::CARTAS_MUS, 4) {
+            let mano = Mano::new(cartas.try_into().expect("CartaIter yields four cards"));
+            for (i, lance) in lances.iter().enumerate() {
+                if let Some(jugada) = AbstractJugada::to_abstract(&mano, lance) {
+                    jugadas[i].insert(jugada);
+                }
+            }
+        }
+        core::array::from_fn(|i| {
+            jugadas[i]
+                .iter()
+                .enumerate()
+                .map(|(idx, jugada)| (*jugada, idx as u32 + 1))
+                .collect()
+        })
+    }
+}
+
+#[derive(Debug)]
+struct BettingSequence {
+    nodes: Vec<[isize; 6]>,
+}
+
+impl BettingSequence {
+    fn from_sequences(sequences: &[Vec<u8>]) -> Self {
+        let sequences = sequences.to_vec();
+
+        let mut nodes: Vec<[isize; 6]> = vec![[-1; 6]];
+
+        for sequence in &sequences {
+            let mut node = 0;
+            for action in sequence {
+                let mut child = nodes[node as usize][*action as usize];
+                if child < 0 {
+                    nodes.push([-1; 6]);
+                    child = (nodes.len() - 1) as isize;
+                    nodes[node as usize][*action as usize] = child;
+                }
+                node = child;
+            }
+        }
+
+        Self { nodes }
+    }
+
+    fn num_nodes(&self) -> usize {
+        self.nodes.len()
+    }
+
+    fn step(&self, node: u32, action: Accion) -> u32 {
+        self.nodes[node as usize][canonical_envite_action(action)] as u32
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::str::FromStr;
 
     use super::*;
 
-    #[test]
-    fn two_players_infoset() {
-        let manos = [
-            Mano::from_str("RRR5").unwrap(),
-            Mano::from_str("RCC1").unwrap(),
-        ];
-        let mut game = MusGameTwoPlayers::new([38, 37], false, 1).with_hands(manos);
-        assert_eq!(game.info_set(0), "38:37,RRR5,M");
-        game.act_with_action(Accion::NoMus);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mn");
-        game.act_with_action(Accion::Paso);
-        assert_eq!(game.info_set(1), "38:37,RCC1,Mnp");
-        game.act_with_action(Accion::Paso);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpp");
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Ordago);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpppo");
-        game.act_with_action(Accion::Paso);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpppop11");
-        game.act_with_action(Accion::Ordago);
-        assert_eq!(game.info_set(1), "38:37,RCC1,Mnpppop11o");
-        game.act_with_action(Accion::Paso);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpppop11op11");
-
-        let manos = [
-            Mano::from_str("R775").unwrap(),
-            Mano::from_str("S651").unwrap(),
-        ];
-        let mut game = MusGameTwoPlayers::new([38, 37], false, 1).with_hands(manos);
-        game.act_with_action(Accion::NoMus);
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Paso);
-
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Ordago);
-        assert_eq!(game.info_set(0), "38:37,R775,Mnpppo");
-        game.act_with_action(Accion::Paso);
-
-        assert_eq!(game.info_set(0), "38:37,R775,Mnpppop1000");
-    }
-
-    #[test]
-    fn two_players_actions() {
-        let manos = [
-            Mano::from_str("RRR5").unwrap(),
-            Mano::from_str("RCC1").unwrap(),
-        ];
-        let mut game = MusGameTwoPlayers::new([35, 35], false, 1).with_hands(manos.clone());
-        game.act_with_action(Accion::NoMus);
-        game.act_with_action(Accion::Envido(2));
-        game.act_with_action(Accion::Envido(2));
-        assert_eq!(
-            game.actions().to_vec(),
-            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
-        );
-        game.act_with_action(Accion::Quiero);
-        game.act_with_action(Accion::Envido(2));
-        game.act_with_action(Accion::Envido(2));
-        assert_eq!(
-            game.actions().to_vec(),
-            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
-        );
-        let mut game = MusGameTwoPlayers::new([37, 37], false, 1).with_hands(manos.clone());
-        game.act_with_action(Accion::NoMus);
-        assert_eq!(
-            game.actions().to_vec(),
-            vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]
-        );
-        game.act_with_action(Accion::Envido(2));
-        assert_eq!(
-            game.actions().to_vec(),
-            vec![Accion::Paso, Accion::Quiero, Accion::Ordago,]
-        );
-        game.act_with_action(Accion::Paso);
-        assert_eq!(
-            game.actions().to_vec(),
-            vec![Accion::Paso, Accion::Envido(2), Accion::Ordago,]
-        );
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Envido(2));
-        game.act_with_action(Accion::Paso);
-        assert_eq!(game.actions().to_vec(), vec![Accion::Paso, Accion::Ordago]);
-    }
-
-    /// Cuatro manos con pares y juego, para que todos los lances se jueguen con las dos parejas
-    /// completas.
     fn cuatro_manos() -> [Mano; 4] {
         [
             Mano::from_str("RRR5").unwrap(),
@@ -1323,192 +1493,210 @@ mod tests {
         ]
     }
 
-    #[test]
-    fn two_hands_infoset() {
-        let mut game = MusGameTwoHands::new([38, 37], false, 1).with_hands(cuatro_manos());
-        // Cada jugador ve las dos manos de su pareja.
-        assert_eq!(game.info_set(0), "38:37,RRR5,RRR4,M");
-        assert_eq!(game.info_set(1), "38:37,RCC1,RCC7,M");
+    fn dos_manos() -> [Mano; 2] {
+        [
+            Mano::from_str("RRR5").unwrap(),
+            Mano::from_str("RCC1").unwrap(),
+        ]
+    }
 
-        // Fase de mus: los cuatro puestos votan por separado, aunque cada jugador controle dos.
-        assert!(matches!(game.current_player(), NodeType::Player(0, _)));
-        game.act_with_action(Accion::Mus);
-        assert!(matches!(game.current_player(), NodeType::Player(0, _)));
-        assert_eq!(game.info_set(0), "38:37,RRR5,RRR4,Mm");
-        game.act_with_action(Accion::Mus);
-        assert!(matches!(game.current_player(), NodeType::Player(1, _)));
-        assert_eq!(game.info_set(1), "38:37,RCC1,RCC7,Mmm");
-        game.act_with_action(Accion::NoMus);
-        assert_eq!(game.info_set(0), "38:37,RRR5,RRR4,Mmmn");
+    fn walk<G: Game<InfoSet = MusInfoSet>>(
+        game: &G,
+        infosets: &mut HashMap<MusInfoSet, usize>,
+        budget: &mut usize,
+    ) {
+        if *budget == 0 {
+            return;
+        }
+        match game.current_node() {
+            NodeType::Terminal => {}
+            NodeType::Chance => {
+                if let Some((child, _p)) = game.chance_iter().next() {
+                    walk(&child, infosets, budget);
+                }
+            }
+            NodeType::Player(player, n_actions) => {
+                *budget -= 1;
+                let info = game.info_set(player);
+                let prev = infosets.entry(info).or_insert(n_actions);
+                assert_eq!(
+                    *prev, n_actions,
+                    "conjunto de información {info:?} visto con distinto número de acciones"
+                );
+                for action_id in 0..n_actions {
+                    walk(&game.act(action_id), infosets, budget);
+                }
+            }
+        }
+    }
 
-        // Grande. Una sola acción por pareja: el jugador actúa por sus dos manos.
-        assert!(matches!(game.current_player(), NodeType::Player(0, _)));
-        game.act_with_action(Accion::Paso);
-        assert!(matches!(game.current_player(), NodeType::Player(1, _)));
-        assert_eq!(game.info_set(1), "38:37,RCC1,RCC7,Mmmnp");
-        game.act_with_action(Accion::Paso);
-        // Chica
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Ordago);
-        assert_eq!(game.info_set(0), "38:37,RRR5,RRR4,Mmmnpppo");
-        game.act_with_action(Accion::Paso);
-        // Pares: se hace público qué manos tienen pares.
-        assert_eq!(game.info_set(0), "38:37,RRR5,RRR4,Mmmnpppop1111");
-        game.act_with_action(Accion::Ordago);
-        game.act_with_action(Accion::Paso);
-        // Juego: se hace público qué manos tienen juego.
-        assert_eq!(game.info_set(1), "38:37,RCC1,RCC7,Mmmnpppop1111op1111");
+    fn play_one_line<G: Game<InfoSet = MusInfoSet>>(mut game: G) {
+        for _ in 0..1_000 {
+            match game.current_node() {
+                NodeType::Terminal => return,
+                NodeType::Chance => {
+                    let next = game.chance_iter().next().expect("nodo de azar sin hijos").0;
+                    game = next;
+                }
+                NodeType::Player(player, n_actions) => {
+                    let _ = game.info_set(player);
+                    game = game.act(n_actions - 1);
+                }
+            }
+        }
+        panic!("la partida no terminó en 1000 pasos");
     }
 
     #[test]
-    fn mus_game_infoset() {
-        let mut game = MusGame::new([38, 37], false, 1).with_hands(cuatro_manos());
-        // Cada jugador ve únicamente su mano.
-        assert_eq!(game.info_set(0), "38:37,RRR5,M");
-        assert_eq!(game.info_set(1), "38:37,RCC1,M");
-        assert_eq!(game.info_set(2), "38:37,RRR4,M");
-        assert_eq!(game.info_set(3), "38:37,RCC7,M");
+    fn mus_game_full_tree_no_panic() {
+        let game = MusGame::new([0, 0], false, 0).with_hands(cuatro_manos());
+        // Al reparto cada uno de los cuatro jugadores ve una mano distinta.
+        let infos: Vec<_> = (0..4).map(|p| game.info_set(p)).collect();
+        for i in 0..4 {
+            for j in (i + 1)..4 {
+                assert_ne!(infos[i], infos[j], "jugadores {i} y {j} comparten conjunto");
+            }
+        }
+        let mut infosets = HashMap::new();
+        walk(&game, &mut infosets, &mut 300_000);
+        assert!(!infosets.is_empty());
+    }
 
-        assert!(matches!(game.current_player(), NodeType::Player(0, _)));
+    #[test]
+    fn mus_game_two_hands_full_tree_no_panic() {
+        let game = MusGameTwoHands::new([0, 0], false, 0).with_hands(cuatro_manos());
+        // Cada jugador ve las dos manos de su pareja: los dos conjuntos son distintos.
+        assert_ne!(game.info_set(0), game.info_set(1));
+        let mut infosets = HashMap::new();
+        walk(&game, &mut infosets, &mut 300_000);
+        assert!(!infosets.is_empty());
+    }
+
+    #[test]
+    fn mus_game_two_players_full_tree_no_panic() {
+        let game = MusGameTwoPlayers::new([0, 0], false, 0).with_hands(dos_manos());
+        assert_ne!(game.info_set(0), game.info_set(1));
+        let mut infosets = HashMap::new();
+        walk(&game, &mut infosets, &mut 300_000);
+        assert!(!infosets.is_empty());
+    }
+
+    #[test]
+    fn full_game_with_mus_round_terminates() {
+        play_one_line(MusGame::new([0, 0], false, 1));
+        play_one_line(MusGameTwoHands::new([0, 0], false, 1));
+        play_one_line(MusGameTwoPlayers::new([0, 0], false, 1));
+    }
+
+    #[test]
+    fn two_players_actions() {
+        let manos = dos_manos();
+        let mut game = MusGameTwoPlayers::new([35, 35], false, 1).with_hands(manos.clone());
         game.act_with_action(Accion::NoMus);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mn");
+        game.act_with_action(Accion::Envido(2));
+        game.act_with_action(Accion::Envido(2));
+        assert_eq!(
+            game.actions().to_vec(),
+            vec![Accion::Paso, Accion::Quiero, Accion::Ordago]
+        );
+        let mut game = MusGameTwoPlayers::new([37, 37], false, 1).with_hands(manos.clone());
+        game.act_with_action(Accion::NoMus);
+        assert_eq!(
+            game.actions().to_vec(),
+            vec![Accion::Paso, Accion::Envido(2), Accion::Ordago]
+        );
+        game.act_with_action(Accion::Envido(2));
+        assert_eq!(
+            game.actions().to_vec(),
+            vec![Accion::Paso, Accion::Quiero, Accion::Ordago]
+        );
+    }
 
-        // Grande. El primer miembro de la pareja actúa a ciegas: su acción solo la ve su
-        // compañero, marcada con un asterisco, y no llega al historial hasta que este responde.
-        game.act_with_action(Accion::Paso);
-        assert!(matches!(game.current_player(), NodeType::Player(2, _)));
-        assert_eq!(game.info_set(2), "38:37,RRR4,Mnp*");
-        game.act_with_action(Accion::Paso);
-        assert!(matches!(game.current_player(), NodeType::Player(1, _)));
-        assert_eq!(game.info_set(1), "38:37,RCC1,Mnp");
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Paso);
-        // Chica
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpp");
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Paso);
+    #[test]
+    fn mus_game_hidden_first_partner() {
+        let mut game = MusGame::new([38, 37], false, 0).with_hands(cuatro_manos());
+        assert!(matches!(game.current_node(), NodeType::Player(0, _)));
         game.act_with_action(Accion::Ordago);
-        // El compañero ya conoce el órdago y solo puede igualarlo o subirlo.
-        assert!(matches!(game.current_player(), NodeType::Player(3, _)));
-        assert_eq!(game.info_set(3), "38:37,RCC7,Mnpppo*");
+        assert!(matches!(game.current_node(), NodeType::Player(2, _)));
         assert_eq!(game.actions().to_vec(), vec![Accion::Ordago]);
-        game.act_with_action(Accion::Ordago);
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpppo");
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Paso);
-        // Pares: se hace público qué manos tienen pares.
-        assert_eq!(game.info_set(0), "38:37,RRR5,Mnpppop1111");
-        game.act_with_action(Accion::Ordago);
-        game.act_with_action(Accion::Ordago);
-        game.act_with_action(Accion::Paso);
-        game.act_with_action(Accion::Paso);
-        // Juego: se hace público qué manos tienen juego.
-        assert_eq!(game.info_set(2), "38:37,RRR4,Mnpppop1111op1111");
     }
 
     #[test]
-    fn mus_game_descartes_infoset() {
-        let mut game = MusGame::new([0, 0], false, 1).with_hands(cuatro_manos());
-        // La distribución de la que salen las cartas nuevas; el test solo depende de las cartas
-        // descartadas, que son las que entran en el conjunto de información.
-        game.set_card_source(CardSource::Iterable(Baraja::FREC_BARAJA_MUS));
+    fn hidden_action_visible_to_partner() {
+        let base = MusGame::new([0, 0], false, 0).with_hands(cuatro_manos());
 
-        for jugador in [0, 2, 1, 3] {
-            assert!(matches!(game.current_player(), NodeType::Player(j, _) if j == jugador));
-            assert_eq!(game.actions().to_vec(), vec![Accion::Mus, Accion::NoMus]);
-            game.act_with_action(Accion::Mus);
-        }
-        assert_eq!(game.info_set(0), "0:0,RRR5,Mmmmm");
+        let mut tras_paso = base.clone();
+        tras_paso.act_with_action(Accion::Paso);
+        let mut tras_ordago = base.clone();
+        tras_ordago.act_with_action(Accion::Ordago);
 
-        // Descartes: el jugador mano se queda con los tres reyes.
-        assert!(matches!(game.current_player(), NodeType::Player(0, _)));
-        let descarte = game.actions()[0];
-        assert_eq!(descarte, Accion::Descartar([false, false, false, true]));
-        game.act_with_action(descarte);
-
-        // Nodo de azar: reparte las cartas nuevas.
-        assert!(matches!(game.current_player(), NodeType::Chance));
-        let (game_tras_descarte, _) = game.chance_iter().next().unwrap();
-        game = game_tras_descarte;
-
-        // Las cartas descartadas son privadas y la mano del prefijo ya es la nueva.
-        let mano_nueva = game.partida.as_ref().unwrap().manos()[0].to_string();
-        assert_eq!(game.info_set(0), format!("0:0,{mano_nueva},5,Mmmmmd1C"));
-        assert_eq!(game.info_set(1), "0:0,RCC1,Mmmmmd1C");
-
-        for _ in 0..3 {
-            let descarte = game.actions()[0];
-            game.act_with_action(descarte);
-            let (siguiente, _) = game.chance_iter().next().unwrap();
-            game = siguiente;
-        }
-
-        // Agotada la única ronda de mus, la partida entra en la fase de envites sin pasar por un
-        // nodo de decisión, y tanto el prefijo como los indicadores de pares y juego se refieren
-        // ya a las manos posteriores al descarte.
-        assert_eq!(
-            game.partida.as_ref().unwrap().fase(),
-            Some(FasePartida::Envites(Lance::Grande))
-        );
-        let manos_reales = game.partida.as_ref().unwrap().manos().clone();
-        assert_eq!(
-            game.info_set_prefix,
-            MusGame::info_set_prefix(&manos_reales, &game.tantos, None)
-        );
-        assert_eq!(
-            (game.manos_pares, game.manos_juego),
-            jugadas_manos(&manos_reales)
-        );
-        assert_eq!(game.history_str(), "Mmmmmd1Cd3Cd1Cd3C");
-        // Cada jugador solo conoce sus propios descartes.
-        assert!(game.info_set(1).contains(",CC1,"));
-        assert!(!game.info_set(1).contains(",5,"));
+        assert!(matches!(tras_paso.current_node(), NodeType::Player(2, _)));
+        assert!(matches!(tras_ordago.current_node(), NodeType::Player(2, _)));
+        assert_ne!(tras_paso.info_set(2), tras_ordago.info_set(2));
     }
 
     #[test]
-    fn update_hands_after_discard() {
-        // Ninguna mano tiene juego al reparto inicial.
-        let manos = [
-            Mano::from_str("4411").unwrap(),
-            Mano::from_str("5511").unwrap(),
-        ];
-        let mut game = MusGameTwoPlayers::new([0, 0], false, 1).with_hands(manos);
-        assert_eq!(game.manos_juego.as_str(), "00");
+    fn abstract_game_merges_equivalent_hands() {
+        let mano_a = Mano::from_str("S655").unwrap();
+        let mano_b = Mano::from_str("S544").unwrap();
+        let opp = Mano::from_str("RRR1").unwrap();
+        let abstracto_a =
+            MusGameTwoPlayers::new([0, 0], true, 0).with_hands([mano_a.clone(), opp.clone()]);
+        let abstracto_b =
+            MusGameTwoPlayers::new([0, 0], true, 0).with_hands([mano_b.clone(), opp.clone()]);
+        assert_eq!(abstracto_a.info_set(0), abstracto_b.info_set(0));
 
-        game.act_with_action(Accion::Mus);
-        game.act_with_action(Accion::Mus);
+        let exacto_a = MusGameTwoPlayers::new([0, 0], false, 0).with_hands([mano_a, opp.clone()]);
+        let exacto_b = MusGameTwoPlayers::new([0, 0], false, 0).with_hands([mano_b, opp]);
+        assert_ne!(exacto_a.info_set(0), exacto_b.info_set(0));
+    }
 
-        // Ninguna mano conserva reyes, así que el único descarte legal cambia las cuatro
-        // cartas: se inyectan manualmente las cartas nuevas para dejar la mano 0 con juego y
-        // la mano 1 sin él.
-        let descarte = game.actions()[0];
-        game.act_with_action(descarte);
-        let _ = game.partida.as_mut().unwrap().descartar_con_nuevas(&[
-            Carta::Rey,
-            Carta::Rey,
-            Carta::Rey,
-            Carta::Rey,
-        ]);
-        let descarte = game.actions()[0];
-        game.act_with_action(descarte);
-        let _ = game.partida.as_mut().unwrap().descartar_con_nuevas(&[
-            Carta::As,
-            Carta::As,
-            Carta::As,
-            Carta::As,
-        ]);
-        // La ronda de mus está agotada: fuerza el NoMus como haría chance_sample, en vez de
-        // pasar por un nodo de decisión.
-        game.enforce_max_mus_rounds();
+    #[test]
+    fn abstract_game_full_tree_no_panic() {
+        let game = MusGame::new([0, 0], true, 0).with_hands(cuatro_manos());
+        let mut infosets = HashMap::new();
+        walk(&game, &mut infosets, &mut 300_000);
+        assert!(!infosets.is_empty());
+    }
+}
 
-        let manos_reales = game.partida.as_ref().unwrap().manos().clone();
-        assert!(manos_reales[0].hay_juego());
-        assert!(!manos_reales[1].hay_juego());
+#[cfg(test)]
+mod fix_tests {
+    use super::*;
+    use std::collections::HashMap;
 
-        // El flag de juego debe reflejar las manos tras el descarte, no el reparto inicial.
-        assert_eq!(game.manos_juego.as_str(), "10");
-        let prefijo_esperado =
-            MusGameTwoPlayers::info_set_prefix(&manos_reales, &game.tantos, None);
-        assert_eq!(game.info_set_prefix, prefijo_esperado);
+    fn walk_collision(game: &MusGame, seen: &mut HashMap<MusInfoSet, usize>, budget: &mut usize) {
+        if *budget == 0 {
+            return;
+        }
+        match game.current_node() {
+            NodeType::Terminal => {}
+            NodeType::Chance => {
+                let child = game.chance_sample();
+                walk_collision(&child, seen, budget);
+            }
+            NodeType::Player(player, n) => {
+                *budget -= 1;
+                let info = game.info_set(player);
+                let prev = *seen.entry(info).or_insert(n);
+                assert_eq!(
+                    prev, n,
+                    "colisión en el conjunto {info:?}: {prev} vs {n} acciones"
+                );
+                for a in 0..n {
+                    walk_collision(&game.act(a), seen, budget);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_infoset_collision_across_deals() {
+        for tantos in [[0, 0], [39, 39]] {
+            let mut seen = HashMap::new();
+            for _ in 0..400 {
+                walk_collision(&MusGame::new(tantos, false, 1), &mut seen, &mut 1_500);
+            }
+        }
     }
 }

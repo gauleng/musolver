@@ -74,15 +74,14 @@ struct CfrData {
 }
 
 /// Type of nodes in the game tree.
-///
-/// * Chance: chance node.
-/// * Player: player node with the player id to act and the number of available actions
-/// for this player.
-/// * Terminal: terminal node.
 #[derive(Debug)]
 pub enum NodeType {
+    /// Chance node.
     Chance,
+    /// Player: player node with the player id to act and the number of available actions
+    /// for this player.
     Player(usize, usize),
+    /// Terminal: terminal node.
     Terminal,
 }
 
@@ -153,7 +152,7 @@ pub enum NodeType {
 ///        player
 ///    }
 ///
-///    fn current_player(&self) -> musolver::NodeType {
+///    fn current_node(&self) -> musolver::NodeType {
 ///        self.turn.map_or_else(
 ///            || musolver::NodeType::Terminal,
 ///            |turn| musolver::NodeType::Player(turn, self.actions().len()),
@@ -190,29 +189,30 @@ pub enum NodeType {
 /// }
 /// ```
 pub trait Game: Sized {
+    /// Type used as a key to identify information sets.
     type InfoSet: Eq + Hash;
 
+    /// Number of players of the game.
     const N_PLAYERS: usize;
 
-    /// Utility function for the player P after the actions considered in the history slice.
+    /// Utility function for the given player in a terminal node.
     fn utility(&self, player: usize) -> f64;
 
-    /// Sring representation of the information set for player P after the actions considered in
-    /// the history slice.
+    /// Key identifying the information set for the current player.
     fn info_set(&self, player: usize) -> Self::InfoSet;
 
-    fn history_str(&self) -> String;
+    fn node_key(&self) -> u64;
 
     // Returns if the current node is a chance, terminal or player node.
-    fn current_player(&self) -> NodeType;
+    fn current_node(&self) -> NodeType;
 
-    /// Advance the state with the given action for the current player.
+    /// Advance the state with the given action index for the current player.
     fn act(&self, action_idx: usize) -> Self;
 
     /// Picks a random action in chance nodes.
     fn chance_sample(&self) -> Self;
 
-    /// Iterates over all available actions in chance nodes.
+    /// Returns an iterator for all available actions in chance nodes.
     fn chance_iter(&self) -> impl Iterator<Item = (Self, f64)>;
 }
 
@@ -289,6 +289,7 @@ impl<G: Game> Cfr<G> {
             CfrMethod::Cfr | CfrMethod::CfrPlus => 1,
             CfrMethod::ChanceSampling | CfrMethod::ExternalSampling | CfrMethod::FsiCfr => 100_000,
         };
+        let mut game_graph = GameGraph::new(game);
         for i in 0..iterations {
             match cfr_method {
                 CfrMethod::Cfr => {
@@ -310,7 +311,7 @@ impl<G: Game> Cfr<G> {
                     }
                 }
                 CfrMethod::FsiCfr => {
-                    let mut game_graph = GameGraph::new(game);
+                    game_graph.reset();
                     game_graph.inflate();
                     for (player_idx, u) in util.iter_mut().enumerate() {
                         *u += self.fsicfr(&mut game_graph, player_idx);
@@ -340,15 +341,11 @@ impl<G: Game> Cfr<G> {
 
     /// Chance sampling CFR algorithm.
     fn cfr(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
-        match game.current_player() {
-            NodeType::Chance => {
-                return game
-                    .chance_iter()
-                    .map(|(mut new_game, prob)| {
-                        prob * self.cfr(&mut new_game, player, pi, po * prob)
-                    })
-                    .sum();
-            }
+        match game.current_node() {
+            NodeType::Chance => game
+                .chance_iter()
+                .map(|(new_game, prob)| prob * self.cfr(&new_game, player, pi, po * prob))
+                .sum(),
             NodeType::Player(current_player, num_actions) => {
                 let info_set_str = game.info_set(current_player);
                 let strategy = self
@@ -391,7 +388,7 @@ impl<G: Game> Cfr<G> {
     }
     /// Chance sampling CFR algorithm.
     fn chance_sampling(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => {
                 let new_game = game.chance_sample();
                 self.chance_sampling(&new_game, player, pi, po)
@@ -439,7 +436,7 @@ impl<G: Game> Cfr<G> {
 
     /// External sampling CFR algorithm.
     fn external_sampling(&mut self, game: &G, player: usize) -> f64 {
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => {
                 let new_game = game.chance_sample();
                 self.external_sampling(&new_game, player)
@@ -502,7 +499,7 @@ impl<G: Game> Cfr<G> {
         for idx in 0..game_graph.num_nodes() {
             let game_node = &mut game_graph.node(idx);
             let game = &mut game_node.game();
-            match game.current_player() {
+            match game.current_node() {
                 NodeType::Player(current_player, num_actions) => {
                     let info_set_str = game_node
                         .info_set_str()
@@ -544,7 +541,7 @@ impl<G: Game> Cfr<G> {
 
         for idx in (0..game_graph.num_nodes()).rev() {
             let game = &mut game_graph.node_mut(idx).game_mut();
-            match game.current_player() {
+            match game.current_node() {
                 NodeType::Terminal => {
                     game_graph.node_mut(idx).data_mut().utility = game.utility(player);
                 }
@@ -594,7 +591,7 @@ impl<G: Game> Cfr<G> {
     }
 
     pub fn expected_utility(&self, game: &G) -> Vec<f64> {
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => {
                 let mut utility = vec![0.; G::N_PLAYERS];
                 for (game, prob) in game.chance_iter() {
@@ -651,11 +648,11 @@ impl<G: Game> Cfr<G> {
         info_sets: &HashMap<G::InfoSet, Vec<(G, f64)>>,
         br_strategies: &mut HashMap<G::InfoSet, usize>,
     ) -> f64 {
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => game
                 .chance_iter()
-                .map(|(mut game, prob)| {
-                    prob * self.best_response_value(&mut game, player, info_sets, br_strategies)
+                .map(|(game, prob)| {
+                    prob * self.best_response_value(&game, player, info_sets, br_strategies)
                 })
                 .sum(),
             NodeType::Player(current_player, num_actions) => {
@@ -737,7 +734,7 @@ impl<G: Game> Cfr<G> {
     ) where
         G: Clone,
     {
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => {
                 game.chance_iter().for_each(|(new_game, prob)| {
                     self.info_sets_player(&new_game, player, po * prob, info_sets);

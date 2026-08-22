@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::LazyLock;
 
 use itertools::{CombinationsWithReplacement, Itertools};
 
@@ -11,20 +12,16 @@ use super::Carta;
 /// la tabla crece de forma cuadrática y deja de caber en la caché de primer nivel.
 const MAX_BINOMIAL: usize = 40;
 
-const TABLA_BINOMIAL: [[usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1] = {
-    let mut t = [[0usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1];
-    let mut n = 0;
-    while n <= MAX_BINOMIAL {
-        t[n][0] = 1;
-        let mut k = 1;
-        while k <= n {
-            t[n][k] = t[n - 1][k - 1] + if k < n { t[n - 1][k] } else { 0 };
-            k += 1;
+static TABLA_BINOMIAL: LazyLock<[[usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1]> =
+    LazyLock::new(|| {
+        let mut t = [[0usize; MAX_BINOMIAL + 1]; MAX_BINOMIAL + 1];
+        for n in 0..=MAX_BINOMIAL {
+            for k in 0..=MAX_BINOMIAL {
+                t[n][k] = num_integer::binomial(n, k);
+            }
         }
-        n += 1;
-    }
-    t
-};
+        t
+    });
 
 /// Número combinatorio de n sobre k.
 ///

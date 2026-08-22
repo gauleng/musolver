@@ -29,6 +29,19 @@ impl Carta {
         }
     }
 
+    pub fn valor_mus(&self) -> u8 {
+        match self {
+            Carta::As | Carta::Dos => 0,
+            Carta::Cuatro => 1,
+            Carta::Cinco => 2,
+            Carta::Seis => 3,
+            Carta::Siete => 4,
+            Carta::Sota => 5,
+            Carta::Caballo => 6,
+            Carta::Tres | Carta::Rey => 7,
+        }
+    }
+
     pub const CARTAS: [Carta; 10] = [
         Carta::As,
         Carta::Dos,

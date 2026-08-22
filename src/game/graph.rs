@@ -41,7 +41,8 @@ impl<G: Game, D> GameNode<G, D> {
 }
 
 pub struct GameGraph<G: Game, D> {
-    node_ids: HashMap<String, usize>,
+    game: G,
+    node_ids: HashMap<u64, usize>,
     game_nodes: Vec<GameNode<G, D>>,
 }
 
@@ -51,26 +52,35 @@ where
     D: Default,
 {
     pub fn new(game: &G) -> Self {
-        let history_str = game.history_str();
-        let mut node_ids = HashMap::from([(history_str, 0)]);
-        node_ids.reserve(5000);
-        let current_node = game.current_player();
+        let mut new_graph = Self {
+            game: game.clone(),
+            node_ids: HashMap::new(),
+            game_nodes: Vec::new(),
+        };
+        new_graph.seed_game();
+        new_graph
+    }
+
+    pub fn reset(&mut self) {
+        self.node_ids.clear();
+        self.game_nodes.clear();
+        self.seed_game();
+    }
+
+    fn seed_game(&mut self) {
+        let node_key = self.game.node_key();
+        let current_node = self.game.current_node();
         let info_set_str = match current_node {
             NodeType::Chance | NodeType::Terminal => None,
-            NodeType::Player(player_id, _) => Some(game.info_set(player_id)),
+            NodeType::Player(player_id, _) => Some(self.game.info_set(player_id)),
         };
-        let mut game_nodes = Vec::with_capacity(512);
-        game_nodes.push(GameNode {
-            game: game.clone(),
+        self.node_ids.insert(node_key, 0);
+        self.game_nodes.push(GameNode {
+            game: self.game.clone(),
             next_nodes: ArrayVec::new(),
             info_set: info_set_str,
             data: D::default(),
         });
-
-        Self {
-            node_ids,
-            game_nodes,
-        }
     }
 
     pub fn inflate(&mut self) {
@@ -102,7 +112,7 @@ where
 
     fn next_nodes(&mut self, idx: usize, new_nodes: &mut VecDeque<usize>) {
         let game = &self.game_nodes[idx].game;
-        match game.current_player() {
+        match game.current_node() {
             NodeType::Chance => {
                 let new_game = self.game_nodes[idx].game.chance_sample();
 
@@ -121,14 +131,14 @@ where
     }
 
     fn append_child(&mut self, parent_idx: usize, new_game: G) -> Option<usize> {
-        let history_str = new_game.history_str();
+        let history_str = new_game.node_key();
         match self.node_ids.entry(history_str) {
             Entry::Occupied(next_id) => {
                 self.game_nodes[parent_idx].next_nodes.push(*next_id.get());
                 None
             }
             Entry::Vacant(vacant_entry) => {
-                let current_node = new_game.current_player();
+                let current_node = new_game.current_node();
                 let info_set_str = match current_node {
                     NodeType::Chance | NodeType::Terminal => None,
                     NodeType::Player(player_id, _) => Some(new_game.info_set(player_id)),
@@ -145,5 +155,25 @@ where
                 Some(last_node_id)
             }
         }
+    }
+
+    fn topological_order(&mut self) {
+        let num_nodes = self.num_nodes();
+
+        let mut num_parents = vec![0usize; num_nodes];
+
+        for node in &self.game_nodes {
+            for child in node.children() {
+                num_parents[*child] += 1;
+            }
+        }
+
+        let ordered = vec![0usize; num_nodes];
+        let mut queue: VecDeque<usize> = (0..num_nodes)
+            .filter(|&idx| num_parents[idx] == 0)
+            .collect();
+
+        while let Some(node) = queue.pop_front() {}
+        //self.game_nodes = ordered;
     }
 }

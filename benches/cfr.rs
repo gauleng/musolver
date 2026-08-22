@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use musolver::{
     Cfr, CfrMethod,
@@ -15,8 +13,8 @@ fn bench_chance_sampling_grande(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ChanceSampling, 100, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ChanceSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -31,8 +29,8 @@ fn bench_chance_sampling_juego(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ChanceSampling, 100, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ChanceSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -46,8 +44,8 @@ fn bench_external_sampling_grande(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ExternalSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -62,8 +60,8 @@ fn bench_external_sampling_juego(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ExternalSampling, 100, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ExternalSampling, 100, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -78,8 +76,8 @@ fn bench_external_sampling_mus_two_players(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ExternalSampling, 50000, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ExternalSampling, 50000, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -94,8 +92,8 @@ fn bench_chance_sampling_mus_two_players(c: &mut Criterion) {
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::ChanceSampling, 50000, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::ChanceSampling, 50000, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -103,15 +101,15 @@ fn bench_chance_sampling_mus_two_players(c: &mut Criterion) {
 }
 
 fn bench_fsicfr_mus_two_players(c: &mut Criterion) {
-    c.bench_function("fsicfr_sampling mus_two_players", |b| {
+    c.bench_function("fsicfr mus_two_players", |b| {
         b.iter_batched(
             || {
                 let game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let cfr = Cfr::new();
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.train(&mut game, CfrMethod::FsiCfr, 50000, |_, _| {});
+            |(mut cfr, game)| {
+                cfr.train(&game, CfrMethod::FsiCfr, 50000, |_, _| {});
             },
             BatchSize::SmallInput,
         )
@@ -122,13 +120,13 @@ fn bench_exploitability(c: &mut Criterion) {
     c.bench_function("exploitability mus_two_players", |b| {
         b.iter_batched(
             || {
-                let mut game = MusGameTwoPlayers::new([38, 38], false, 0);
+                let game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let mut cfr = Cfr::new();
-                cfr.train(&mut game, CfrMethod::FsiCfr, 500, |_, _| {});
+                cfr.train(&game, CfrMethod::FsiCfr, 500, |_, _| {});
                 (cfr, game)
             },
-            |(mut cfr, mut game)| {
-                cfr.exploitability(&mut game);
+            |(mut cfr, game)| {
+                cfr.exploitability(&game);
             },
             BatchSize::SmallInput,
         )

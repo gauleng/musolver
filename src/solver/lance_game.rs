@@ -1,6 +1,7 @@
 use std::fmt::Display;
+use std::sync::Arc;
 
-use arrayvec::{ArrayString, ArrayVec};
+use arrayvec::ArrayVec;
 use itertools::Itertools;
 
 use crate::{
@@ -11,7 +12,10 @@ use crate::{
     },
 };
 
-use super::{AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto};
+use super::{
+    AbstractChica, AbstractGrande, AbstractJuego, AbstractPares, AbstractPunto, MusInfoSet,
+    MusInfoSetTables,
+};
 
 /// Representación de las distintas configuraciones de las manos en un lance de mus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,16 +300,40 @@ impl<'a> Display for InfoSet<'a> {
 /// Permite configurar el lance a jugar, los
 /// tantos con los que empieza el marcador y si se va a considerar un lance abstracto (ver
 /// HandConfiguration).
+fn hand_config_code(config: HandConfiguration) -> u64 {
+    match config {
+        HandConfiguration::CuatroManos => 0,
+        HandConfiguration::TresManos1vs2 => 1,
+        HandConfiguration::TresManos1vs2Intermedio => 2,
+        HandConfiguration::TresManos2vs1 => 3,
+        HandConfiguration::DosManos => 4,
+        HandConfiguration::SinLance => 5,
+    }
+}
+
+/// Anchura en bits de cada campo de la parte pública del conjunto de información.
+const HAND_CONFIG_WIDTH: u32 = 3;
+const HIDDEN_ACTION_WIDTH: u32 = 3;
+/// Anchura de cada acción pública acumulada en el historial de apuestas.
+const ACTION_WIDTH: u32 = 3;
+
 #[derive(Debug, Clone)]
 pub struct LanceGame {
     lance: Lance,
     tantos: [u8; 2],
     estado_lance: Option<EstadoLance<CuatroJugadores>>,
-    info_set_prefix: Option<[ArrayString<64>; 4]>,
     pareja_mano: usize,
     abstract_game: bool,
     last_action: Option<Accion>,
-    history_str: ArrayVec<ArrayString<4>, 14>,
+    tables: Arc<MusInfoSetTables>,
+    /// Parte privada del conjunto de información: la mano de cada jugador codificada para el lance.
+    private_history: [u64; 4],
+    /// Configuración de manos del lance (constante durante la partida).
+    hand_config_code: u64,
+    /// Acción oculta del primer miembro de la pareja, pendiente de respuesta del compañero.
+    hidden_action: u64,
+    /// Historial de apuestas: cada acción pública añade [`ACTION_WIDTH`] bits.
+    history: u64,
 }
 
 impl LanceGame {
@@ -315,10 +343,13 @@ impl LanceGame {
             tantos,
             abstract_game,
             estado_lance: None,
-            info_set_prefix: None,
             last_action: None,
-            history_str: ArrayVec::new(),
             pareja_mano: 0,
+            tables: Arc::new(MusInfoSetTables::new(abstract_game)),
+            private_history: [0; 4],
+            hand_config_code: 0,
+            hidden_action: 0,
+            history: 0,
         }
     }
 
@@ -341,6 +372,7 @@ impl LanceGame {
         self.pareja_mano = match estado_lance.turno().unwrap() {
             Turno::Pareja(idx) | Turno::Jugador(idx) => idx as usize,
         };
+        self.hand_config_code = hand_config_code(hand_configuration);
         self.estado_lance = Some(estado_lance);
     }
 
@@ -349,46 +381,32 @@ impl LanceGame {
         abstract_game: bool,
     ) -> Option<Self> {
         let lance = partida_mus.lance_actual()?;
-        Some(Self {
-            lance,
-            tantos: *partida_mus.tantos(),
-            abstract_game,
-            estado_lance: Some(EstadoLance::<CuatroJugadores>::new(
-                &lance,
-                partida_mus.manos(),
-                FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
-            )),
-            info_set_prefix: LanceGame::info_set_prefix(
-                &lance,
-                partida_mus.manos(),
-                partida_mus.tantos(),
-                abstract_game,
-            ),
-            last_action: None,
-            history_str: ArrayVec::new(),
-            pareja_mano: 0,
-        })
+        let mut game = Self::new(lance, *partida_mus.tantos(), abstract_game);
+        game.estado_lance = Some(EstadoLance::<CuatroJugadores>::new(
+            &lance,
+            partida_mus.manos(),
+            FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
+        ));
+        game.set_manos(partida_mus.manos());
+        Some(game)
     }
 
-    fn info_set_prefix(
-        lance: &Lance,
-        manos: &[Mano; 4],
-        tantos: &[u8; 2],
-        abstracto: bool,
-    ) -> Option<[ArrayString<64>; 4]> {
-        let manos_normalizadas = ManosNormalizadas::normalizar_mano(manos, lance);
-        let info_set_prefix: [ArrayString<64>; 4] = core::array::from_fn(|i| {
-            ArrayString::<64>::from(&InfoSet::str(
-                &manos_normalizadas.hand_configuration(),
-                tantos,
-                &manos[i],
-                None,
-                &[],
-                if abstracto { Some(*lance) } else { None },
-            ))
-            .unwrap()
-        });
-        Some(info_set_prefix)
+    /// Fija en el conjunto de información la configuración de manos y la codificación de la mano de
+    /// cada jugador para el lance en curso.
+    fn set_manos(&mut self, manos: &[Mano; 4]) {
+        let config = ManosNormalizadas::normalizar_mano(manos, &self.lance).hand_configuration();
+        self.hand_config_code = hand_config_code(config);
+        for (i, mano) in manos.iter().enumerate() {
+            self.private_history[i] = self.tables.rank_hand(mano, &self.lance);
+        }
+    }
+
+    /// Valor de la parte pública del conjunto de información: configuración de manos, acción oculta
+    /// e historial de apuestas empaquetados en un `u64`.
+    fn public_info_set(&self) -> u64 {
+        self.hand_config_code
+            | (self.hidden_action << HAND_CONFIG_WIDTH)
+            | (self.history << (HAND_CONFIG_WIDTH + HIDDEN_ACTION_WIDTH))
     }
 
     // fn initialize_game(&mut self, manos: &[Mano; 4], turno_inicial: usize) {
@@ -401,40 +419,7 @@ impl LanceGame {
     pub fn actions(&self) -> ArrayVec<Accion, 6> {
         let partida = self.estado_lance.as_ref().unwrap();
         let turno = partida.turno().unwrap();
-        let ultimo_envite: Apuesta = partida.ultima_apuesta();
-        let mut acciones: ArrayVec<Accion, 6> = match ultimo_envite {
-            Apuesta::Tantos(0) => [
-                Accion::Paso,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ]
-            .into_iter()
-            .collect(),
-            Apuesta::Tantos(2) => [
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(2),
-                Accion::Envido(5),
-                Accion::Envido(10),
-                Accion::Ordago,
-            ]
-            .into_iter()
-            .collect(),
-            Apuesta::Tantos(4..=5) => [
-                Accion::Paso,
-                Accion::Quiero,
-                Accion::Envido(10),
-                Accion::Ordago,
-            ]
-            .into_iter()
-            .collect(),
-            Apuesta::Ordago => [Accion::Paso, Accion::Quiero].into_iter().collect(),
-            _ => [Accion::Paso, Accion::Quiero, Accion::Ordago]
-                .into_iter()
-                .collect(),
-        };
+        let mut acciones = full_actions(partida.ultima_apuesta());
         if turno == Turno::Pareja(2) || turno == Turno::Pareja(3) {
             acciones.retain(|a| *a >= self.last_action.unwrap());
         }
@@ -443,53 +428,92 @@ impl LanceGame {
 
     pub fn act_with_action(&mut self, a: Accion) {
         self.last_action = Some(a);
-        let turno = self
+        let estado = self
             .estado_lance
             .as_ref()
-            .expect("At least one EstadoLance must be available.")
-            .turno()
-            .unwrap();
+            .expect("At least one EstadoLance must be available.");
+        let turno = estado.turno().unwrap();
+        // Índice de la acción en la lista completa (sin el recorte de pareja), que es el código con
+        // el que se registra en el conjunto de información.
+        let idx = full_actions(estado.ultima_apuesta())
+            .iter()
+            .position(|action| *action == a)
+            .expect("the action must belong to the full action list") as u64;
         match turno {
-            Turno::Pareja(2) | Turno::Pareja(3) => {
-                self.history_str.pop();
+            // El primer miembro de la pareja actúa a ciegas: su acción solo la conoce el compañero.
+            Turno::Pareja(0) | Turno::Pareja(1) => {
+                self.hidden_action = idx + 1;
             }
-            _ => {}
-        };
-        let action_str = match turno {
-            Turno::Pareja(0) | Turno::Pareja(1) => a.to_string() + "*",
-            _ => a.to_string(),
-        };
-        self.history_str
-            .push(ArrayString::<4>::from(&action_str).unwrap());
+            // El compañero (o un jugador sin pareja) cierra la acción pública de la pareja.
+            _ => {
+                self.history = (self.history << ACTION_WIDTH) | (idx + 1);
+                self.hidden_action = 0;
+            }
+        }
         let _ = self.estado_lance.as_mut().unwrap().actuar(a);
     }
 }
 
+/// Lista completa de acciones posibles ante la última apuesta, sin aplicar el recorte de la pareja.
+/// Es la que fija el código de cada acción en el conjunto de información.
+fn full_actions(ultimo_envite: Apuesta) -> ArrayVec<Accion, 6> {
+    match ultimo_envite {
+        Apuesta::Tantos(0) => [
+            Accion::Paso,
+            Accion::Envido(2),
+            Accion::Envido(5),
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Tantos(2) => [
+            Accion::Paso,
+            Accion::Quiero,
+            Accion::Envido(2),
+            Accion::Envido(5),
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Tantos(4..=5) => [
+            Accion::Paso,
+            Accion::Quiero,
+            Accion::Envido(10),
+            Accion::Ordago,
+        ]
+        .into_iter()
+        .collect(),
+        Apuesta::Ordago => [Accion::Paso, Accion::Quiero].into_iter().collect(),
+        _ => [Accion::Paso, Accion::Quiero, Accion::Ordago]
+            .into_iter()
+            .collect(),
+    }
+}
+
 impl Game for LanceGame {
-    type InfoSet = String;
+    type InfoSet = MusInfoSet;
     const N_PLAYERS: usize = 4;
 
     fn chance_sample(&self) -> Self {
         let mut new_game = self.clone();
-        let mut baraja = Baraja::baraja_mus();
         loop {
+            // Baraja nueva en cada intento: `repartir_manos` consume las cartas, y en pares y juego
+            // pueden hacer falta varios repartos hasta dar con uno en el que el lance se juegue.
+            let mut baraja = Baraja::baraja_mus();
             let manos = baraja.repartir_manos();
-            let turno_inicial = self.lance.turno_inicial(&manos);
             let intento_partida = EstadoLance::<CuatroJugadores>::new(
                 &self.lance,
                 &manos,
                 FaseEnvites::<CuatroJugadores>::MAX_TANTOS,
             );
+            // `turno_inicial` solo es válido cuando el lance se juega (en pares y juego hace falta
+            // que alguna pareja ligue jugada), así que se calcula tras comprobar que hay turno.
             if intento_partida.turno().is_some() {
                 new_game.estado_lance = Some(intento_partida);
-                new_game.info_set_prefix = LanceGame::info_set_prefix(
-                    &self.lance,
-                    &manos,
-                    &self.tantos,
-                    self.abstract_game,
-                );
-                new_game.pareja_mano = turno_inicial;
-                new_game.history_str.push(ArrayString::from("M").unwrap());
+                new_game.set_manos(&manos);
+                new_game.pareja_mano = self.lance.turno_inicial(&manos);
                 break;
             }
         }
@@ -598,17 +622,11 @@ impl Game for LanceGame {
         payoff[player % 2] as f64
     }
 
-    fn info_set(&self, player: usize) -> String {
-        let info_set_prefix = &self.info_set_prefix.as_ref().unwrap()[player];
-        let mut output = String::with_capacity(15 + self.history_str.len() + 1);
-        output.push_str(info_set_prefix);
-        for i in &self.history_str {
-            output.push_str(i);
-        }
-        output
+    fn info_set(&self, player: usize) -> Self::InfoSet {
+        (self.public_info_set(), self.private_history[player])
     }
 
-    fn current_player(&self) -> NodeType {
+    fn current_node(&self) -> NodeType {
         match &self.estado_lance {
             None => NodeType::Chance,
             Some(estado_lance) => match estado_lance.turno() {
@@ -627,8 +645,8 @@ impl Game for LanceGame {
         new_game
     }
 
-    fn history_str(&self) -> String {
-        self.history_str.join("")
+    fn node_key(&self) -> u64 {
+        self.public_info_set()
     }
 }
 
@@ -731,5 +749,72 @@ mod tests {
         ];
         let manos_normalizadas = ManosNormalizadas::normalizar_mano(&manos, &Lance::Juego);
         assert_eq!(manos_normalizadas.pareja_mano(), 1);
+    }
+
+    /// Reparte un lance con [`LanceGame::chance_sample`] y juega una línea determinista hasta el
+    /// nodo terminal, comprobando que la representación compacta no provoca pánicos.
+    #[test]
+    fn lance_game_info_set_no_panic() {
+        for lance in [
+            Lance::Grande,
+            Lance::Chica,
+            Lance::Pares,
+            Lance::Juego,
+            Lance::Punto,
+        ] {
+            for abstract_game in [false, true] {
+                let mut game = LanceGame::new(lance, [0, 0], abstract_game).chance_sample();
+                let mut terminado = false;
+                for _ in 0..50 {
+                    match game.current_node() {
+                        NodeType::Terminal => {
+                            terminado = true;
+                            break;
+                        }
+                        NodeType::Chance => game = game.chance_sample(),
+                        NodeType::Player(player, n_actions) => {
+                            let _ = game.info_set(player);
+                            game = game.act(n_actions - 1);
+                        }
+                    }
+                }
+                assert!(terminado, "el lance {lance:?} no terminó");
+            }
+        }
+    }
+
+    /// En el juego abstracto dos manos con la misma jugada en el lance comparten la parte privada
+    /// del conjunto de información; en el juego exacto no.
+    #[test]
+    fn lance_game_abstract_merges_hands() {
+        let opp = [
+            Mano::try_from("RRR1").unwrap(),
+            Mano::try_from("RRR4").unwrap(),
+            Mano::try_from("RRR7").unwrap(),
+        ];
+        let manos_a = [
+            Mano::try_from("S655").unwrap(),
+            opp[0].clone(),
+            opp[1].clone(),
+            opp[2].clone(),
+        ];
+        let manos_b = [
+            Mano::try_from("S544").unwrap(),
+            opp[0].clone(),
+            opp[1].clone(),
+            opp[2].clone(),
+        ];
+
+        let mut abstracto_a = LanceGame::new(Lance::Grande, [0, 0], true);
+        abstracto_a.set_manos(&manos_a);
+        let mut abstracto_b = LanceGame::new(Lance::Grande, [0, 0], true);
+        abstracto_b.set_manos(&manos_b);
+        assert_eq!(abstracto_a.info_set(0), abstracto_b.info_set(0));
+
+        let mut exacto_a = LanceGame::new(Lance::Grande, [0, 0], false);
+        exacto_a.set_manos(&manos_a);
+        let mut exacto_b = LanceGame::new(Lance::Grande, [0, 0], false);
+        exacto_b.set_manos(&manos_b);
+        assert_ne!(exacto_a.info_set(0), exacto_b.info_set(0));
     }
 }

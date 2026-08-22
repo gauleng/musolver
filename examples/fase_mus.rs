@@ -1,4 +1,6 @@
 use std::array;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use musolver::{Cfr, Game};
 use rand::Rng;
@@ -107,13 +109,13 @@ impl Game for FaseMus {
     }
 
     fn info_set(&self, player: usize) -> String {
-        self.manos
-            .expect("Tiene que haber manos para obtener el info_set_str")[player]
-            .to_string()
-            + &self.history_str()
+        let carta = self
+            .manos
+            .expect("Tiene que haber manos para obtener el info_set_str")[player];
+        format!("{carta},{}", self.history.join(","))
     }
 
-    fn current_player(&self) -> musolver::NodeType {
+    fn current_node(&self) -> musolver::NodeType {
         self.turn.map_or_else(
             || match self.fase {
                 Fase::CompararCartas => musolver::NodeType::Terminal,
@@ -123,12 +125,10 @@ impl Game for FaseMus {
         )
     }
 
-    fn history_str(&self) -> String {
-        self.history
-            .iter()
-            .map(|action| format!("{action:?}"))
-            .collect::<Vec<String>>()
-            .join(",")
+    fn node_key(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.history.hash(&mut hasher);
+        hasher.finish()
     }
 
     fn chance_sample(&self) -> Self {
