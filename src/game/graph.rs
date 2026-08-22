@@ -1,6 +1,7 @@
-use std::collections::{HashMap, VecDeque, hash_map::Entry};
+use std::collections::{VecDeque, hash_map::Entry};
 
 use arrayvec::ArrayVec;
+use rustc_hash::FxHashMap;
 
 use crate::Game;
 
@@ -42,7 +43,7 @@ impl<G: Game, D> GameNode<G, D> {
 
 pub struct GameGraph<G: Game, D> {
     game: G,
-    node_ids: HashMap<u64, usize>,
+    node_ids: FxHashMap<u64, usize>,
     game_nodes: Vec<GameNode<G, D>>,
     order: Vec<usize>,
 }
@@ -55,7 +56,7 @@ where
     pub fn new(game: &G) -> Self {
         let mut new_graph = Self {
             game: game.clone(),
-            node_ids: HashMap::new(),
+            node_ids: FxHashMap::default(),
             game_nodes: Vec::new(),
             order: Vec::new(),
         };

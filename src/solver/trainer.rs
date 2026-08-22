@@ -187,8 +187,8 @@ where
         trainer_config.method,
         trainer_config.iterations,
         |i, util| {
-            pb.inc(1);
             if i.is_multiple_of(1000) {
+                pb.set_position(*i as u64);
                 pb.set_message(format!(
                     "Utility: {}",
                     util.iter()

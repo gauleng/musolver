@@ -1,5 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::{collections::HashMap, str::FromStr};
@@ -264,13 +265,13 @@ impl FromStr for CfrMethod {
 /// ```
 #[derive(Debug)]
 pub struct Cfr<G: Game> {
-    nodes: HashMap<G::InfoSet, Node>,
+    nodes: FxHashMap<G::InfoSet, Node>,
 }
 
 impl<G: Game> Cfr<G> {
     pub fn new() -> Self {
         Self {
-            nodes: HashMap::new(),
+            nodes: FxHashMap::default(),
         }
     }
 
@@ -771,7 +772,7 @@ impl<G: Game> Cfr<G> {
         }
     }
 
-    pub fn nodes(&self) -> &HashMap<G::InfoSet, Node> {
+    pub fn nodes(&self) -> &FxHashMap<G::InfoSet, Node> {
         &self.nodes
     }
 
