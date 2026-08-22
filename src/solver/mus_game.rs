@@ -170,12 +170,72 @@ impl MusGame {
     }
 
     pub fn act_with_action(&mut self, action: Accion) {
-        let action_id = self
-            .actions()
-            .iter()
-            .position(|a| *a == action)
-            .expect("received action must be among the provided by actions()");
-        *self = self.act(action_id);
+        self.last_action = Some(action);
+        let (turno, phase, new_phase) = {
+            let partida = self
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act");
+            let phase = partida.fase();
+            let turno = partida.turno().expect("some player must be active");
+            let _ = partida.actuar(action);
+            let new_phase = partida.fase();
+            (turno, phase, new_phase)
+        };
+        let is_first_partner = matches!(turno, Turno::Pareja(0 | 1));
+        match phase {
+            Some(FasePartida::Mus) => {
+                if is_first_partner && action != Accion::NoMus {
+                    self.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    // Un NoMus del primer miembro corta el mus de inmediato: cierra la decisión de
+                    // la pareja sin que el compañero llegue a votar.
+                    self.info_set_builder.step_mus(action);
+                    self.info_set_builder.set_hidden_action(None);
+                }
+            }
+            Some(FasePartida::Envites(_)) => {
+                if is_first_partner {
+                    self.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    self.info_set_builder.step_lance(action);
+                    self.info_set_builder.set_hidden_action(None);
+                }
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                self.info_set_builder.begin_descartes();
+                self.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                self.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
+                self.info_set_builder
+                    .set_descartes(turno.player_id() as usize, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                self.info_set_builder.begin_lance(&lance);
+                self.update_hands(lance);
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                self.info_set_builder.begin_lance(&lance_siguiente);
+                self.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                self.info_set_builder.set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -272,75 +332,7 @@ impl Game for MusGame {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        new_game.last_action = Some(action);
-        let (turno, phase, new_phase) = {
-            let partida = new_game
-                .partida
-                .as_mut()
-                .expect("partida must be initialized before calling act");
-            let phase = partida.fase();
-            let turno = partida.turno().expect("some player must be active");
-            let _ = partida.actuar(action);
-            let new_phase = partida.fase();
-            (turno, phase, new_phase)
-        };
-        let is_first_partner = matches!(turno, Turno::Pareja(0 | 1));
-        match phase {
-            Some(FasePartida::Mus) => {
-                if is_first_partner && action != Accion::NoMus {
-                    new_game.info_set_builder.set_hidden_action(Some(action));
-                } else {
-                    // Un NoMus del primer miembro corta el mus de inmediato: cierra la decisión de
-                    // la pareja sin que el compañero llegue a votar.
-                    new_game.info_set_builder.step_mus(action);
-                    new_game.info_set_builder.set_hidden_action(None);
-                }
-            }
-            Some(FasePartida::Envites(_)) => {
-                if is_first_partner {
-                    new_game.info_set_builder.set_hidden_action(Some(action));
-                } else {
-                    new_game.info_set_builder.step_lance(action);
-                    new_game.info_set_builder.set_hidden_action(None);
-                }
-            }
-            _ => {}
-        }
-        match (phase, new_phase) {
-            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
-                new_game.info_set_builder.begin_descartes();
-                new_game.mus_rounds += 1;
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
-                new_game.info_set_builder.begin_mus();
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
-                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
-                new_game
-                    .info_set_builder
-                    .set_descartes(turno.player_id() as usize, &descartes);
-            }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                new_game.info_set_builder.begin_lance(&lance);
-                new_game.update_hands(lance);
-            }
-            (
-                Some(FasePartida::Envites(lance_previo)),
-                Some(FasePartida::Envites(lance_siguiente)),
-            ) if lance_previo != lance_siguiente => {
-                new_game.info_set_builder.begin_lance(&lance_siguiente);
-                new_game.update_hands(lance_siguiente);
-                let manos = self
-                    .partida
-                    .as_ref()
-                    .expect("partida must be initialized if phase is envites")
-                    .manos();
-                new_game
-                    .info_set_builder
-                    .set_jugada(&lance_siguiente, manos);
-            }
-            _ => {}
-        }
+        new_game.act_with_action(action);
         new_game
     }
 
@@ -422,9 +414,6 @@ impl MusGameTwoHands {
         }
     }
 
-    /// Refresca las manos del conjunto de información con las que hay ahora sobre la mesa. Se
-    /// llama al entrar en la fase de envites porque los descartes pueden haber cambiado las manos
-    /// repartidas.
     fn update_hands(&mut self, lance: Lance) {
         let manos = self
             .partida
@@ -461,7 +450,6 @@ impl MusGameTwoHands {
                 .descartar_con_nuevas(&nuevas)
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
-            // Las cartas nuevas cambian la mano de quien descartó.
             new_game.update_hands(Lance::Grande);
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
@@ -479,12 +467,69 @@ impl MusGameTwoHands {
     }
 
     pub fn act_with_action(&mut self, action: Accion) {
-        let action_id = self
-            .actions()
-            .iter()
-            .position(|a| *a == action)
-            .expect("received action must be among the provided by actions()");
-        *self = self.act(action_id);
+        let (player_id, phase, new_phase) = {
+            let partida = self
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act");
+            let phase = partida.fase();
+            let turno = partida.turno().expect("some player must be active");
+            let player_id = turno.player_id() as usize;
+            let _ = partida.actuar(action);
+            if matches!(turno, Turno::Pareja(0 | 1)) && matches!(phase, Some(FasePartida::Envites(_))) {
+                partida
+                    .actuar(action)
+                    .expect("segunda mano de la pareja debe aceptar la misma acción");
+            }
+            let new_phase = partida.fase();
+            (player_id, phase, new_phase)
+        };
+        let is_first_partner = player_id == 0 || player_id == 1;
+        match phase {
+            Some(FasePartida::Mus) => {
+                if is_first_partner && action != Accion::NoMus {
+                    self.info_set_builder.set_hidden_action(Some(action));
+                } else {
+                    self.info_set_builder.step_mus(action);
+                    self.info_set_builder.set_hidden_action(None);
+                }
+            }
+            Some(FasePartida::Envites(_)) => {
+                self.info_set_builder.step_lance(action);
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                self.info_set_builder.begin_descartes();
+                self.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                self.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
+                self.info_set_builder.set_descartes(player_id, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                self.info_set_builder.begin_lance(&lance);
+                self.update_hands(lance);
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                self.info_set_builder.begin_lance(&lance_siguiente);
+                self.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                self.info_set_builder.set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -584,76 +629,7 @@ impl Game for MusGameTwoHands {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        let (player_id, phase, new_phase) = {
-            let partida = new_game
-                .partida
-                .as_mut()
-                .expect("partida must be initialized before calling act");
-            let phase = partida.fase();
-            let turno = partida.turno().expect("some player must be active");
-            let player_id = turno.player_id() as usize;
-            let _ = partida.actuar(action);
-            if matches!(turno, Turno::Pareja(_)) {
-                // En envites el jugador controla las dos manos de la pareja y decide por ambas a
-                // la vez, así que la acción se aplica dos veces.
-                let _ = partida.actuar(action);
-            }
-            let new_phase = partida.fase();
-            (player_id, phase, new_phase)
-        };
-        // Los puestos 0 y 1 son el primer voto de cada pareja: quedan ocultos hasta que responde
-        // el segundo puesto (2 y 3), que cierra la decisión pública de la pareja. En la fase de
-        // envites el jugador decide por la pareja completa en una sola acción y no hay ocultación.
-        let is_first_partner = player_id == 0 || player_id == 1;
-        match phase {
-            Some(FasePartida::Mus) => {
-                if is_first_partner && action != Accion::NoMus {
-                    new_game.info_set_builder.set_hidden_action(Some(action));
-                } else {
-                    new_game.info_set_builder.step_mus(action);
-                    new_game.info_set_builder.set_hidden_action(None);
-                }
-            }
-            Some(FasePartida::Envites(_)) => {
-                new_game.info_set_builder.step_lance(action);
-            }
-            _ => {}
-        }
-        match (phase, new_phase) {
-            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
-                new_game.info_set_builder.begin_descartes();
-                new_game.mus_rounds += 1;
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
-                new_game.info_set_builder.begin_mus();
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
-                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
-                new_game
-                    .info_set_builder
-                    .set_descartes(player_id, &descartes);
-            }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                new_game.info_set_builder.begin_lance(&lance);
-                new_game.update_hands(lance);
-            }
-            (
-                Some(FasePartida::Envites(lance_previo)),
-                Some(FasePartida::Envites(lance_siguiente)),
-            ) if lance_previo != lance_siguiente => {
-                new_game.info_set_builder.begin_lance(&lance_siguiente);
-                new_game.update_hands(lance_siguiente);
-                let manos = self
-                    .partida
-                    .as_ref()
-                    .expect("partida must be initialized if phase is envites")
-                    .manos();
-                new_game
-                    .info_set_builder
-                    .set_jugada(&lance_siguiente, manos);
-            }
-            _ => {}
-        }
+        new_game.act_with_action(action);
         new_game
     }
 
@@ -807,12 +783,60 @@ impl MusGameTwoPlayers {
     }
 
     pub fn act_with_action(&mut self, action: Accion) {
-        let action_id = self
-            .actions()
-            .iter()
-            .position(|a| *a == action)
-            .expect("received action must be among the provided by actions()");
-        *self = self.act(action_id);
+        let (turno, phase, new_phase) = {
+            let partida = self
+                .partida
+                .as_mut()
+                .expect("partida must be initialized before calling act_with_action");
+            let phase = partida.fase();
+            let turno = partida
+                .turno()
+                .expect("some player must be active in descartes phase")
+                .player_id() as usize;
+            let _ = partida.actuar(action);
+            let new_phase = partida.fase();
+            (turno, phase, new_phase)
+        };
+        match phase {
+            Some(FasePartida::Mus) => {
+                self.info_set_builder.step_mus(action);
+            }
+            Some(FasePartida::Envites(_)) => {
+                self.info_set_builder.step_lance(action);
+            }
+            _ => {}
+        }
+        match (phase, new_phase) {
+            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
+                self.info_set_builder.begin_descartes();
+                self.mus_rounds += 1;
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
+                self.info_set_builder.begin_mus();
+            }
+            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
+                let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
+                self.info_set_builder.set_descartes(turno, &descartes);
+            }
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
+                self.info_set_builder.begin_lance(&lance);
+                self.update_hands(lance)
+            }
+            (
+                Some(FasePartida::Envites(lance_previo)),
+                Some(FasePartida::Envites(lance_siguiente)),
+            ) if lance_previo != lance_siguiente => {
+                self.info_set_builder.begin_lance(&lance_siguiente);
+                self.update_hands(lance_siguiente);
+                let manos = self
+                    .partida
+                    .as_ref()
+                    .expect("partida must be initialized if phase is envites")
+                    .manos();
+                self.info_set_builder.set_jugada(&lance_siguiente, manos);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -904,62 +928,7 @@ impl Game for MusGameTwoPlayers {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        let (turno, phase, new_phase) = {
-            let partida = new_game
-                .partida
-                .as_mut()
-                .expect("partida must be initialized before calling act_with_action");
-            let phase = partida.fase();
-            let turno = partida
-                .turno()
-                .expect("some player must be active in descartes phase")
-                .player_id() as usize;
-            let _ = partida.actuar(action);
-            let new_phase = partida.fase();
-            (turno, phase, new_phase)
-        };
-        match phase {
-            Some(FasePartida::Mus) => {
-                new_game.info_set_builder.step_mus(action);
-            }
-            Some(FasePartida::Envites(_)) => {
-                new_game.info_set_builder.step_lance(action);
-            }
-            _ => {}
-        }
-        match (phase, new_phase) {
-            (Some(FasePartida::Mus), Some(FasePartida::Descartes)) => {
-                new_game.info_set_builder.begin_descartes();
-                new_game.mus_rounds += 1;
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::Mus)) => {
-                new_game.info_set_builder.begin_mus();
-            }
-            (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
-                let descartes = new_game.partida.as_ref().unwrap().descartadas().unwrap();
-                new_game.info_set_builder.set_descartes(turno, &descartes);
-            }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                new_game.info_set_builder.begin_lance(&lance);
-                new_game.update_hands(lance)
-            }
-            (
-                Some(FasePartida::Envites(lance_previo)),
-                Some(FasePartida::Envites(lance_siguiente)),
-            ) if lance_previo != lance_siguiente => {
-                new_game.info_set_builder.begin_lance(&lance_siguiente);
-                new_game.update_hands(lance_siguiente);
-                let manos = self
-                    .partida
-                    .as_ref()
-                    .expect("partida must be initialized if phase is envites")
-                    .manos();
-                new_game
-                    .info_set_builder
-                    .set_jugada(&lance_siguiente, manos);
-            }
-            _ => {}
-        }
+        new_game.act_with_action(action);
         new_game
     }
 

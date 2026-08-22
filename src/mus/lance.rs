@@ -478,6 +478,12 @@ impl EstadoLance<CuatroJugadores> {
     /// Devuelve el turno del siguiente jugador o None si la ronda de envites acabó.
     /// Devuelve un error si se intenta actuar cuando ya ha terminado la ronda de envites.
     pub fn actuar(&mut self, a: Accion) -> Result<Option<Turno>, MusError> {
+        match a {
+            Accion::Mus | Accion::NoMus | Accion::Descartar(_) => {
+                return Err(MusError::AccionNoValida);
+            }
+            _ => {}
+        }
         self.turno().ok_or(MusError::AccionNoValida)?;
         let idx_pareja_activa = &self.tipo_partida.idx_parejas[self.idx_turno as usize];
         if idx_pareja_activa.1.is_some() && self.tipo_partida.accion_pareja.is_none() {
