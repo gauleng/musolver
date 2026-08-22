@@ -74,7 +74,7 @@ fn bench_external_sampling_mus_two_players(c: &mut Criterion) {
     c.bench_function("external_sampling mus_two_players", |b| {
         b.iter_batched(
             || {
-                let game = MusGameTwoPlayers::new([38, 38], false, 1);
+                let game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let cfr = Cfr::new();
                 (cfr, game)
             },
@@ -90,7 +90,7 @@ fn bench_chance_sampling_mus_two_players(c: &mut Criterion) {
     c.bench_function("chance_sampling mus_two_players", |b| {
         b.iter_batched(
             || {
-                let game = MusGameTwoPlayers::new([38, 38], false, 1);
+                let game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let cfr = Cfr::new();
                 (cfr, game)
             },
@@ -106,7 +106,7 @@ fn bench_fsicfr_mus_two_players(c: &mut Criterion) {
     c.bench_function("fsicfr_sampling mus_two_players", |b| {
         b.iter_batched(
             || {
-                let game = MusGameTwoPlayers::new([38, 38], false, 1);
+                let game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let cfr = Cfr::new();
                 (cfr, game)
             },
@@ -122,7 +122,7 @@ fn bench_exploitability(c: &mut Criterion) {
     c.bench_function("exploitability mus_two_players", |b| {
         b.iter_batched(
             || {
-                let mut game = MusGameTwoPlayers::new([38, 38], false, 1);
+                let mut game = MusGameTwoPlayers::new([38, 38], false, 0);
                 let mut cfr = Cfr::new();
                 cfr.train(&mut game, CfrMethod::FsiCfr, 500, |_, _| {});
                 (cfr, game)
