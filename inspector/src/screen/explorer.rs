@@ -166,7 +166,7 @@ impl ActionPath {
         self.actions.push((lance, player, valores));
     }
 
-    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
+    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<u8>)> {
         let history: Vec<Accion> = self.selected_history();
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
@@ -292,7 +292,7 @@ impl ActionPath {
                         .into_iter()
                         .fold(vec![0.; n_actions], |avg, v| {
                             zip(avg, &v.1)
-                                .map(|(a, v)| a + v / n_hands as f64)
+                                .map(|(a, &v)| a + v as f64 / n_hands as f64)
                                 .collect()
                         });
                 Some((actions, avg_probability))
@@ -327,7 +327,7 @@ impl ActionPath {
                     .hands(jugada1)
                     .zip(self.buckets.hands(jugada2))
                     .unwrap();
-                let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
+                let probabilities: Vec<(Vec<Accion>, Vec<u8>)> = manos1
                     .iter()
                     .cartesian_product(manos2.iter())
                     .filter_map(|(hand1, hand2)| self.strategy_node(hand1, Some(hand2)))

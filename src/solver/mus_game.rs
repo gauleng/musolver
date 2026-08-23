@@ -84,9 +84,14 @@ impl MusGame {
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.info_set_builder.begin_lance(&lance);
-            self.update_hands(lance);
+            self.transition_to_envites(lance);
         }
+    }
+
+    fn transition_to_envites(&mut self, lance: Lance) {
+        self.info_set_builder.begin_lance(&lance);
+        self.update_hands(lance);
+        self.cards = None;
     }
 
     /// Refresca las manos del conjunto de información con las que hay ahora sobre la mesa. Se
@@ -218,8 +223,7 @@ impl MusGame {
                     .set_descartes(turno.player_id() as usize, &descartes);
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.info_set_builder.begin_lance(&lance);
-                self.update_hands(lance);
+                self.transition_to_envites(lance);
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
@@ -409,9 +413,14 @@ impl MusGameTwoHands {
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.info_set_builder.begin_lance(&lance);
-            self.update_hands(lance);
+            self.transition_to_envites(lance);
         }
+    }
+
+    fn transition_to_envites(&mut self, lance: Lance) {
+        self.info_set_builder.begin_lance(&lance);
+        self.update_hands(lance);
+        self.cards = None;
     }
 
     fn update_hands(&mut self, lance: Lance) {
@@ -476,7 +485,9 @@ impl MusGameTwoHands {
             let turno = partida.turno().expect("some player must be active");
             let player_id = turno.player_id() as usize;
             let _ = partida.actuar(action);
-            if matches!(turno, Turno::Pareja(0 | 1)) && matches!(phase, Some(FasePartida::Envites(_))) {
+            if matches!(turno, Turno::Pareja(0 | 1))
+                && matches!(phase, Some(FasePartida::Envites(_)))
+            {
                 partida
                     .actuar(action)
                     .expect("segunda mano de la pareja debe aceptar la misma acción");
@@ -512,8 +523,7 @@ impl MusGameTwoHands {
                 self.info_set_builder.set_descartes(player_id, &descartes);
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.info_set_builder.begin_lance(&lance);
-                self.update_hands(lance);
+                self.transition_to_envites(lance);
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
@@ -717,9 +727,14 @@ impl MusGameTwoPlayers {
         if let Some(FasePartida::Envites(lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.info_set_builder.begin_lance(&lance);
-            self.update_hands(lance);
+            self.transition_to_envites(lance);
         }
+    }
+
+    fn transition_to_envites(&mut self, lance: Lance) {
+        self.info_set_builder.begin_lance(&lance);
+        self.update_hands(lance);
+        self.cards = None;
     }
 
     fn update_hands(&mut self, lance: Lance) {
@@ -819,8 +834,7 @@ impl MusGameTwoPlayers {
                 self.info_set_builder.set_descartes(turno, &descartes);
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.info_set_builder.begin_lance(&lance);
-                self.update_hands(lance)
+                self.transition_to_envites(lance);
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
