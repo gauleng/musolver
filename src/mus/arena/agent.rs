@@ -67,7 +67,7 @@ impl AgenteMusolver {
         }
     }
 
-    fn accion_aleatoria(actions: &[Accion], probabilities: &[u8]) -> Accion {
+    fn accion_aleatoria(actions: &[Accion], probabilities: &[f64]) -> Accion {
         let dist = WeightedIndex::new(probabilities).unwrap();
         let idx = dist.sample(&mut rand::thread_rng());
         actions[idx]

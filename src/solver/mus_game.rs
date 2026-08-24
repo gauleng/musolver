@@ -155,7 +155,7 @@ impl MusGame {
         })
     }
 
-    pub fn actions(&self) -> ArrayVec<Accion, 6> {
+    pub fn actions(&self) -> ArrayVec<Accion, 15> {
         let partida = self.partida.as_ref().unwrap();
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
@@ -183,7 +183,9 @@ impl MusGame {
                 .expect("partida must be initialized before calling act");
             let phase = partida.fase();
             let turno = partida.turno().expect("some player must be active");
-            let _ = partida.actuar(action);
+            partida.actuar(action).unwrap_or_else(|err| {
+                panic!("actuar() failed: {phase:?} {turno:?} {action:?} {err}")
+            });
             let new_phase = partida.fase();
             (turno, phase, new_phase)
         };
@@ -465,7 +467,7 @@ impl MusGameTwoHands {
         })
     }
 
-    pub fn actions(&self) -> ArrayVec<Accion, 6> {
+    pub fn actions(&self) -> ArrayVec<Accion, 15> {
         let partida = self.partida.as_ref().unwrap();
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
@@ -787,7 +789,7 @@ impl MusGameTwoPlayers {
         })
     }
 
-    pub fn actions(&self) -> ArrayVec<Accion, 6> {
+    pub fn actions(&self) -> ArrayVec<Accion, 15> {
         let partida = self.partida.as_ref().unwrap();
         debug_assert!(
             !matches!(partida.fase(), Some(FasePartida::Mus))
@@ -955,7 +957,7 @@ impl Game for MusGameTwoPlayers {
     }
 }
 
-fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
+fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 15> {
     match partida.fase() {
         Some(FasePartida::Mus) => [Accion::Mus, Accion::NoMus].into_iter().collect(),
         Some(FasePartida::Descartes) => {
@@ -964,14 +966,7 @@ fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
                 .expect("Some player must be active to call actions()")
                 .player_id() as usize;
             let mano = &partida.manos().as_ref()[turno];
-            let mut descartes = [false; 4];
-            for (idx, carta) in mano.iter().enumerate() {
-                descartes[idx] = *carta != Carta::Rey;
-            }
-            if descartes == [false; 4] {
-                descartes[0] = true;
-            }
-            [Accion::Descartar(descartes)].into_iter().collect()
+            actions_descarte(mano)
         }
         Some(FasePartida::Envites(_)) => {
             let fase_envites = partida.fase_envites().unwrap();
@@ -994,26 +989,53 @@ fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 6> {
     }
 }
 
-/// Índice canónico de cada acción, fijo e independiente de qué acciones estén disponibles en cada
-/// momento. Es el hijo con el que se indexan `mus_sequence` y `lance_sequence`, de modo que una
-/// misma acción (p. ej. órdago) siempre recorre el mismo hijo del árbol, sin que el marcador o la
-/// configuración de manos desplacen los índices y provoquen colisiones. Mus y envites usan árboles
-/// distintos, así que sus códigos pueden solaparse.
-fn canonical_envite_action(action: Accion) -> usize {
-    match action {
-        Accion::NoMus => 0,
-        Accion::Mus => 1,
-        Accion::Paso => 0,
-        Accion::Quiero => 1,
-        Accion::Envido(2) => 2,
-        Accion::Envido(5) => 3,
-        Accion::Envido(10) => 4,
-        Accion::Ordago => 5,
-        other => unreachable!("acción inesperada en el árbol de apuestas: {other:?}"),
-    }
+struct DiscardMasks {
+    masks: [usize; 15],
+    num: usize,
 }
 
-fn actions_envite(ultimo_envite: Apuesta, apuesta_maxima: u8) -> ArrayVec<Accion, 6> {
+const fn discard_masks(pattern: usize) -> DiscardMasks {
+    let mut m = 1;
+    let mut num = 0;
+    let mut masks = [0; 15];
+
+    while m < 16 {
+        if ((m & (pattern << 1)) >> 1) & !m == 0 {
+            masks[num] = m;
+            num += 1;
+        }
+        m += 1;
+    }
+    DiscardMasks { masks, num }
+}
+
+static MASKS: [DiscardMasks; 8] = [
+    discard_masks(0),
+    discard_masks(1),
+    discard_masks(2),
+    discard_masks(3),
+    discard_masks(4),
+    discard_masks(5),
+    discard_masks(6),
+    discard_masks(7),
+];
+
+fn actions_descarte(mano: &Mano) -> ArrayVec<Accion, 15> {
+    let mut actions = ArrayVec::new();
+    let cards = mano.cartas();
+    let pattern = (cards[0] == cards[1]) as usize
+        | ((cards[1] == cards[2]) as usize) << 1
+        | ((cards[2] == cards[3]) as usize) << 2;
+    for i in 0..MASKS[pattern].num {
+        let mask = MASKS[pattern].masks[i];
+        actions.push(Accion::Descartar(std::array::from_fn(|i| {
+            mask & (1 << i) != 0
+        })));
+    }
+    actions
+}
+
+fn actions_envite(ultimo_envite: Apuesta, apuesta_maxima: u8) -> ArrayVec<Accion, 15> {
     match ultimo_envite {
         Apuesta::Tantos(tantos) if tantos == apuesta_maxima => {
             [Accion::Paso, Accion::Quiero, Accion::Ordago]
@@ -1457,6 +1479,20 @@ impl BettingSequence {
 
     fn step(&self, node: u32, action: Accion) -> u32 {
         self.nodes[node as usize][canonical_envite_action(action)] as u32
+    }
+}
+
+fn canonical_envite_action(action: Accion) -> usize {
+    match action {
+        Accion::NoMus => 0,
+        Accion::Mus => 1,
+        Accion::Paso => 0,
+        Accion::Quiero => 1,
+        Accion::Envido(2) => 2,
+        Accion::Envido(5) => 3,
+        Accion::Envido(10) => 4,
+        Accion::Ordago => 5,
+        other => unreachable!("acción inesperada en el árbol de apuestas: {other:?}"),
     }
 }
 

@@ -166,7 +166,7 @@ impl ActionPath {
         self.actions.push((lance, player, valores));
     }
 
-    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<u8>)> {
+    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
         let history: Vec<Accion> = self.selected_history();
         let tantos = [
             self.selected_tantos_mano.unwrap_or_default(),
@@ -327,7 +327,7 @@ impl ActionPath {
                     .hands(jugada1)
                     .zip(self.buckets.hands(jugada2))
                     .unwrap();
-                let probabilities: Vec<(Vec<Accion>, Vec<u8>)> = manos1
+                let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
                     .iter()
                     .cartesian_product(manos2.iter())
                     .filter_map(|(hand1, hand2)| self.strategy_node(hand1, Some(hand2)))
@@ -348,11 +348,12 @@ impl ActionPath {
         let n_jugadas = self.buckets.jugadas().len();
         let mut one_hand_squares = Vec::with_capacity(n_jugadas);
         let mut bucket_id = 0;
+        self.one_hand_squares.clear();
         for jugada in self.buckets.jugadas() {
             let Some(hands) = self.buckets.hands(jugada) else {
                 continue;
             };
-            one_hand_squares.extend(hands.iter().map(|hand| {
+            let squares = hands.iter().map(|hand| {
                 let mut square_data = SquareData::new(hand.to_string())
                     .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
                 if let Some((actions, probabilities)) = self.strategy_node(hand, None) {
@@ -361,7 +362,8 @@ impl ActionPath {
                 let square = (jugada.to_owned(), square_data);
                 bucket_id += 1;
                 square
-            }));
+            });
+            one_hand_squares.extend(squares);
         }
 
         self.one_hand_squares = one_hand_squares;
@@ -705,7 +707,10 @@ fn action_style(action: &Accion) -> (Color, String) {
         Accion::Ordago => (Color::parse("821131").unwrap(), "Órdago".to_string()),
         Accion::Mus => (Color::parse("ADD8E6").unwrap(), "Mus".to_string()),
         Accion::NoMus => (Color::parse("6495ED").unwrap(), "No mus".to_string()),
-        Accion::Descartar(_) => (Color::parse("800000").unwrap(), "Descartar".to_string()),
+        Accion::Descartar([c1, c2, c3, c4]) => (
+            Color::parse("800000").unwrap(),
+            format!("Descartar {}{}{}{}", c1, c2, c3, c4),
+        ),
         _ => (Color::new(0., 0., 0., 0.), "".to_string()),
     }
 }

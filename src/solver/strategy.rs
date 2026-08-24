@@ -20,12 +20,12 @@ use super::{SolverError, TrainerConfig};
 /// [`Game`]. Necesario para poder repetir un historial y consultar la estrategia sin duplicar
 /// [`Strategy::actions_for_game`] por cada tipo concreto de partida.
 trait ActionsGame: Game<InfoSet = MusInfoSet> {
-    fn actions(&self) -> ArrayVec<Accion, 6>;
+    fn actions(&self) -> ArrayVec<Accion, 15>;
     fn act_with_action(&mut self, action: Accion);
 }
 
 impl ActionsGame for MusGame {
-    fn actions(&self) -> ArrayVec<Accion, 6> {
+    fn actions(&self) -> ArrayVec<Accion, 15> {
         MusGame::actions(self)
     }
 
@@ -35,7 +35,7 @@ impl ActionsGame for MusGame {
 }
 
 impl ActionsGame for MusGameTwoPlayers {
-    fn actions(&self) -> ArrayVec<Accion, 6> {
+    fn actions(&self) -> ArrayVec<Accion, 15> {
         MusGameTwoPlayers::actions(self)
     }
 
@@ -143,7 +143,7 @@ impl Strategy {
         tantos: [u8; 2],
         jugadas: &[(bool, bool)],
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<u8>)> {
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
         let mut manos: Vec<Mano> = jugadas
             .iter()
             .map(|(pares, juego)| Self::example_hand(*pares, *juego))
@@ -177,7 +177,7 @@ impl Strategy {
         manos: &[Mano],
         tantos: [u8; 2],
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<u8>)> {
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
         match self.strategy_config.game_config.game_type {
             GameType::LanceGame(_) => todo!(),
             GameType::LanceGameTwoHands(_) => todo!(),
@@ -277,7 +277,7 @@ impl Strategy {
         &self,
         game: G,
         history: &[Accion],
-    ) -> Option<(Vec<Accion>, Vec<u8>)> {
+    ) -> Option<(Vec<Accion>, Vec<f64>)> {
         let mut game = game;
         for action in history {
             game.act_with_action(*action);
@@ -288,7 +288,11 @@ impl Strategy {
         };
         let actions = game.actions().to_vec();
         let info_set = game.info_set(turno);
-        let strategy = self.nodes.get(&info_set).cloned();
+        let strategy = self
+            .nodes
+            .get(&info_set)
+            .cloned()
+            .map(|v| v.into_iter().map(f64::from).map(|v| v / 100.).collect());
         Some(actions).zip(strategy)
     }
     //pub fn best_response_value(
