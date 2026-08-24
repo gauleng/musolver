@@ -10,20 +10,23 @@ use super::{GameError, GameGraph};
 /// Node of the CFR algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
-    pub regret_sum: Box<[f64]>,
-    strategy_sum: Box<[f64]>,
+    // (0..num_actions) regret
+    // (num_actions..num_actions*2-1) strategy_sum
+    data: Box<[f64]>,
 }
 
 impl Node {
     pub fn new(num_actions: usize) -> Self {
         Self {
-            regret_sum: vec![0.; num_actions].into_boxed_slice(),
-            strategy_sum: vec![0.; num_actions].into_boxed_slice(),
+            data: vec![0.; num_actions * 2].into_boxed_slice(),
         }
     }
 
     pub fn matched_strategy(&self) -> Vec<f64> {
-        let mut strategy: Vec<f64> = self.regret_sum.iter().map(|&s| s.max(0.)).collect();
+        let mut strategy: Vec<f64> = self.data[0..(self.data.len() / 2)]
+            .iter()
+            .map(|&s| s.max(0.))
+            .collect();
         let normalizing_sum: f64 = strategy.iter().sum();
         for i in 0..strategy.len() {
             if normalizing_sum > 0. {
@@ -36,19 +39,17 @@ impl Node {
     }
 
     pub fn get_average_strategy(&self) -> Vec<f64> {
-        let normalizing_sum: f64 = self.strategy_sum.iter().sum();
+        let strategy_sum = self.strategy_sum();
+        let normalizing_sum: f64 = strategy_sum.iter().sum();
         if normalizing_sum > 0. {
-            self.strategy_sum
-                .iter()
-                .map(|s| s / normalizing_sum)
-                .collect()
+            strategy_sum.iter().map(|s| s / normalizing_sum).collect()
         } else {
-            vec![1. / self.strategy_sum.len() as f64; self.strategy_sum.len()]
+            vec![1. / strategy_sum.len() as f64; strategy_sum.len()]
         }
     }
 
     pub fn update_strategy_sum(&mut self, weight: f64, strategy: &[f64]) {
-        std::iter::zip(&mut self.strategy_sum, strategy).for_each({
+        std::iter::zip(self.strategy_sum_mut(), strategy).for_each({
             |(a, &b)| {
                 *a += weight * b;
             }
@@ -58,6 +59,21 @@ impl Node {
     pub fn get_random_action(&self, strategy: &[f64]) -> usize {
         let dist = WeightedIndex::new(strategy).unwrap();
         dist.sample(&mut rand::thread_rng())
+    }
+
+    fn regret_sum_mut(&mut self) -> &mut [f64] {
+        let mid = self.data.len() / 2;
+        &mut self.data[0..mid]
+    }
+
+    fn strategy_sum(&self) -> &[f64] {
+        let mid = self.data.len() / 2;
+        &self.data[mid..]
+    }
+
+    fn strategy_sum_mut(&mut self) -> &mut [f64] {
+        let mid = self.data.len() / 2;
+        &mut self.data[mid..]
     }
 }
 
@@ -326,8 +342,7 @@ impl<G: Game> Cfr<G> {
 
     fn discount(&mut self, weight: f64) {
         for value in self.nodes.values_mut() {
-            value.regret_sum.iter_mut().for_each(|r| *r *= weight);
-            value.strategy_sum.iter_mut().for_each(|r| *r *= weight);
+            value.data.iter_mut().for_each(|r| *r *= weight);
         }
     }
 
@@ -355,12 +370,12 @@ impl<G: Game> Cfr<G> {
                     .collect();
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-                let node = self
-                    .nodes
-                    .entry(info_set)
-                    .or_insert_with(|| Node::new(num_actions));
                 if current_player == player {
-                    node.regret_sum
+                    let node = self
+                        .nodes
+                        .entry(info_set)
+                        .or_insert_with(|| Node::new(num_actions));
+                    node.regret_sum_mut()
                         .iter_mut()
                         .zip(util.iter())
                         .for_each(|(r, u)| *r += po * (u - node_util));
@@ -396,12 +411,12 @@ impl<G: Game> Cfr<G> {
                     .collect();
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
-                let node = self
-                    .nodes
-                    .entry(info_set)
-                    .or_insert_with(|| Node::new(num_actions));
                 if current_player == player {
-                    node.regret_sum
+                    let node = self
+                        .nodes
+                        .entry(info_set)
+                        .or_insert_with(|| Node::new(num_actions));
+                    node.regret_sum_mut()
                         .iter_mut()
                         .zip(util.iter())
                         .for_each(|(r, u)| *r += po * (u - node_util));
@@ -451,7 +466,7 @@ impl<G: Game> Cfr<G> {
                         .entry(info_set_str)
                         .or_insert_with(|| Node::new(num_actions)),
                 };
-                node.regret_sum
+                node.regret_sum_mut()
                     .iter_mut()
                     .zip(util.iter())
                     .for_each(|(r, u)| *r += u - node_util);
@@ -461,12 +476,7 @@ impl<G: Game> Cfr<G> {
         }
     }
 
-    fn fsicfr(
-        &mut self,
-        game_graph: &mut GameGraph<G, CfrData>,
-        player: usize,
-        //round_weight: f64,
-    ) -> f64
+    fn fsicfr(&mut self, game_graph: &mut GameGraph<G, CfrData>, player: usize) -> f64
     where
         G: Clone,
     {
@@ -545,7 +555,7 @@ impl<G: Game> Cfr<G> {
                         .map(|(s, u)| s * u)
                         .sum();
                     if current_player == player {
-                        node.regret_sum
+                        node.regret_sum_mut()
                             .iter_mut()
                             .zip(utility.iter())
                             .for_each(|(r, u)| {
