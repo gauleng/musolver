@@ -114,7 +114,7 @@ fn main() {
     match game_config.game_type {
         GameType::LanceGame(lance) => {
             let cfr = trainer.train_lance_game(lance, game_config.abstract_game, &trainer_config);
-            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+            export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::LanceGameTwoHands(_) => todo!(),
         GameType::MusGame => {
@@ -123,7 +123,7 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
-            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+            export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::MusGameTwoHands => {
             let cfr = trainer.train_mus_game_two_hands(
@@ -131,7 +131,7 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
-            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+            export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::MusGameTwoPlayers => {
             let cfr = trainer.train_mus_game_two_players(
@@ -139,7 +139,7 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
-            export_cfr(&output_path, &cfr, &trainer_config, &game_config)
+            export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
     }
     .expect("Error exportando estrategias.");
@@ -147,7 +147,7 @@ fn main() {
 
 pub fn export_cfr<G: musolver::Game<InfoSet = MusInfoSet>>(
     path: &Path,
-    cfr: &Cfr<G>,
+    cfr: [[Cfr<G>; 40]; 40],
     trainer_config: &TrainerConfig,
     game_config: &GameConfig,
 ) -> Result<(), SolverError> {

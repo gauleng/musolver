@@ -40,8 +40,8 @@ impl Trainer {
         lance: Lance,
         abstract_game: bool,
         trainer_config: &TrainerConfig,
-    ) -> Cfr<LanceGame> {
-        let mut cfr = Cfr::new();
+    ) -> [[Cfr<LanceGame>; 40]; 40] {
+        let mut cfrs = std::array::from_fn(|_| std::array::from_fn(|_idx| Cfr::new()));
         let target = self.tantos;
         (0..40).rev().for_each(|t1| {
             for t2 in 0..(40 - t1) {
@@ -49,8 +49,9 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
+                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let lance_game = LanceGame::new(lance, tantos, abstract_game);
-                train_game(&mut cfr, &lance_game, trainer_config);
+                train_game(cfr, &lance_game, trainer_config);
                 let expected_utility = cfr.expected_utility(&lance_game)[0];
                 println!("Finished training.");
                 println!(
@@ -60,7 +61,7 @@ impl Trainer {
                 println!();
             }
         });
-        cfr
+        cfrs
     }
 
     pub fn train_mus_game(
@@ -68,8 +69,8 @@ impl Trainer {
         abstract_game: bool,
         max_mus_rounds: u8,
         trainer_config: &TrainerConfig,
-    ) -> Cfr<MusGame> {
-        let mut cfr = Cfr::new();
+    ) -> [[Cfr<MusGame>; 40]; 40] {
+        let mut cfrs = std::array::from_fn(|_| std::array::from_fn(|_idx| Cfr::new()));
         let mut utility_table = MusGame::default_utility_table();
         let target = self.tantos;
         (0..40).rev().for_each(|t1| {
@@ -78,9 +79,10 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
+                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGame::new(tantos, abstract_game, max_mus_rounds)
                     .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
                 let expected_utility = (expected_utility_players[0] + expected_utility_players[2]
                     - expected_utility_players[1]
                     - expected_utility_players[3])
@@ -94,7 +96,7 @@ impl Trainer {
                 println!();
             }
         });
-        cfr
+        cfrs
     }
 
     pub fn train_mus_game_two_hands(
@@ -102,8 +104,8 @@ impl Trainer {
         abstract_game: bool,
         max_mus_rounds: u8,
         trainer_config: &TrainerConfig,
-    ) -> Cfr<MusGameTwoHands> {
-        let mut cfr = Cfr::new();
+    ) -> [[Cfr<MusGameTwoHands>; 40]; 40] {
+        let mut cfrs = std::array::from_fn(|_| std::array::from_fn(|_idx| Cfr::new()));
         let mut utility_table = MusGame::default_utility_table();
         let target = self.tantos;
         (0..40).rev().for_each(|t1| {
@@ -112,9 +114,10 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
+                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGameTwoHands::new(tantos, abstract_game, max_mus_rounds)
                     .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
                 let expected_utility =
                     (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                 utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
@@ -126,7 +129,7 @@ impl Trainer {
                 println!();
             }
         });
-        cfr
+        cfrs
     }
 
     pub fn train_mus_game_two_players(
@@ -134,8 +137,8 @@ impl Trainer {
         abstract_game: bool,
         max_mus_rounds: u8,
         trainer_config: &TrainerConfig,
-    ) -> Cfr<MusGameTwoPlayers> {
-        let mut cfr = Cfr::new();
+    ) -> [[Cfr<MusGameTwoPlayers>; 40]; 40] {
+        let mut cfrs = std::array::from_fn(|_| std::array::from_fn(|_idx| Cfr::new()));
         let mut utility_table = MusGame::default_utility_table();
         let target = self.tantos;
         (0..40).rev().for_each(|t1| {
@@ -144,9 +147,10 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
+                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGameTwoPlayers::new(tantos, abstract_game, max_mus_rounds)
                     .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(&mut cfr, &mus_game, trainer_config);
+                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
                 let expected_utility =
                     (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                 utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
@@ -158,7 +162,7 @@ impl Trainer {
                 println!();
             }
         });
-        cfr
+        cfrs
     }
 }
 

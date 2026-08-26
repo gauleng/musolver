@@ -104,27 +104,35 @@ pub struct StrategyConfig {
 )]
 pub struct Strategy {
     pub strategy_config: StrategyConfig,
-    pub nodes: HashMap<MusInfoSet, Vec<u8>>,
+    pub nodes: Vec<Vec<HashMap<MusInfoSet, Vec<u8>>>>,
 }
 
 pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
 
 impl Strategy {
     pub fn new<G: Game<InfoSet = MusInfoSet>>(
-        cfr: &Cfr<G>,
+        cfr: [[Cfr<G>; 40]; 40],
         trainer_config: &TrainerConfig,
         game_config: &GameConfig,
     ) -> Self {
-        let nodes = cfr
-            .nodes()
-            .iter()
-            .map(|(info_set, node)| {
-                let avg_strategy: Vec<u8> = node
-                    .get_average_strategy()
-                    .into_iter()
-                    .map(|v| (v * 100.).round() as u8)
-                    .collect();
-                (info_set.to_owned(), avg_strategy)
+        let nodes = (0..40)
+            .map(|i| {
+                (0..40)
+                    .map(|j| {
+                        cfr[i][j]
+                            .nodes()
+                            .into_iter()
+                            .map(|(info_set, node)| {
+                                let avg_strategy: Vec<u8> = node
+                                    .get_average_strategy()
+                                    .into_iter()
+                                    .map(|v| (v * 100.).round() as u8)
+                                    .collect();
+                                (info_set.to_owned(), avg_strategy)
+                            })
+                            .collect()
+                    })
+                    .collect()
             })
             .collect();
         Self {
@@ -194,7 +202,7 @@ impl Strategy {
                     self.strategy_config.game_config.max_mus_rounds,
                 )
                 .with_hands(manos);
-                self.actions_for_game(mus_game, history)
+                self.actions_for_game(tantos, mus_game, history)
             }
             GameType::MusGameTwoHands => todo!(),
             GameType::MusGameTwoPlayers => {
@@ -205,7 +213,7 @@ impl Strategy {
                     self.strategy_config.game_config.max_mus_rounds,
                 )
                 .with_hands(manos);
-                self.actions_for_game(mus_game, history)
+                self.actions_for_game(tantos, mus_game, history)
             }
         }
     }
@@ -275,6 +283,7 @@ impl Strategy {
 
     fn actions_for_game<G: ActionsGame>(
         &self,
+        tantos: [u8; 2],
         game: G,
         history: &[Accion],
     ) -> Option<(Vec<Accion>, Vec<f64>)> {
@@ -288,8 +297,7 @@ impl Strategy {
         };
         let actions = game.actions().to_vec();
         let info_set = game.info_set(turno);
-        let strategy = self
-            .nodes
+        let strategy = self.nodes[tantos[0] as usize][tantos[1] as usize]
             .get(&info_set)
             .cloned()
             .map(|v| v.into_iter().map(f64::from).map(|v| v / 100.).collect());
