@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use itertools::Either;
@@ -30,7 +30,7 @@ pub struct MusGame {
     /// Acción del primer miembro de la pareja, pendiente de que responda el compañero. Solo se
     /// usa para restringir las acciones legales del segundo miembro en [`MusGame::actions`].
     last_action: Option<Accion>,
-    utility_table: Option<Rc<[[f64; 40]; 40]>>,
+    utility_table: Option<Arc<[[f64; 40]; 40]>>,
 }
 
 impl MusGame {
@@ -116,7 +116,7 @@ impl MusGame {
         self.partida.as_ref()
     }
 
-    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+    pub fn with_utility_table(self, utility_table: Arc<[[f64; 40]; 40]>) -> Self {
         Self {
             utility_table: Some(utility_table),
             ..self
@@ -360,7 +360,7 @@ pub struct MusGameTwoHands {
     max_mus_rounds: u8,
     abstract_game: bool,
     info_set_builder: MusInfoSetBuilder,
-    utility_table: Option<Rc<[[f64; 40]; 40]>>,
+    utility_table: Option<Arc<[[f64; 40]; 40]>>,
 }
 
 impl MusGameTwoHands {
@@ -440,7 +440,7 @@ impl MusGameTwoHands {
         self.cards = Some(cartas);
     }
 
-    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+    pub fn with_utility_table(self, utility_table: Arc<[[f64; 40]; 40]>) -> Self {
         Self {
             utility_table: Some(utility_table),
             ..self
@@ -663,7 +663,7 @@ pub struct MusGameTwoPlayers {
     max_mus_rounds: u8,
     abstract_game: bool,
     info_set_builder: MusInfoSetBuilder,
-    utility_table: Option<Rc<[[f64; 40]; 40]>>,
+    utility_table: Option<Arc<[[f64; 40]; 40]>>,
 }
 
 impl MusGameTwoPlayers {
@@ -687,7 +687,7 @@ impl MusGameTwoPlayers {
         }
     }
 
-    pub fn with_utility_table(self, utility_table: Rc<[[f64; 40]; 40]>) -> Self {
+    pub fn with_utility_table(self, utility_table: Arc<[[f64; 40]; 40]>) -> Self {
         Self {
             utility_table: Some(utility_table),
             ..self
