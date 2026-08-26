@@ -1,4 +1,4 @@
-use std::{fmt::Debug, rc::Rc};
+use std::{fmt::Debug, sync::Arc};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -49,10 +49,10 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let lance_game = LanceGame::new(lance, tantos, abstract_game);
-                train_game(cfr, &lance_game, trainer_config);
-                let expected_utility = cfr.expected_utility(&lance_game)[0];
+                let cfr = train_game(&lance_game, trainer_config);
+                let expected_utility = cfr.utility()[0];
+                cfrs[tantos[0] as usize][tantos[1] as usize] = cfr;
                 println!("Finished training.");
                 println!(
                     "Expected utility {}-{}: {}",
@@ -79,15 +79,16 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGame::new(tantos, abstract_game, max_mus_rounds)
-                    .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
+                    .with_utility_table(Arc::new(utility_table));
+                let cfr = train_game(&mus_game, trainer_config);
+                let expected_utility_players = cfr.utility();
                 let expected_utility = (expected_utility_players[0] + expected_utility_players[2]
                     - expected_utility_players[1]
                     - expected_utility_players[3])
                     / 4.;
                 utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                cfrs[tantos[0] as usize][tantos[1] as usize] = cfr;
                 println!("Finished training.");
                 println!(
                     "Expected utility {}-{}: {}",
@@ -114,13 +115,14 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGameTwoHands::new(tantos, abstract_game, max_mus_rounds)
-                    .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
+                    .with_utility_table(Arc::new(utility_table));
+                let cfr = train_game(&mus_game, trainer_config);
+                let expected_utility_players = cfr.utility();
                 let expected_utility =
                     (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                 utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                cfrs[tantos[0] as usize][tantos[1] as usize] = cfr;
                 println!("Finished training.");
                 println!(
                     "Expected utility {}-{}: {}",
@@ -147,13 +149,14 @@ impl Trainer {
                 if tantos[0] < target[0] || tantos[1] < target[1] {
                     continue;
                 }
-                let cfr = &mut cfrs[tantos[0] as usize][tantos[1] as usize];
                 let mus_game = MusGameTwoPlayers::new(tantos, abstract_game, max_mus_rounds)
-                    .with_utility_table(Rc::new(utility_table));
-                let expected_utility_players = train_game(cfr, &mus_game, trainer_config);
+                    .with_utility_table(Arc::new(utility_table));
+                let cfr = train_game(&mus_game, trainer_config);
+                let expected_utility_players = cfr.utility();
                 let expected_utility =
                     (expected_utility_players[0] - expected_utility_players[1]) / 2.;
                 utility_table[tantos[0] as usize][tantos[1] as usize] = expected_utility;
+                cfrs[tantos[0] as usize][tantos[1] as usize] = cfr;
                 println!("Finished training.");
                 println!(
                     "Expected utility {}-{}: {}",
@@ -172,7 +175,7 @@ impl Default for Trainer {
     }
 }
 
-fn train_game<G>(cfr: &mut Cfr<G>, game: &G, trainer_config: &TrainerConfig) -> Vec<f64>
+fn train_game<G>(game: &G, trainer_config: &TrainerConfig) -> Cfr<G>
 where
     G: Game + Debug + Clone,
 {
@@ -185,14 +188,11 @@ where
             .unwrap()
             .progress_chars("##-"),
     );
-    let mut last_util = vec![0.; G::N_PLAYERS];
-    cfr.train(
-        game,
-        trainer_config.method,
-        trainer_config.iterations,
-        |i, util| {
+    let mut cfr = Cfr::new()
+        .method(trainer_config.method)
+        .on_progress(move |i, util| {
             if i.is_multiple_of(1000) {
-                pb.set_position(*i as u64);
+                pb.set_position(i as u64);
                 pb.set_message(format!(
                     "Utility: {}",
                     util.iter()
@@ -200,11 +200,10 @@ where
                         .collect::<Vec<String>>()
                         .join(" "),
                 ));
-                last_util.copy_from_slice(util);
             }
-        },
-    );
+        });
+    cfr.train(game, trainer_config.iterations);
     let elapsed = now.elapsed();
     println!("Elapsed: {elapsed:.2?}");
-    last_util
+    cfr
 }

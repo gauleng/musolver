@@ -270,74 +270,105 @@ impl FromStr for CfrMethod {
 ///        |_player, _utility| {},
 ///    );
 /// ```
-#[derive(Debug)]
 pub struct Cfr<G: Game> {
     nodes: FxHashMap<G::InfoSet, Node>,
+    discount_round_size: usize,
+    method: CfrMethod,
+    on_progress: Box<dyn Fn(usize, Vec<f64>)>,
+    utility: Vec<f64>,
 }
 
 impl<G: Game> Cfr<G> {
     pub fn new() -> Self {
+        let method = CfrMethod::ExternalSampling;
         Self {
             nodes: FxHashMap::default(),
+            discount_round_size: Self::default_discount_round_size(method),
+            method,
+            on_progress: Box::new(|_, _| {}),
+            utility: vec![0.; G::N_PLAYERS],
         }
     }
 
-    pub fn train<F>(
-        &mut self,
-        game: &G,
-        cfr_method: CfrMethod,
-        iterations: usize,
-        mut iteration_callback: F,
-    ) where
-        G: Clone,
-        F: FnMut(&usize, &[f64]),
-    {
-        let mut util = vec![0.; G::N_PLAYERS];
-        let round_size = match cfr_method {
+    fn default_discount_round_size(method: CfrMethod) -> usize {
+        match method {
             CfrMethod::Cfr | CfrMethod::CfrPlus => 1,
             CfrMethod::ChanceSampling | CfrMethod::ExternalSampling | CfrMethod::FsiCfr => 100_000,
-        };
+        }
+    }
+
+    pub fn method(mut self, m: CfrMethod) -> Self {
+        self.discount_round_size = Self::default_discount_round_size(m);
+        self.method = m;
+        self
+    }
+
+    pub fn on_progress(mut self, f: impl Fn(usize, Vec<f64>) + 'static) -> Self {
+        self.on_progress = Box::new(f);
+        self
+    }
+
+    pub fn discount_round_size(mut self, round_size: usize) -> Self {
+        self.discount_round_size = round_size;
+        self
+    }
+
+    pub fn utility(&self) -> &[f64] {
+        &self.utility
+    }
+
+    pub fn train(&mut self, game: &G, iterations: usize)
+    where
+        G: Clone,
+    {
         let mut game_graph = GameGraph::new(game);
         for i in 0..iterations {
-            match cfr_method {
+            match self.method {
                 CfrMethod::Cfr => {
-                    for (player_idx, u) in util.iter_mut().enumerate() {
-                        *u += self.cfr(game, player_idx, 1., 1.);
+                    for player_idx in 0..G::N_PLAYERS {
+                        let u = self.cfr(game, player_idx, 1., 1.);
+                        self.utility[player_idx] += u;
                     }
                 }
                 CfrMethod::CfrPlus => {
                     todo!();
                 }
                 CfrMethod::ChanceSampling => {
-                    for (player_idx, u) in util.iter_mut().enumerate() {
-                        *u += self.chance_sampling(game, player_idx, 1., 1.);
+                    for player_idx in 0..G::N_PLAYERS {
+                        let u = self.chance_sampling(game, player_idx, 1., 1.);
+                        self.utility[player_idx] += u;
                     }
                 }
                 CfrMethod::ExternalSampling => {
-                    for (player_idx, u) in util.iter_mut().enumerate() {
-                        *u += self.external_sampling(game, player_idx);
+                    for player_idx in 0..G::N_PLAYERS {
+                        let u = self.external_sampling(game, player_idx);
+                        self.utility[player_idx] += u;
                     }
                 }
                 CfrMethod::FsiCfr => {
                     game_graph.reset();
                     game_graph.inflate();
-                    for (player_idx, u) in util.iter_mut().enumerate() {
-                        *u += self.fsicfr(&mut game_graph, player_idx);
+                    for player_idx in 0..G::N_PLAYERS {
+                        let u = self.fsicfr(&mut game_graph, player_idx);
+                        self.utility[player_idx] += u;
                     }
                 }
             }
-            if i > 0 {
-                if i.is_multiple_of(round_size) {
-                    let block = (i / round_size) as f64;
-                    self.discount(block / (block + 1.));
-                }
-                // if i.is_multiple_of(round_size * 10) {
-                //     let exp = self.exploitability(game);
-                //     println!("Exploitability: {exp}");
-                // }
+            if i > 0 && i.is_multiple_of(self.discount_round_size) {
+                let block = (i / self.discount_round_size) as f64;
+                self.discount(block / (block + 1.));
             }
-            iteration_callback(&i, &util.iter().map(|u| u / i as f64).collect::<Vec<f64>>());
+            (self.on_progress)(
+                i,
+                self.utility
+                    .iter()
+                    .map(|u| u / i as f64)
+                    .collect::<Vec<f64>>(),
+            );
         }
+        self.utility
+            .iter_mut()
+            .for_each(|u| *u /= iterations as f64);
     }
 
     fn discount(&mut self, weight: f64) {

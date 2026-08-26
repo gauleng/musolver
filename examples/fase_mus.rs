@@ -7,14 +7,9 @@ use rand::Rng;
 
 fn main() {
     let fase_mus = FaseMus::new(10);
-    let mut cfr = Cfr::new();
+    let mut cfr = Cfr::new().method(musolver::CfrMethod::FsiCfr);
 
-    cfr.train(
-        &fase_mus,
-        musolver::CfrMethod::FsiCfr,
-        10000000,
-        |_player, _utility| {},
-    );
+    cfr.train(&fase_mus, 10000000);
 
     cfr.nodes()
         .iter()

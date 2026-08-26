@@ -5,14 +5,9 @@ use musolver::{Cfr, Game};
 
 fn main() {
     let rps = Rps::new();
-    let mut cfr = Cfr::new();
+    let mut cfr = Cfr::new().method(musolver::CfrMethod::FsiCfr);
 
-    cfr.train(
-        &rps,
-        musolver::CfrMethod::FsiCfr,
-        10000,
-        |_player, _utility| {},
-    );
+    cfr.train(&rps, 10000);
 
     let strategy1: Vec<(_, _)> = rps
         .actions()
