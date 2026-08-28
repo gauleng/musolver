@@ -1,8 +1,12 @@
+use dashmap::DashMap;
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
-use rustc_hash::FxHashMap;
+use rayon::ThreadPoolBuilder;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rustc_hash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
+use std::sync::Mutex;
 use std::{collections::HashMap, str::FromStr};
 
 use super::{GameError, GameGraph};
@@ -102,8 +106,7 @@ pub enum NodeType {
 /// `N_PLAYERS` gives the number of players of the game. Actions are referred to by their
 /// index among the ones returned by the concrete type's own `actions()` method (not part of
 /// this trait, since it depends on the concrete action type); `InfoSet` is whatever type the
-/// game uses as the key identifying an information set — a plain `usize` is enough for games
-/// like Rock, Paper, Scissors below, while richer games may need a `String` or similar.
+/// game uses as the key identifying an information set.
 ///
 /// For example, for the Rock, Paper, Scissors game, the following actions are available:
 ///
@@ -261,32 +264,53 @@ impl FromStr for CfrMethod {
 ///
 /// ```ignore
 ///    let mut rps = Rps::new();
-///    let mut cfr = Cfr::new();
+///    let mut cfr = Cfr::new()
+///                     .method(musolver::CfrMethod::FsiCfr);
 ///
 ///    cfr.train(
 ///        &mut rps,
-///        musolver::CfrMethod::FsiCfr,
 ///        10000,
-///        |_player, _utility| {},
 ///    );
 /// ```
-pub struct Cfr<G: Game> {
-    nodes: FxHashMap<G::InfoSet, Node>,
+///
+/// It supports different algorithms that can be set by calling method(). Linear discount is applied
+/// to the regret and strategy accumulators every discount_round_size iterations.
+///
+/// Moreover, serial and parallel execution are supported. Parallel execution has two modes of
+/// operation. The first one is iteration-level, set by calling parallel_iterations(workers), and it
+/// is suitable for imperfect recall games with chance nodes at the roog of the game tree. The
+/// second mode is branch-level, configured by parallel_branches(workers, max_depth), that creates
+/// new threads each time the game tree is branched, up to a maximum depth.
+pub struct Cfr<G: Game + Send + Sync> {
+    nodes: DashMap<G::InfoSet, Node, FxBuildHasher>,
     discount_round_size: usize,
     method: CfrMethod,
-    on_progress: Box<dyn Fn(usize, Vec<f64>)>,
+    on_progress: Option<ProgressFn>,
     utility: Vec<f64>,
+    mode: ExecutionMode,
 }
 
-impl<G: Game> Cfr<G> {
+type ProgressFn = Box<dyn Fn(usize, Vec<f64>) + Send + Sync>;
+
+#[derive(PartialEq, Eq)]
+enum ExecutionMode {
+    Serial,
+    ParallelBranches { workers: usize, max_depth: usize },
+    ParallelIterations { workers: usize },
+}
+
+impl<G: Game + Send + Sync> Cfr<G> {
+    /// Creates a new Cfr. By default, it is configured to use CfrMethod::ExternalSampling with
+    /// serial execution.
     pub fn new() -> Self {
         let method = CfrMethod::ExternalSampling;
         Self {
-            nodes: FxHashMap::default(),
+            nodes: DashMap::with_hasher(FxBuildHasher),
             discount_round_size: Self::default_discount_round_size(method),
             method,
-            on_progress: Box::new(|_, _| {}),
+            on_progress: None,
             utility: vec![0.; G::N_PLAYERS],
+            mode: ExecutionMode::Serial,
         }
     }
 
@@ -297,88 +321,205 @@ impl<G: Game> Cfr<G> {
         }
     }
 
+    /// Sets the CFR method to use in training.
     pub fn method(mut self, m: CfrMethod) -> Self {
         self.discount_round_size = Self::default_discount_round_size(m);
         self.method = m;
         self
     }
 
-    pub fn on_progress(mut self, f: impl Fn(usize, Vec<f64>) + 'static) -> Self {
-        self.on_progress = Box::new(f);
+    /// Sets a callback function to report the progress of the algorithm. This callback receives the
+    /// iteration number and the current estimated expected value.
+    pub fn on_progress(mut self, f: impl Fn(usize, Vec<f64>) + Send + Sync + 'static) -> Self {
+        self.on_progress = Some(Box::new(f));
         self
     }
 
+    /// Number of iterations to apply linear discount to the regret and strategy accumulators.
     pub fn discount_round_size(mut self, round_size: usize) -> Self {
         self.discount_round_size = round_size;
         self
     }
 
+    /// Average utility estimated after training.
     pub fn utility(&self) -> &[f64] {
         &self.utility
+    }
+
+    /// Sets branch-level parallel execution with workers threads. Branching is stopped at
+    /// max_depth.
+    pub fn parallel_branches(mut self, workers: usize, max_depth: usize) -> Self {
+        self.mode = ExecutionMode::ParallelBranches { workers, max_depth };
+        self
+    }
+
+    /// Sets iteration-level parallel exeuction with workers threads.
+    pub fn parallel_iterations(mut self, workers: usize) -> Self {
+        self.mode = ExecutionMode::ParallelIterations { workers };
+        self
+    }
+
+    /// Sets serial execution. It is the default execution mode.
+    pub fn serial(mut self) -> Self {
+        self.mode = ExecutionMode::Serial;
+        self
     }
 
     pub fn train(&mut self, game: &G, iterations: usize)
     where
         G: Clone,
+        G::InfoSet: Send + Sync,
     {
-        let mut game_graph = GameGraph::new(game);
-        for i in 0..iterations {
-            match self.method {
-                CfrMethod::Cfr => {
-                    for player_idx in 0..G::N_PLAYERS {
-                        let u = self.cfr(game, player_idx, 1., 1.);
-                        self.utility[player_idx] += u;
-                    }
-                }
-                CfrMethod::CfrPlus => {
-                    todo!();
-                }
-                CfrMethod::ChanceSampling => {
-                    for player_idx in 0..G::N_PLAYERS {
-                        let u = self.chance_sampling(game, player_idx, 1., 1.);
-                        self.utility[player_idx] += u;
-                    }
-                }
-                CfrMethod::ExternalSampling => {
-                    for player_idx in 0..G::N_PLAYERS {
-                        let u = self.external_sampling(game, player_idx);
-                        self.utility[player_idx] += u;
-                    }
-                }
-                CfrMethod::FsiCfr => {
-                    game_graph.reset();
-                    game_graph.inflate();
-                    for player_idx in 0..G::N_PLAYERS {
-                        let u = self.fsicfr(&mut game_graph, player_idx);
-                        self.utility[player_idx] += u;
-                    }
-                }
+        match self.mode {
+            ExecutionMode::Serial => {
+                self.run(game, iterations);
             }
-            if i > 0 && i.is_multiple_of(self.discount_round_size) {
-                let block = (i / self.discount_round_size) as f64;
-                self.discount(block / (block + 1.));
+            ExecutionMode::ParallelBranches {
+                workers,
+                max_depth: _,
             }
-            (self.on_progress)(
-                i,
-                self.utility
-                    .iter()
-                    .map(|u| u / i as f64)
-                    .collect::<Vec<f64>>(),
-            );
-        }
+            | ExecutionMode::ParallelIterations { workers } => {
+                let pool = ThreadPoolBuilder::new()
+                    .num_threads(workers)
+                    .build()
+                    .unwrap();
+                pool.install(|| {
+                    self.run(game, iterations);
+                })
+            }
+        };
         self.utility
             .iter_mut()
             .for_each(|u| *u /= iterations as f64);
     }
 
-    fn discount(&mut self, weight: f64) {
-        for value in self.nodes.values_mut() {
-            value.data.iter_mut().for_each(|r| *r *= weight);
+    fn run(&mut self, game: &G, iterations: usize)
+    where
+        G: Clone,
+        G::InfoSet: Send + Sync,
+    {
+        let mut game_graph = GameGraph::new(game);
+        let progress = Mutex::new((0usize, vec![0.; G::N_PLAYERS]));
+        let num_rounds = iterations / self.discount_round_size;
+        let leftover = iterations % self.discount_round_size;
+        for round in 0..num_rounds {
+            let utility =
+                self.run_batch(game, &mut game_graph, self.discount_round_size, &progress);
+            self.utility
+                .iter_mut()
+                .zip(utility)
+                .for_each(|(x, y)| *x += y);
+            self.discount((round as f64 + 1.) / (round as f64 + 2.));
+        }
+        if leftover > 0 {
+            let utility = self.run_batch(game, &mut game_graph, leftover, &progress);
+            self.utility
+                .iter_mut()
+                .zip(utility)
+                .for_each(|(x, y)| *x += y);
         }
     }
 
+    fn run_batch(
+        &self,
+        game: &G,
+        game_graph: &mut GameGraph<G, CfrData>,
+        count: usize,
+        progress: &Mutex<(usize, Vec<f64>)>,
+    ) -> Vec<f64>
+    where
+        G: Clone,
+        G::InfoSet: Send + Sync,
+    {
+        let sum = |mut a: Vec<f64>, b: Vec<f64>| {
+            a.iter_mut().zip(b).for_each(|(x, y)| *x += y);
+            a
+        };
+        if let ExecutionMode::ParallelIterations { workers: _ } = self.mode {
+            (0..count)
+                .into_par_iter()
+                .map(|_| self.run_once(game, None, progress))
+                .reduce(|| vec![0.; G::N_PLAYERS], sum)
+        } else {
+            (0..count)
+                .map(|_| self.run_once(game, Some(&mut *game_graph), progress))
+                .fold(vec![0.; G::N_PLAYERS], sum)
+        }
+    }
+
+    fn run_once(
+        &self,
+        game: &G,
+        game_graph: Option<&mut GameGraph<G, CfrData>>,
+        progress: &Mutex<(usize, Vec<f64>)>,
+    ) -> Vec<f64>
+    where
+        G: Clone,
+        G::InfoSet: Send + Sync,
+    {
+        let mut utility = vec![0.; G::N_PLAYERS];
+        match self.method {
+            CfrMethod::Cfr => {
+                for (player_idx, u) in utility.iter_mut().enumerate() {
+                    *u = self.cfr(game, player_idx, 1., 1.);
+                }
+            }
+            CfrMethod::CfrPlus => {
+                todo!();
+            }
+            CfrMethod::ChanceSampling => {
+                for (player_idx, u) in utility.iter_mut().enumerate() {
+                    *u = self.chance_sampling(game, player_idx, 1., 1.);
+                }
+            }
+            CfrMethod::ExternalSampling => {
+                for (player_idx, u) in utility.iter_mut().enumerate() {
+                    *u = self.external_sampling(game, player_idx, 0);
+                }
+            }
+            CfrMethod::FsiCfr => {
+                let mut local_graph = None;
+                let graph = game_graph.map_or_else(
+                    || {
+                        local_graph = Some(GameGraph::new(game));
+                        local_graph.as_mut().unwrap()
+                    },
+                    |g| {
+                        g.reset();
+                        g
+                    },
+                );
+                graph.inflate();
+                for (player_idx, u) in utility.iter_mut().enumerate() {
+                    *u = self.fsicfr(graph, player_idx);
+                }
+            }
+        }
+        if let Some(on_progress) = &self.on_progress {
+            let (count, avg) = {
+                let mut guard = progress.lock().unwrap();
+                guard.0 += 1;
+                guard
+                    .1
+                    .iter_mut()
+                    .zip(&utility)
+                    .for_each(|(total, u)| *total += u);
+                let avg = guard.1.iter().map(|u| u / guard.0 as f64).collect();
+                (guard.0, avg)
+            };
+            on_progress(count, avg);
+        }
+        utility
+    }
+
+    fn discount(&mut self, weight: f64) {
+        self.nodes.iter_mut().for_each(|mut value| {
+            value.data.iter_mut().for_each(|r| *r *= weight);
+        })
+    }
+
     /// Chance sampling CFR algorithm.
-    fn cfr(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
+    fn cfr(&self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
         match game.current_node() {
             NodeType::Chance => game
                 .chance_iter()
@@ -402,7 +543,7 @@ impl<G: Game> Cfr<G> {
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
                 if current_player == player {
-                    let node = self
+                    let mut node = self
                         .nodes
                         .entry(info_set)
                         .or_insert_with(|| Node::new(num_actions));
@@ -419,7 +560,7 @@ impl<G: Game> Cfr<G> {
         }
     }
     /// Chance sampling CFR algorithm.
-    fn chance_sampling(&mut self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
+    fn chance_sampling(&self, game: &G, player: usize, pi: f64, po: f64) -> f64 {
         match game.current_node() {
             NodeType::Chance => {
                 let new_game = game.chance_sample();
@@ -443,7 +584,7 @@ impl<G: Game> Cfr<G> {
                 let node_util = util.iter().zip(strategy.iter()).map(|(u, s)| u * s).sum();
 
                 if current_player == player {
-                    let node = self
+                    let mut node = self
                         .nodes
                         .entry(info_set)
                         .or_insert_with(|| Node::new(num_actions));
@@ -461,36 +602,54 @@ impl<G: Game> Cfr<G> {
     }
 
     /// External sampling CFR algorithm.
-    fn external_sampling(&mut self, game: &G, player: usize) -> f64 {
+    fn external_sampling(&self, game: &G, player: usize, depth: usize) -> f64
+    where
+        G::InfoSet: Send + Sync,
+    {
         match game.current_node() {
             NodeType::Chance => {
                 let new_game = game.chance_sample();
-                self.external_sampling(&new_game, player)
+                self.external_sampling(&new_game, player, depth)
             }
             NodeType::Player(current_player, num_actions) => {
                 let info_set_str = game.info_set(current_player);
                 let strategy = self.strategy(&info_set_str, num_actions);
                 if current_player != player {
-                    let node = match self.nodes.get_mut(&info_set_str) {
-                        Some(node) => node,
-                        None => self
-                            .nodes
-                            .entry(info_set_str)
-                            .or_insert_with(|| Node::new(num_actions)),
+                    let new_game = {
+                        let mut node = match self.nodes.get_mut(&info_set_str) {
+                            Some(node) => node,
+                            None => self
+                                .nodes
+                                .entry(info_set_str)
+                                .or_insert_with(|| Node::new(num_actions)),
+                        };
+                        node.update_strategy_sum(1., &strategy);
+                        let s = node.get_random_action(&strategy);
+                        game.act(s)
                     };
-                    node.update_strategy_sum(1., &strategy);
-                    let s = node.get_random_action(&strategy);
-                    let new_game = game.act(s);
-                    return self.external_sampling(&new_game, player);
+                    return self.external_sampling(&new_game, player, depth);
                 }
-                let util: Vec<f64> = (0..num_actions)
-                    .map(|action| {
-                        let new_game = game.act(action);
-                        self.external_sampling(&new_game, player)
-                    })
-                    .collect();
+
+                let util: Vec<f64> = match self.mode {
+                    ExecutionMode::ParallelBranches {
+                        workers: _,
+                        max_depth,
+                    } if depth < max_depth => (0..num_actions)
+                        .into_par_iter()
+                        .map(|action| {
+                            let new_game = game.act(action);
+                            self.external_sampling(&new_game, player, depth + 1)
+                        })
+                        .collect(),
+                    _ => (0..num_actions)
+                        .map(|action| {
+                            let new_game = game.act(action);
+                            self.external_sampling(&new_game, player, depth)
+                        })
+                        .collect(),
+                };
                 let node_util = std::iter::zip(&util, strategy).map(|(u, s)| u * s).sum();
-                let node = match self.nodes.get_mut(&info_set_str) {
+                let mut node = match self.nodes.get_mut(&info_set_str) {
                     Some(node) => node,
                     None => self
                         .nodes
@@ -507,7 +666,7 @@ impl<G: Game> Cfr<G> {
         }
     }
 
-    fn fsicfr(&mut self, game_graph: &mut GameGraph<G, CfrData>, player: usize) -> f64
+    fn fsicfr(&self, game_graph: &mut GameGraph<G, CfrData>, player: usize) -> f64
     where
         G: Clone,
     {
@@ -519,16 +678,10 @@ impl<G: Game> Cfr<G> {
             let game = &mut game_node.game();
             match game.current_node() {
                 NodeType::Player(current_player, num_actions) => {
-                    let info_set_str = game_node
-                        .info_set_str()
-                        .expect("InfoSet must be valid in non terminal nodes.");
-                    let node = match self.nodes.get(info_set_str) {
-                        Some(node) => node,
-                        None => self
-                            .nodes
-                            .entry(game.info_set(current_player))
-                            .or_insert_with(|| Node::new(num_actions)),
-                    };
+                    let node = self
+                        .nodes
+                        .entry(game.info_set(current_player))
+                        .or_insert_with(|| Node::new(num_actions));
                     game_graph.node_mut(idx).data_mut().strategy = node.matched_strategy();
                     for i in 0..game_graph.node(idx).data().strategy.len() {
                         let s = game_graph.node_mut(idx).data_mut().strategy[i];
@@ -569,7 +722,7 @@ impl<G: Game> Cfr<G> {
                         .node(idx)
                         .info_set_str()
                         .expect("InfoSet must be valid in non terminal nodes.");
-                    let node = self.nodes.get_mut(info_set_str).unwrap();
+                    let mut node = self.nodes.get_mut(info_set_str).unwrap();
 
                     let utility: Vec<f64> = game_graph
                         .node(idx)
@@ -712,11 +865,13 @@ impl<G: Game> Cfr<G> {
                     let game = game.act(*action_idx);
                     self.best_response_value(&game, player, info_sets, br_strategies)
                 } else {
-                    let node = self
-                        .nodes
-                        .entry(info_set_str)
-                        .or_insert_with(|| Node::new(num_actions));
-                    let strategy = node.get_average_strategy();
+                    let strategy = {
+                        let node = self
+                            .nodes
+                            .entry(info_set_str)
+                            .or_insert_with(|| Node::new(num_actions));
+                        node.get_average_strategy()
+                    };
                     strategy
                         .iter()
                         .enumerate()
@@ -777,12 +932,14 @@ impl<G: Game> Cfr<G> {
                         self.info_sets_player(&next_game, player, po, info_sets);
                     }
                 } else {
-                    let info_set_str = game.info_set(current_player);
-                    let node = self
-                        .nodes
-                        .entry(info_set_str)
-                        .or_insert_with(|| Node::new(num_actions));
-                    let strategy = node.get_average_strategy();
+                    let strategy = {
+                        let info_set_str = game.info_set(current_player);
+                        let node = self
+                            .nodes
+                            .entry(info_set_str)
+                            .or_insert_with(|| Node::new(num_actions));
+                        node.get_average_strategy()
+                    };
                     for (action, prob) in strategy.iter().enumerate() {
                         let next_game = game.act(action);
                         self.info_sets_player(&next_game, player, po * prob, info_sets);
@@ -800,12 +957,22 @@ impl<G: Game> Cfr<G> {
             .unwrap_or_else(|| vec![1. / num_actions as f64; num_actions])
     }
 
-    pub fn nodes(&self) -> &FxHashMap<G::InfoSet, Node> {
+    pub fn nodes(&self) -> &DashMap<G::InfoSet, Node, FxBuildHasher> {
         &self.nodes
     }
 }
 
-impl<G: Game> Default for Cfr<G> {
+impl<G: Game + Send + Sync> IntoIterator for Cfr<G> {
+    type Item = (G::InfoSet, Node);
+
+    type IntoIter = dashmap::iter::OwningIter<G::InfoSet, Node, FxBuildHasher>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.nodes.into_iter()
+    }
+}
+
+impl<G: Game + Send + Sync> Default for Cfr<G> {
     fn default() -> Self {
         Self::new()
     }

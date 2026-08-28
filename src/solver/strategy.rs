@@ -110,18 +110,17 @@ pub struct Strategy {
 pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
 
 impl Strategy {
-    pub fn new<G: Game<InfoSet = MusInfoSet>>(
+    pub fn new<G: Game<InfoSet = MusInfoSet> + Send + Sync>(
         cfr: [[Cfr<G>; 40]; 40],
         trainer_config: &TrainerConfig,
         game_config: &GameConfig,
     ) -> Self {
-        let nodes = (0..40)
-            .map(|i| {
-                (0..40)
-                    .map(|j| {
-                        cfr[i][j]
-                            .nodes()
-                            .into_iter()
+        let nodes = cfr
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|cfr| {
+                        cfr.into_iter()
                             .map(|(info_set, node)| {
                                 let avg_strategy: Vec<u8> = node
                                     .get_average_strategy()

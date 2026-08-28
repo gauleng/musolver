@@ -12,12 +12,12 @@ fn main() {
     let strategy1: Vec<(_, _)> = rps
         .actions()
         .into_iter()
-        .zip(cfr.nodes()[&0].get_average_strategy())
+        .zip(cfr.nodes().get(&0).unwrap().get_average_strategy())
         .collect();
     let strategy2: Vec<(_, _)> = rps
         .actions()
         .into_iter()
-        .zip(cfr.nodes()[&1].get_average_strategy())
+        .zip(cfr.nodes().get(&1).unwrap().get_average_strategy())
         .collect();
     println!("Strategy player 1: {strategy1:?}");
     println!("Strategy player 2: {strategy2:?}");

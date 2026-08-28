@@ -54,6 +54,10 @@ struct Args {
     /// acota el árbol de juego, que sin él sería infinito. Por defecto: 1
     #[arg(long, default_value_t = 1)]
     max_mus_rounds: u8,
+
+    /// Número de hilos. Por defecto: 1
+    #[arg(short, long, default_value_t = 1)]
+    workers: usize,
 }
 
 fn parse_tantos(s: &str) -> Result<[u8; 2], String> {
@@ -82,6 +86,7 @@ fn main() {
 
     let trainer_config = TrainerConfig {
         iterations: args.iter,
+        workers: args.workers,
         method,
     };
     let game_config = GameConfig {
@@ -106,14 +111,16 @@ fn main() {
         }
     );
     println!("Tantos iniciales: {}:{}", tantos[0], tantos[1]);
+    println!("Rondas de mus: {}", game_config.max_mus_rounds);
+    println!("Workers: {}", trainer_config.workers);
 
     let trainer = Trainer::new().with_tantos(tantos);
-    let curr_time = Utc::now();
-    output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
-    println!("Exportando estrategias a {output_path:?}...");
     match game_config.game_type {
         GameType::LanceGame(lance) => {
             let cfr = trainer.train_lance_game(lance, game_config.abstract_game, &trainer_config);
+            let curr_time = Utc::now();
+            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
+            println!("Exportando estrategias a {output_path:?}...");
             export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::LanceGameTwoHands(_) => todo!(),
@@ -123,6 +130,9 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
+            let curr_time = Utc::now();
+            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
+            println!("Exportando estrategias a {output_path:?}...");
             export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::MusGameTwoHands => {
@@ -131,6 +141,9 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
+            let curr_time = Utc::now();
+            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
+            println!("Exportando estrategias a {output_path:?}...");
             export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
         GameType::MusGameTwoPlayers => {
@@ -139,13 +152,16 @@ fn main() {
                 game_config.max_mus_rounds,
                 &trainer_config,
             );
+            let curr_time = Utc::now();
+            output_path.push(format!("{}", curr_time.format("%Y-%m-%d %H%M")));
+            println!("Exportando estrategias a {output_path:?}...");
             export_cfr(&output_path, cfr, &trainer_config, &game_config)
         }
     }
     .expect("Error exportando estrategias.");
 }
 
-pub fn export_cfr<G: musolver::Game<InfoSet = MusInfoSet>>(
+pub fn export_cfr<G: musolver::Game<InfoSet = MusInfoSet> + Send + Sync>(
     path: &Path,
     cfr: [[Cfr<G>; 40]; 40],
     trainer_config: &TrainerConfig,

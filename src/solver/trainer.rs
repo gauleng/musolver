@@ -24,6 +24,7 @@ pub struct Trainer {
 pub struct TrainerConfig {
     pub method: CfrMethod,
     pub iterations: usize,
+    pub workers: usize,
 }
 
 impl Trainer {
@@ -177,7 +178,8 @@ impl Default for Trainer {
 
 fn train_game<G>(game: &G, trainer_config: &TrainerConfig) -> Cfr<G>
 where
-    G: Game + Debug + Clone,
+    G: Game + Debug + Clone + Send + Sync,
+    G::InfoSet: Send + Sync,
 {
     use std::time::Instant;
 
@@ -202,6 +204,9 @@ where
                 ));
             }
         });
+    if trainer_config.workers > 1 {
+        cfr = cfr.parallel_iterations(trainer_config.workers);
+    }
     cfr.train(game, trainer_config.iterations);
     let elapsed = now.elapsed();
     println!("Elapsed: {elapsed:.2?}");

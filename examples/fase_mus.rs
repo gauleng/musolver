@@ -13,10 +13,11 @@ fn main() {
 
     cfr.nodes()
         .iter()
-        .filter(|(_, node)| node.get_average_strategy()[0] > 0.5)
-        .for_each(|(info_set, node)| {
+        .filter(|node| node.get_average_strategy()[0] > 0.5)
+        .for_each(|node| {
             println!(
-                "Info set: {info_set}, strategy: {:?}",
+                "Info set: {}, strategy: {:?}",
+                node.key(),
                 node.get_average_strategy()
             );
         });
