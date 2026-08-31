@@ -44,7 +44,7 @@ impl Inspector {
                                 self.screen = Screen::Explorer(screen::ActionPath::new(strategy));
                             }
                             screen::LoaderAction::OpenGame(strategy) => {
-                                let (screen, task) = screen::MusArenaUi::new(strategy.clone());
+                                let (screen, task) = screen::MusArenaUi::new(strategy);
                                 self.screen = Screen::Game(screen);
                                 return task.map(Message::Game);
                             }

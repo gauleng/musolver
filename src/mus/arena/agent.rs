@@ -6,7 +6,7 @@ use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 use crate::{
     Game,
     mus::{Accion, CuatroJugadores, DosJugadores, FaseEnvites, ModalidadMus},
-    solver::{LanceGame, Strategy},
+    solver::{LanceGame, StrategyReader},
 };
 
 #[async_trait]
@@ -53,13 +53,13 @@ impl Agent<CuatroJugadores> for AgenteAleatorio {
 
 #[derive(Debug, Clone)]
 pub struct AgenteMusolver {
-    strategy: Strategy,
+    strategy: Arc<StrategyReader>,
     initial_score: [u8; 2],
     history: Arc<Mutex<Vec<Accion>>>,
 }
 
 impl AgenteMusolver {
-    pub fn new(strategy: Strategy, history: Arc<Mutex<Vec<Accion>>>) -> Self {
+    pub fn new(strategy: Arc<StrategyReader>, history: Arc<Mutex<Vec<Accion>>>) -> Self {
         Self {
             strategy,
             initial_score: [0, 0],

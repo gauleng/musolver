@@ -4,6 +4,7 @@ use std::sync::Arc;
 use arrayvec::ArrayVec;
 use itertools::Either;
 
+use crate::solver::SolverError;
 use crate::{
     Game, NodeType,
     mus::{
@@ -55,10 +56,9 @@ impl MusGame {
         }
     }
 
-    pub fn with_hands(self, manos: [Mano; 4]) -> Self {
-        let mut new_game = self.clone();
-        new_game.set_hands(manos);
-        new_game
+    pub fn with_hands(mut self, manos: [Mano; 4]) -> Self {
+        self.set_hands(manos);
+        self
     }
 
     fn set_hands(&mut self, manos: [Mano; 4]) {
@@ -174,7 +174,7 @@ impl MusGame {
         acciones
     }
 
-    pub fn act_with_action(&mut self, action: Accion) {
+    pub fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
         self.last_action = Some(action);
         let (turno, phase, new_phase) = {
             let partida = self
@@ -193,20 +193,20 @@ impl MusGame {
         match phase {
             Some(FasePartida::Mus) => {
                 if is_first_partner && action != Accion::NoMus {
-                    self.info_set_builder.set_hidden_action(Some(action));
+                    self.info_set_builder.set_hidden_action(Some(action))?;
                 } else {
                     // Un NoMus del primer miembro corta el mus de inmediato: cierra la decisión de
                     // la pareja sin que el compañero llegue a votar.
-                    self.info_set_builder.step_mus(action);
-                    self.info_set_builder.set_hidden_action(None);
+                    self.info_set_builder.step_mus(action)?;
+                    self.info_set_builder.set_hidden_action(None)?;
                 }
             }
             Some(FasePartida::Envites(_)) => {
                 if is_first_partner {
-                    self.info_set_builder.set_hidden_action(Some(action));
+                    self.info_set_builder.set_hidden_action(Some(action))?;
                 } else {
-                    self.info_set_builder.step_lance(action);
-                    self.info_set_builder.set_hidden_action(None);
+                    self.info_set_builder.step_lance(action)?;
+                    self.info_set_builder.set_hidden_action(None)?;
                 }
             }
             _ => {}
@@ -222,7 +222,7 @@ impl MusGame {
             (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
                 let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
                 self.info_set_builder
-                    .set_descartes(turno.player_id() as usize, &descartes);
+                    .set_descartes(turno.player_id() as usize, &descartes)?;
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
                 self.transition_to_envites(lance);
@@ -242,6 +242,7 @@ impl MusGame {
             }
             _ => {}
         }
+        Ok(())
     }
 }
 
@@ -338,7 +339,9 @@ impl Game for MusGame {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        new_game.act_with_action(action);
+        new_game
+            .act_with_action(action)
+            .unwrap_or_else(|err| panic!("Invalid action: {err}"));
         new_game
     }
 
@@ -477,7 +480,7 @@ impl MusGameTwoHands {
         actions(partida)
     }
 
-    pub fn act_with_action(&mut self, action: Accion) {
+    pub fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
         let (player_id, phase, new_phase) = {
             let partida = self
                 .partida
@@ -501,14 +504,14 @@ impl MusGameTwoHands {
         match phase {
             Some(FasePartida::Mus) => {
                 if is_first_partner && action != Accion::NoMus {
-                    self.info_set_builder.set_hidden_action(Some(action));
+                    self.info_set_builder.set_hidden_action(Some(action))?;
                 } else {
-                    self.info_set_builder.step_mus(action);
-                    self.info_set_builder.set_hidden_action(None);
+                    self.info_set_builder.step_mus(action)?;
+                    self.info_set_builder.set_hidden_action(None)?;
                 }
             }
             Some(FasePartida::Envites(_)) => {
-                self.info_set_builder.step_lance(action);
+                self.info_set_builder.step_lance(action)?;
             }
             _ => {}
         }
@@ -522,7 +525,7 @@ impl MusGameTwoHands {
             }
             (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
                 let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
-                self.info_set_builder.set_descartes(player_id, &descartes);
+                self.info_set_builder.set_descartes(player_id, &descartes)?;
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
                 self.transition_to_envites(lance);
@@ -542,6 +545,7 @@ impl MusGameTwoHands {
             }
             _ => {}
         }
+        Ok(())
     }
 }
 
@@ -641,7 +645,9 @@ impl Game for MusGameTwoHands {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        new_game.act_with_action(action);
+        new_game
+            .act_with_action(action)
+            .unwrap_or_else(|err| panic!("Invalid action: {err}"));
         new_game
     }
 
@@ -799,7 +805,7 @@ impl MusGameTwoPlayers {
         actions(partida)
     }
 
-    pub fn act_with_action(&mut self, action: Accion) {
+    pub fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
         let (turno, phase, new_phase) = {
             let partida = self
                 .partida
@@ -816,10 +822,10 @@ impl MusGameTwoPlayers {
         };
         match phase {
             Some(FasePartida::Mus) => {
-                self.info_set_builder.step_mus(action);
+                self.info_set_builder.step_mus(action)?;
             }
             Some(FasePartida::Envites(_)) => {
-                self.info_set_builder.step_lance(action);
+                self.info_set_builder.step_lance(action)?;
             }
             _ => {}
         }
@@ -833,7 +839,7 @@ impl MusGameTwoPlayers {
             }
             (Some(FasePartida::Descartes), Some(FasePartida::DescartePendiente)) => {
                 let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
-                self.info_set_builder.set_descartes(turno, &descartes);
+                self.info_set_builder.set_descartes(turno, &descartes)?;
             }
             (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
                 self.transition_to_envites(lance);
@@ -853,6 +859,7 @@ impl MusGameTwoPlayers {
             }
             _ => {}
         }
+        Ok(())
     }
 }
 
@@ -944,7 +951,9 @@ impl Game for MusGameTwoPlayers {
     fn act(&self, action_id: usize) -> Self {
         let mut new_game = self.clone();
         let action = new_game.actions()[action_id];
-        new_game.act_with_action(action);
+        new_game
+            .act_with_action(action)
+            .unwrap_or_else(|err| panic!("Invalid action: {err}"));
         new_game
     }
 
@@ -957,6 +966,89 @@ impl Game for MusGameTwoPlayers {
     }
 }
 
+/// Juegos que exponen sus acciones legales como `Accion`, además de las operaciones genéricas de
+/// [`Game`]. Necesario para poder repetir un historial y consultar la estrategia sin duplicar
+/// [`Strategy::actions_for_game`] por cada tipo concreto de partida.
+pub trait GenericMus {
+    fn actions(&self) -> ArrayVec<Accion, 15>;
+    fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError>;
+    fn clone_box(&self) -> Box<dyn GenericMus>;
+    fn info_set_builder(&self) -> &MusInfoSetBuilder;
+
+    fn phase(&self) -> Option<FasePartida>;
+}
+
+impl Clone for Box<dyn GenericMus> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+impl GenericMus for MusGame {
+    fn actions(&self) -> ArrayVec<Accion, 15> {
+        self.actions()
+    }
+
+    fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
+        self.act_with_action(action)
+    }
+
+    fn clone_box(&self) -> Box<dyn GenericMus> {
+        Box::new(self.clone())
+    }
+
+    fn info_set_builder(&self) -> &MusInfoSetBuilder {
+        &self.info_set_builder
+    }
+
+    fn phase(&self) -> Option<FasePartida> {
+        self.partida.as_ref().and_then(|partida| partida.fase())
+    }
+}
+
+impl GenericMus for MusGameTwoHands {
+    fn actions(&self) -> ArrayVec<Accion, 15> {
+        self.actions()
+    }
+
+    fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
+        self.act_with_action(action)
+    }
+
+    fn clone_box(&self) -> Box<dyn GenericMus> {
+        Box::new(self.clone())
+    }
+
+    fn info_set_builder(&self) -> &MusInfoSetBuilder {
+        &self.info_set_builder
+    }
+
+    fn phase(&self) -> Option<FasePartida> {
+        self.partida.as_ref().and_then(|partida| partida.fase())
+    }
+}
+
+impl GenericMus for MusGameTwoPlayers {
+    fn actions(&self) -> ArrayVec<Accion, 15> {
+        self.actions()
+    }
+
+    fn act_with_action(&mut self, action: Accion) -> Result<(), SolverError> {
+        self.act_with_action(action)
+    }
+
+    fn clone_box(&self) -> Box<dyn GenericMus> {
+        Box::new(self.clone())
+    }
+
+    fn info_set_builder(&self) -> &MusInfoSetBuilder {
+        &self.info_set_builder
+    }
+
+    fn phase(&self) -> Option<FasePartida> {
+        self.partida.as_ref().and_then(|partida| partida.fase())
+    }
+}
 fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 15> {
     match partida.fase() {
         Some(FasePartida::Mus) => [Accion::Mus, Accion::NoMus].into_iter().collect(),
@@ -1115,7 +1207,7 @@ enum CardSource {
 pub type MusInfoSet = (u64, u64);
 
 #[derive(Debug, Clone)]
-struct MusInfoSetBuilder {
+pub struct MusInfoSetBuilder {
     public_history: u64,
     private_history: [u64; 4],
 
@@ -1146,7 +1238,7 @@ impl MusInfoSetBuilder {
         );
     }
 
-    fn set_descartes(&mut self, player_id: usize, descartes: &[Carta]) {
+    fn set_descartes(&mut self, player_id: usize, descartes: &[Carta]) -> Result<(), SolverError> {
         let code_offset = match descartes.len() {
             1 => 1,
             2 => 9,
@@ -1161,35 +1253,45 @@ impl MusInfoSetBuilder {
             self.tables.descartes.offset,
             self.tables.descartes.width,
         );
-        self.step_descartes(descartes.len());
+        self.step_descartes(descartes.len())?;
+        Ok(())
     }
 
     fn begin_mus(&mut self) {
         self.current_node = 0;
     }
 
-    fn step_mus(&mut self, action: Accion) {
-        self.current_node = self.tables.mus_sequence.step(self.current_node, action);
+    fn step_mus(&mut self, action: Accion) -> Result<(), SolverError> {
+        self.current_node = self
+            .tables
+            .mus_sequence
+            .step(self.current_node, action)
+            .ok_or(SolverError::ActionNotInAbstraction(action))?;
         Self::put(
             &mut self.public_history,
             self.current_node as u64,
             self.tables.history_mus.offset,
             self.tables.history_mus.width,
-        )
+        );
+        Ok(())
     }
 
     fn begin_descartes(&mut self) {
         self.current_node = 1;
     }
 
-    fn step_descartes(&mut self, num_descartes: usize) {
+    fn step_descartes(&mut self, num_descartes: usize) -> Result<(), SolverError> {
+        if !(1..=4).contains(&num_descartes) {
+            return Err(SolverError::InvalidDiscardsNumber(num_descartes));
+        }
         self.current_node = self.current_node * 4 + (num_descartes - 1) as u32;
         Self::put(
             &mut self.public_history,
             self.current_node as u64,
             self.tables.history_descartes.offset,
             self.tables.history_descartes.width,
-        )
+        );
+        Ok(())
     }
 
     fn begin_lance(&mut self, lance: &Lance) {
@@ -1203,27 +1305,39 @@ impl MusInfoSetBuilder {
         self.current_node = 0;
     }
 
-    fn step_lance(&mut self, action: Accion) {
+    fn step_lance(&mut self, action: Accion) -> Result<(), SolverError> {
         let lance_idx =
             self.current_lance
                 .expect("begin_lance should be called before step_lance") as usize;
-        self.current_node = self.tables.lance_sequence.step(self.current_node, action);
+        let new_node = self
+            .tables
+            .lance_sequence
+            .step(self.current_node, action)
+            .ok_or(SolverError::ActionNotInAbstraction(action))?;
+        self.current_node = new_node;
         Self::put(
             &mut self.public_history,
             self.current_node as u64,
             self.tables.history_lance[lance_idx].offset,
             self.tables.history_lance[lance_idx].width,
-        )
+        );
+        Ok(())
     }
 
-    fn set_hidden_action(&mut self, action: Option<Accion>) {
-        let code = action.map_or(0, |a| 1 + canonical_envite_action(a) as u64);
+    fn set_hidden_action(&mut self, action: Option<Accion>) -> Result<(), SolverError> {
+        let code = match action {
+            Some(a) => {
+                1 + canonical_envite_action(a).ok_or(SolverError::ActionNotInAbstraction(a))? as u64
+            }
+            None => 0,
+        };
         Self::put(
             &mut self.public_history,
             code,
             self.tables.hidden_action.offset,
             self.tables.hidden_action.width,
-        )
+        );
+        Ok(())
     }
 
     fn set_jugada(&mut self, lance: &Lance, manos: &[Mano]) {
@@ -1405,7 +1519,11 @@ impl MusInfoSetTables {
             let actions =
                 actions_envite(estado_lance.ultima_apuesta(), estado_lance.apuesta_maxima());
             for action in actions {
-                path.push(canonical_envite_action(action) as u8);
+                path.push(
+                    canonical_envite_action(action)
+                        .expect("actions_envite() should return valid actions")
+                        as u8,
+                );
                 let mut new_estado_lance = estado_lance.clone();
                 match new_estado_lance.actuar(action).unwrap() {
                     Some(_) => a(new_estado_lance, path, out),
@@ -1477,22 +1595,24 @@ impl BettingSequence {
         self.nodes.len()
     }
 
-    fn step(&self, node: u32, action: Accion) -> u32 {
-        self.nodes[node as usize][canonical_envite_action(action)] as u32
+    fn step(&self, node: u32, action: Accion) -> Option<u32> {
+        let canonical = canonical_envite_action(action)?;
+        let next = self.nodes[node as usize][canonical];
+        u32::try_from(next).ok()
     }
 }
 
-fn canonical_envite_action(action: Accion) -> usize {
+fn canonical_envite_action(action: Accion) -> Option<usize> {
     match action {
-        Accion::NoMus => 0,
-        Accion::Mus => 1,
-        Accion::Paso => 0,
-        Accion::Quiero => 1,
-        Accion::Envido(2) => 2,
-        Accion::Envido(5) => 3,
-        Accion::Envido(10) => 4,
-        Accion::Ordago => 5,
-        other => unreachable!("acción inesperada en el árbol de apuestas: {other:?}"),
+        Accion::NoMus => Some(0),
+        Accion::Mus => Some(1),
+        Accion::Paso => Some(0),
+        Accion::Quiero => Some(1),
+        Accion::Envido(2) => Some(2),
+        Accion::Envido(5) => Some(3),
+        Accion::Envido(10) => Some(4),
+        Accion::Ordago => Some(5),
+        _ => None,
     }
 }
 
@@ -1611,20 +1731,20 @@ mod tests {
     fn two_players_actions() {
         let manos = dos_manos();
         let mut game = MusGameTwoPlayers::new([35, 35], false, 1).with_hands(manos.clone());
-        game.act_with_action(Accion::NoMus);
-        game.act_with_action(Accion::Envido(2));
-        game.act_with_action(Accion::Envido(2));
+        game.act_with_action(Accion::NoMus).unwrap();
+        game.act_with_action(Accion::Envido(2)).unwrap();
+        game.act_with_action(Accion::Envido(2)).unwrap();
         assert_eq!(
             game.actions().to_vec(),
             vec![Accion::Paso, Accion::Quiero, Accion::Ordago]
         );
         let mut game = MusGameTwoPlayers::new([37, 37], false, 1).with_hands(manos.clone());
-        game.act_with_action(Accion::NoMus);
+        game.act_with_action(Accion::NoMus).unwrap();
         assert_eq!(
             game.actions().to_vec(),
             vec![Accion::Paso, Accion::Envido(2), Accion::Ordago]
         );
-        game.act_with_action(Accion::Envido(2));
+        game.act_with_action(Accion::Envido(2)).unwrap();
         assert_eq!(
             game.actions().to_vec(),
             vec![Accion::Paso, Accion::Quiero, Accion::Ordago]
@@ -1635,7 +1755,7 @@ mod tests {
     fn mus_game_hidden_first_partner() {
         let mut game = MusGame::new([38, 37], false, 0).with_hands(cuatro_manos());
         assert!(matches!(game.current_node(), NodeType::Player(0, _)));
-        game.act_with_action(Accion::Ordago);
+        game.act_with_action(Accion::Ordago).unwrap();
         assert!(matches!(game.current_node(), NodeType::Player(2, _)));
         assert_eq!(game.actions().to_vec(), vec![Accion::Ordago]);
     }
@@ -1645,9 +1765,9 @@ mod tests {
         let base = MusGame::new([0, 0], false, 0).with_hands(cuatro_manos());
 
         let mut tras_paso = base.clone();
-        tras_paso.act_with_action(Accion::Paso);
+        tras_paso.act_with_action(Accion::Paso).unwrap();
         let mut tras_ordago = base.clone();
-        tras_ordago.act_with_action(Accion::Ordago);
+        tras_ordago.act_with_action(Accion::Ordago).unwrap();
 
         assert!(matches!(tras_paso.current_node(), NodeType::Player(2, _)));
         assert!(matches!(tras_ordago.current_node(), NodeType::Player(2, _)));

@@ -1,48 +1,22 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fs::{self},
+    fs::{self, File},
     path::Path,
+    sync::Arc,
 };
 
 use arrayvec::ArrayVec;
+use memmap2::Mmap;
 use walkdir::WalkDir;
 
 use crate::{
     Cfr, Game, NodeType,
-    mus::{Accion, Carta, FasePartida, Lance, Mano},
-    solver::{MusGame, MusGameTwoPlayers, MusInfoSet},
+    mus::{Accion, Carta, FasePartida, Lance, Mano, Turno},
+    solver::{GenericMus, MusGame, MusGameTwoHands, MusGameTwoPlayers, MusInfoSet},
 };
 
 use super::{SolverError, TrainerConfig};
-
-/// Juegos que exponen sus acciones legales como `Accion`, además de las operaciones genéricas de
-/// [`Game`]. Necesario para poder repetir un historial y consultar la estrategia sin duplicar
-/// [`Strategy::actions_for_game`] por cada tipo concreto de partida.
-trait ActionsGame: Game<InfoSet = MusInfoSet> {
-    fn actions(&self) -> ArrayVec<Accion, 15>;
-    fn act_with_action(&mut self, action: Accion);
-}
-
-impl ActionsGame for MusGame {
-    fn actions(&self) -> ArrayVec<Accion, 15> {
-        MusGame::actions(self)
-    }
-
-    fn act_with_action(&mut self, action: Accion) {
-        self.act_with_action(action);
-    }
-}
-
-impl ActionsGame for MusGameTwoPlayers {
-    fn actions(&self) -> ArrayVec<Accion, 15> {
-        MusGameTwoPlayers::actions(self)
-    }
-
-    fn act_with_action(&mut self, action: Accion) {
-        self.act_with_action(action);
-    }
-}
 
 #[derive(
     Debug,
@@ -74,8 +48,6 @@ pub enum GameType {
 pub struct GameConfig {
     pub game_type: GameType,
     pub abstract_game: bool,
-    /// Número máximo de rondas de mus. Con cero rondas se juega a primeras dadas. Acota el
-    /// árbol de juego, que sin este límite es infinito. Solo aplica a las partidas completas.
     pub max_mus_rounds: u8,
 }
 
@@ -93,53 +65,215 @@ pub struct StrategyConfig {
     pub game_config: GameConfig,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    rkyv::Archive,
-)]
-pub struct Strategy {
-    pub strategy_config: StrategyConfig,
-    pub nodes: Vec<Vec<HashMap<MusInfoSet, Vec<u8>>>>,
+#[derive(Debug)]
+pub struct StrategyReader {
+    file: Mmap,
+    strategy_config: StrategyConfig,
 }
 
-pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
+pub struct Cursor {
+    reader: Arc<StrategyReader>,
+    history: Vec<Box<dyn GenericMus>>,
+    actions: Vec<Accion>,
+    position: usize,
+    tantos: [u8; 2],
+    pares: [bool; 4],
+    juego: [bool; 4],
+}
 
-impl Strategy {
-    pub fn new<G: Game<InfoSet = MusInfoSet> + Send + Sync>(
-        cfr: [[Cfr<G>; 40]; 40],
-        trainer_config: &TrainerConfig,
-        game_config: &GameConfig,
-    ) -> Self {
-        let nodes = cfr
-            .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(|cfr| {
-                        cfr.into_iter()
-                            .map(|(info_set, node)| {
-                                let avg_strategy: Vec<u8> = node
-                                    .get_average_strategy()
-                                    .into_iter()
-                                    .map(|v| (v * 100.).round() as u8)
-                                    .collect();
-                                (info_set.to_owned(), avg_strategy)
-                            })
-                            .collect()
-                    })
-                    .collect()
-            })
-            .collect();
-        Self {
-            strategy_config: StrategyConfig {
-                trainer_config: trainer_config.clone(),
-                game_config: game_config.clone(),
+pub enum HandKind {
+    OneHand(Mano),
+    TwoHands(Mano, Mano),
+}
+
+pub struct HandStrategy {
+    hand: HandKind,
+    actions: Vec<Accion>,
+    strategy: Vec<f64>,
+    reach_probability: f64,
+}
+
+pub enum CursorNode {
+    Play(Vec<Accion>),
+    Discard,
+    Terminal,
+}
+
+pub enum CursorMove<'a> {
+    Play(Accion),
+    Discard(DiscardAction<'a>),
+}
+
+pub enum DiscardAction<'a> {
+    Count(usize),
+    Cards(&'a [Carta]),
+}
+
+impl Cursor {
+    fn new(reader: Arc<StrategyReader>) -> Self {
+        let tantos = [0; 2];
+        let pares = [true; 4];
+        let juego = [true; 4];
+        let game = Self::init_game(tantos, &reader.strategy_config.game_config, &pares, &juego);
+        Cursor {
+            history: vec![game],
+            reader,
+            tantos,
+            pares,
+            juego,
+            position: 0,
+            actions: vec![],
+        }
+    }
+
+    pub fn set_tantos(&mut self, tantos: [u8; 2]) {
+        self.tantos = tantos;
+        self.history.clear();
+        self.history.push(Self::init_game(
+            self.tantos,
+            &self.reader.strategy_config.game_config,
+            &self.pares,
+            &self.juego,
+        ));
+    }
+
+    pub fn set_pares(&mut self, pares: &[bool]) {}
+
+    pub fn set_juego(&mut self, juego: &[bool]) {}
+
+    pub fn act(&mut self, action: CursorMove) -> Result<(), SolverError> {
+        let game = &self.history[self.position()];
+        let mut new_game = game.clone();
+        new_game.act_with_action(action)?;
+        self.history.push(new_game);
+        Ok(())
+    }
+
+    pub fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    pub fn strategy_for_hand(&self, mano: &HandKind) -> Result<Option<HandStrategy>, SolverError> {
+        todo!();
+    }
+
+    pub fn strategies(&self) -> Result<Vec<HandStrategy>, SolverError> {
+        todo!();
+    }
+
+    pub fn strategies_with_kept(&self, kept: &HandKind) -> Result<Vec<HandStrategy>, SolverError> {
+        todo!();
+    }
+
+    pub fn cursor_node(&self) -> CursorNode {
+        let game = &self.history[self.position()];
+        match game.phase() {
+            Some(phase) => match phase {
+                FasePartida::Mus | FasePartida::Envites(_) => {
+                    CursorNode::Play(game.actions().to_vec())
+                }
+                FasePartida::Descartes => CursorNode::Discard,
+                FasePartida::DescartePendiente => todo!(),
             },
-            nodes,
+            None => CursorNode::Terminal,
+        }
+    }
+
+    pub fn turn(&self) -> Option<Turno> {
+        //self.history[self.position]
+        None
+    }
+
+    pub fn phase(&self) -> Option<FasePartida> {
+        todo!();
+    }
+
+    pub fn seek(&mut self, new_position: usize) {
+        self.position = new_position.min(self.history.len())
+    }
+
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
+    fn init_game(
+        tantos: [u8; 2],
+        game_config: &GameConfig,
+        pares: &[bool],
+        juego: &[bool],
+    ) -> Box<dyn GenericMus> {
+        let manos: Vec<Mano> = std::iter::zip(pares, juego)
+            .map(|(pares, juego)| Self::example_hand(*pares, *juego))
+            .collect();
+        let abstract_game = game_config.abstract_game;
+        let max_mus_rounds = game_config.max_mus_rounds;
+        match game_config.game_type {
+            GameType::LanceGame(_lance) => todo!(),
+            GameType::LanceGameTwoHands(_lance) => todo!(),
+            GameType::MusGame => {
+                let manos: [Mano; 4] = std::array::from_fn(|i| manos[i].clone());
+                Box::new(MusGame::new(tantos, abstract_game, max_mus_rounds).with_hands(manos))
+            }
+            GameType::MusGameTwoHands => {
+                let manos: [Mano; 4] = std::array::from_fn(|i| manos[i].clone());
+                Box::new(
+                    MusGameTwoHands::new(tantos, abstract_game, max_mus_rounds).with_hands(manos),
+                )
+            }
+            GameType::MusGameTwoPlayers => {
+                let manos: [Mano; 2] = std::array::from_fn(|i| manos[i].clone());
+                Box::new(
+                    MusGameTwoPlayers::new(tantos, abstract_game, max_mus_rounds).with_hands(manos),
+                )
+            }
+        }
+    }
+
+    fn example_hand(pares: bool, juego: bool) -> Mano {
+        match (pares, juego) {
+            (false, false) => Mano::new([Carta::Seis, Carta::Cinco, Carta::Cuatro, Carta::As]),
+            (true, false) => Mano::new([Carta::As, Carta::As, Carta::As, Carta::As]),
+            (false, true) => Mano::new([Carta::Rey, Carta::Caballo, Carta::Sota, Carta::As]),
+            (true, true) => Mano::new([Carta::Rey, Carta::Rey, Carta::Rey, Carta::Rey]),
+        }
+    }
+}
+
+impl StrategyReader {
+    pub fn from_rkyv(path: impl AsRef<Path>) -> Result<Self, SolverError> {
+        let file = File::open(path.as_ref()).map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        let file = unsafe { Mmap::map(&file) }.map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        let strategy = unsafe { rkyv::access_unchecked::<ArchivedStrategy>(&file) };
+
+        let strategy_config =
+            rkyv::deserialize::<StrategyConfig, rkyv::rancor::Error>(&strategy.strategy_config)
+                .map_err(SolverError::ParseStrategyRkyvError)?;
+        Ok(Self {
+            file,
+            strategy_config,
+        })
+    }
+
+    pub fn cursor(self: Arc<Self>) -> Cursor {
+        Cursor::new(self)
+    }
+
+    pub fn strategy_config(&self) -> &StrategyConfig {
+        &self.strategy_config
+    }
+
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, SolverError> {
+        let path = path.as_ref();
+
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("rkyv") => Self::from_rkyv(path),
+            _ => Err(SolverError::UnsupportedFileFormat(
+                path.display().to_string(),
+            )),
         }
     }
 
@@ -244,7 +378,7 @@ impl Strategy {
                 ]);
                 history
                     .iter()
-                    .for_each(|action| game.act_with_action(*action));
+                    .for_each(|action| game.act_with_action(*action).unwrap());
                 let mus_game = game.mus_game();
                 let lance = mus_game.unwrap().fase().unwrap();
                 let turno = game.current_node();
@@ -261,7 +395,7 @@ impl Strategy {
                 .with_hands([manos[0].clone(), manos[1].clone()]);
                 history
                     .iter()
-                    .for_each(|action| game.act_with_action(*action));
+                    .for_each(|action| game.act_with_action(*action).unwrap());
                 let mus_game = game.mus_game();
                 let lance = mus_game.unwrap().fase().unwrap();
                 let turno = game.current_node();
@@ -269,6 +403,10 @@ impl Strategy {
                 GameStateResult(lance, turno, actions.to_vec())
             }
         }
+    }
+
+    fn archived(&self) -> &ArchivedStrategy {
+        unsafe { rkyv::access_unchecked::<ArchivedStrategy>(&self.file) }
     }
 
     fn example_hand(pares: bool, juego: bool) -> Mano {
@@ -280,7 +418,7 @@ impl Strategy {
         }
     }
 
-    fn actions_for_game<G: ActionsGame>(
+    fn actions_for_game<G: GenericMus + Game<InfoSet = MusInfoSet>>(
         &self,
         tantos: [u8; 2],
         game: G,
@@ -296,11 +434,15 @@ impl Strategy {
         };
         let actions = game.actions().to_vec();
         let info_set = game.info_set(turno);
-        let strategy = self.nodes[tantos[0] as usize][tantos[1] as usize]
-            .get(&info_set)
-            .cloned()
-            .map(|v| v.into_iter().map(f64::from).map(|v| v / 100.).collect());
+        let strategy = self.strategy(tantos, &info_set);
         Some(actions).zip(strategy)
+    }
+
+    fn strategy(&self, tantos: [u8; 2], info_set: &MusInfoSet) -> Option<Vec<f64>> {
+        let archived = &self.archived().nodes[tantos[0] as usize][tantos[1] as usize];
+        archived
+            .get_with(info_set, |q, k| k == q)
+            .map(|bytes| bytes.iter().map(|v| f64::from(*v) / 100.).collect())
     }
     //pub fn best_response_value(
     //    &self,
@@ -396,53 +538,6 @@ impl Strategy {
     //    }
     //}
 
-    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<(), SolverError> {
-        let contents = serde_json::to_string(self).map_err(SolverError::ParseStrategyJsonError)?;
-        fs::write(path.as_ref(), contents).map_err(|err| {
-            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
-        })?;
-        Ok(())
-    }
-
-    pub fn to_rkyv(&self, path: impl AsRef<Path>) -> Result<(), SolverError> {
-        let contents = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(SolverError::ParseStrategyRkyvError)?;
-        fs::write(path.as_ref(), contents).map_err(|err| {
-            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
-        })?;
-        Ok(())
-    }
-
-    pub fn from_json(path: impl AsRef<Path>) -> Result<Self, SolverError> {
-        let contents = fs::read_to_string(path.as_ref()).map_err(|err| {
-            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
-        })?;
-        let n: Self =
-            serde_json::from_str(&contents).map_err(SolverError::ParseStrategyJsonError)?;
-        Ok(n)
-    }
-
-    pub fn from_rkyv(path: impl AsRef<Path>) -> Result<Self, SolverError> {
-        let contents = fs::read(path.as_ref()).map_err(|err| {
-            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
-        })?;
-        let n: Self = rkyv::from_bytes::<Self, rkyv::rancor::Error>(&contents)
-            .map_err(SolverError::ParseStrategyRkyvError)?;
-        Ok(n)
-    }
-
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, SolverError> {
-        let path = path.as_ref();
-
-        match path.extension().and_then(|ext| ext.to_str()) {
-            Some("json") => Self::from_json(path),
-            Some("rkyv") => Self::from_rkyv(path),
-            _ => Err(SolverError::UnsupportedFileFormat(
-                path.display().to_string(),
-            )),
-        }
-    }
-
     pub fn find(path: impl AsRef<Path>) -> Vec<(String, StrategyConfig)> {
         let walker = WalkDir::new(path)
             .sort_by(|a, b| match (a.metadata(), b.metadata()) {
@@ -498,5 +593,74 @@ impl Strategy {
             }
         }
         result
+    }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    rkyv::Archive,
+)]
+
+pub struct Strategy {
+    pub strategy_config: StrategyConfig,
+    pub nodes: Vec<Vec<HashMap<MusInfoSet, Vec<u8>>>>,
+}
+
+pub struct GameStateResult(pub FasePartida, pub NodeType, pub Vec<Accion>);
+
+impl Strategy {
+    pub fn new<G: Game<InfoSet = MusInfoSet> + Send + Sync>(
+        cfr: [[Cfr<G>; 40]; 40],
+        trainer_config: &TrainerConfig,
+        game_config: &GameConfig,
+    ) -> Self {
+        let nodes = cfr
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|cfr| {
+                        cfr.into_iter()
+                            .map(|(info_set, node)| {
+                                let avg_strategy: Vec<u8> = node
+                                    .get_average_strategy()
+                                    .into_iter()
+                                    .map(|v| (v * 100.).round() as u8)
+                                    .collect();
+                                (info_set.to_owned(), avg_strategy)
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect();
+        Self {
+            strategy_config: StrategyConfig {
+                trainer_config: trainer_config.clone(),
+                game_config: game_config.clone(),
+            },
+            nodes,
+        }
+    }
+
+    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<(), SolverError> {
+        let contents = serde_json::to_string(self).map_err(SolverError::ParseStrategyJsonError)?;
+        fs::write(path.as_ref(), contents).map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        Ok(())
+    }
+
+    pub fn to_rkyv(&self, path: impl AsRef<Path>) -> Result<(), SolverError> {
+        let contents = rkyv::to_bytes::<rkyv::rancor::Error>(self)
+            .map_err(SolverError::ParseStrategyRkyvError)?;
+        fs::write(path.as_ref(), contents).map_err(|err| {
+            SolverError::InvalidStrategyPath(err, path.as_ref().display().to_string())
+        })?;
+        Ok(())
     }
 }

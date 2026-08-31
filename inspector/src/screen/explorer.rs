@@ -20,7 +20,7 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameStateResult, GameType, HandConfiguration, Strategy,
+        GameStateResult, GameType, HandConfiguration, StrategyReader,
     },
 };
 
@@ -31,7 +31,7 @@ pub enum ViewMode {
 }
 
 pub struct ActionPath {
-    pub strategy: Strategy,
+    pub strategy: StrategyReader,
     pub buckets: Buckets,
 
     pub selected_tantos_mano: Option<u8>,
@@ -53,8 +53,8 @@ pub struct ActionPath {
 }
 
 impl ActionPath {
-    pub fn new(strategy: Strategy) -> Self {
-        let game_type = strategy.strategy_config.game_config.game_type;
+    pub fn new(strategy: StrategyReader) -> Self {
+        let game_type = strategy.strategy_config().game_config.game_type;
         let strategies = match game_type {
             GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => match lance {
                 Lance::Grande | Lance::Chica | Lance::Punto => vec![HandConfiguration::CuatroManos],
@@ -136,7 +136,7 @@ impl ActionPath {
                 GameType::MusGameTwoHands => ViewMode::TwoHands,
                 _ => ViewMode::OneHand,
             },
-            strategy: strategy.to_owned(),
+            strategy,
             selected_tantos_mano: Some(0),
             tantos_mano: Vec::from_iter(0..40),
             selected_tantos_postre: Some(0),
@@ -292,7 +292,7 @@ impl ActionPath {
                         .into_iter()
                         .fold(vec![0.; n_actions], |avg, v| {
                             zip(avg, &v.1)
-                                .map(|(a, &v)| a + v as f64 / n_hands as f64)
+                                .map(|(a, &v)| a + v / n_hands as f64)
                                 .collect()
                         });
                 Some((actions, avg_probability))
@@ -370,7 +370,7 @@ impl ActionPath {
     }
 
     pub fn view(&self) -> Element<'_, ExplorerEvent> {
-        let top_row = match self.strategy.strategy_config.game_config.game_type {
+        let top_row = match self.strategy.strategy_config().game_config.game_type {
             GameType::LanceGame(_) | GameType::LanceGameTwoHands(_) => self.nav_bar_lance_game(),
             _ => self.nav_bar_mus_game(),
         };

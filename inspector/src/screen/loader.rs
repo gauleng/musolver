@@ -4,7 +4,7 @@ use iced::{
     Task,
     widget::{button, column, container, row, scrollable, text, text_input},
 };
-use musolver::solver::{Strategy, StrategyConfig};
+use musolver::solver::{StrategyConfig, StrategyReader};
 
 #[derive(Debug, Clone)]
 pub enum LoaderEvent {
@@ -15,8 +15,8 @@ pub enum LoaderEvent {
 }
 
 pub enum LoaderAction {
-    OpenExplorer(Strategy),
-    OpenGame(Strategy),
+    OpenExplorer(StrategyReader),
+    OpenGame(StrategyReader),
 }
 
 pub struct Loader {
@@ -32,7 +32,7 @@ impl Loader {
                 strategies: vec![],
             },
             Task::perform(
-                async { Strategy::find("output") },
+                async { StrategyReader::find("output") },
                 LoaderEvent::ListStrategies,
             ),
         )
@@ -95,11 +95,11 @@ impl Loader {
                 None
             }
             LoaderEvent::LoadStrategy(path) => {
-                let strategy = Strategy::from_file(path);
+                let strategy = StrategyReader::from_file(path);
                 Some(LoaderAction::OpenExplorer(strategy.unwrap()))
             }
             LoaderEvent::PlayStrategy(path) => {
-                let strategy = Strategy::from_json(path);
+                let strategy = StrategyReader::from_file(path);
                 Some(LoaderAction::OpenGame(strategy.unwrap()))
             }
             LoaderEvent::ListStrategies(list) => {

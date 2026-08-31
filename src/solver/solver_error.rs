@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::mus::Accion;
+
 #[derive(Debug, Error)]
 pub enum SolverError {
     #[error("Invalid strategy path: {1}")]
@@ -16,4 +18,10 @@ pub enum SolverError {
 
     #[error("Cannot parse strategy file.")]
     UnsupportedFileFormat(String),
+
+    #[error("Selected action not in game abstraction: {0}")]
+    ActionNotInAbstraction(Accion),
+
+    #[error("Invalid number of discarded cards: {0}")]
+    InvalidDiscardsNumber(usize),
 }

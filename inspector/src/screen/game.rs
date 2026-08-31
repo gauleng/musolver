@@ -12,7 +12,7 @@ use musolver::{
         Accion, CuatroJugadores, DosJugadores, Lance, Mano, ModalidadMus,
         arena::{ActionRecorder, Agent, AgenteMusolver, Kibitzer, MusAction, MusArena},
     },
-    solver::{LanceGame, MusGameTwoPlayers, Strategy},
+    solver::{LanceGame, MusGameTwoPlayers, StrategyReader},
 };
 
 #[derive(Debug, Clone)]
@@ -86,8 +86,8 @@ pub struct MusArenaUi {
 }
 
 impl MusArenaUi {
-    pub fn new(strategy: Strategy) -> (Self, Task<GameEvent>) {
-        let players = match strategy.strategy_config.game_config.game_type {
+    pub fn new(strategy: StrategyReader) -> (Self, Task<GameEvent>) {
+        let players = match strategy.strategy_config().game_config.game_type {
             musolver::solver::GameType::MusGameTwoPlayers => vec![
                 Player {
                     name: "Hero".to_string(),
@@ -397,7 +397,7 @@ impl MusArenaUi {
     }
 }
 
-fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
+fn setup_arena(strategy: StrategyReader) -> impl Stream<Item = ArenaMessage> {
     iced::stream::channel(100, move |mut sender| async move {
         struct KibitzerGui {
             sender: mpsc::Sender<ArenaMessage>,
@@ -486,10 +486,10 @@ fn setup_arena(strategy: Strategy) -> impl Stream<Item = ArenaMessage> {
             to_arena,
         }));
 
-        let game_type = strategy.strategy_config.game_config.game_type;
+        let game_type = strategy.strategy_config().game_config.game_type;
         let kibitzer = KibitzerGui::new(sender.clone());
         let action_recorder = ActionRecorder::new();
-        let agent_musolver = AgenteMusolver::new(strategy, action_recorder.history());
+        let agent_musolver = AgenteMusolver::new(Arc::new(strategy), action_recorder.history());
         let agent_gui = AgentGui::new(sender.clone(), receiver_agent, action_recorder.history());
 
         match game_type {
