@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use iced::{Element, Task, Theme};
 use screen::{ExplorerEvent, GameAction, GameEvent, LoaderEvent, Screen};
 
@@ -41,7 +43,8 @@ impl Inspector {
                     if let Some(a) = action {
                         match a {
                             screen::LoaderAction::OpenExplorer(strategy) => {
-                                self.screen = Screen::Explorer(screen::ActionPath::new(strategy));
+                                self.screen =
+                                    Screen::Explorer(screen::ActionPath::new(Arc::new(strategy)));
                             }
                             screen::LoaderAction::OpenGame(strategy) => {
                                 let (screen, task) = screen::MusArenaUi::new(strategy);

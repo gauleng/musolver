@@ -117,8 +117,13 @@ impl HandConfig {
 /// cursor es función pura de `(tantos, hand_configs, moves)`: cualquier cambio en la
 /// configuración se aplica reconstruyendo la partida desde el reparto.
 ///
-/// Invariante: `history.len() == moves.len() + 1`, y `history[k + 1]` es `history[k]` tras
-/// aplicar `moves[k]`.
+/// `moves` es la línea que el usuario ha pedido y `history` la parte que se puede jugar de
+/// verdad: `history[k + 1]` es `history[k]` tras aplicar `moves[k]`. Normalmente
+/// `history.len() == moves.len() + 1`, pero cambiar los tantos o una configuración puede acortar
+/// la secuencia de lances y dejar movimientos sin realizar al final. Se conservan: si el cambio se
+/// deshace, la línea vuelve entera. Solo [`Cursor::act`] los descarta, al abrir una rama nueva.
+///
+/// Invariante: `history.len() <= moves.len() + 1` y `position < history.len()`.
 pub struct Cursor {
     reader: Arc<StrategyReader>,
     history: Vec<Box<dyn GenericMus>>,
@@ -239,12 +244,12 @@ impl Cursor {
         self.retain_valid_line();
     }
 
+    pub fn game_type(&self) -> GameType {
+        self.reader.strategy_config.game_config.game_type
+    }
+
     pub fn num_hands(&self) -> usize {
-        self.reader
-            .strategy_config
-            .game_config
-            .game_type
-            .num_hands()
+        self.game_type().num_hands()
     }
 
     pub fn hand_configs(&self) -> &[HandConfig] {
@@ -330,7 +335,8 @@ impl Cursor {
         }
         // Un descarte de cartas concretas cambia la mano repartida, así que invalida el prefijo
         // del historial: se reconstruye la partida entera desde el reparto. Nada se modifica
-        // hasta que la reproducción tiene éxito.
+        // hasta que la reproducción tiene éxito. Actuar abre una rama nueva, así que aquí sí se
+        // descarta lo que hubiera después de la posición actual.
         let mut moves = self.moves[..self.position].to_vec();
         moves.push(action);
         let history = self.replay(&moves)?;
@@ -417,15 +423,16 @@ impl Cursor {
         )
     }
 
-    /// Reconstruye la partida conservando la parte del recorrido que sigue siendo válida.
+    /// Reconstruye la partida conservando la parte del recorrido que sigue siendo jugable.
     ///
-    /// Cambiar los tantos o una configuración puede cambiar los lances que se juegan: la cola del
-    /// registro deja entonces de tener sentido y se descarta, en lugar de perder toda la línea.
+    /// Cambiar los tantos o una configuración puede cambiar los lances que se juegan y dejar la
+    /// cola del registro sin realizar. No se borra: deshacer el cambio devuelve la línea entera.
+    /// Esto importa cuando la configuración se toca de una jugada en una, porque un estado
+    /// intermedio puede tener menos lances que el inicial y el final.
     fn retain_valid_line(&mut self) {
         let moves = std::mem::take(&mut self.moves);
-        let (history, aplicados) = self.replay_prefix(&moves);
+        let (history, _) = self.replay_prefix(&moves);
         self.moves = moves;
-        self.moves.truncate(aplicados);
         self.position = self.position.min(history.len() - 1);
         self.history = history;
     }
@@ -700,7 +707,9 @@ impl Cursor {
         overrides: ArrayVec<Option<Mano>, 4>,
         prior: f64,
     ) -> Result<Option<HandStrategy>, SolverError> {
-        let history = self.replay_with(&self.moves, &overrides)?;
+        // Solo hasta la posición actual: `history[position]` lo producen `moves[..position]`, y
+        // la cola puede tener movimientos que ahora mismo no se juegan.
+        let history = self.replay_with(&self.moves[..self.position], &overrides)?;
 
         let game = &history[self.position];
         let actions = game.actions().to_vec();
@@ -1915,7 +1924,6 @@ mod strategies_tests {
 
         let strategies = cursor.strategies().unwrap();
         assert!(strategies.len() > 1);
-        let (config1, config2) = (cursor.hand_configs[0], cursor.hand_configs[2]);
         let mut distintas = 0;
         for hand_strategy in &strategies {
             assert_eq!(
@@ -2131,17 +2139,15 @@ mod strategies_tests {
         );
     }
 
-    /// Si la nueva configuración acorta la secuencia de lances, la cola del registro se descarta
-    /// en vez de reventar o de perder toda la línea.
+    /// Con una cola de movimientos sin jugar, `strategies()` tiene que seguir respondiendo por el
+    /// nodo actual.
     #[test]
-    fn a_shorter_lance_sequence_truncates_the_line() {
-        let mut cursor = write_cursor(GameType::MusGameTwoPlayers, 0, HashMap::new());
+    fn strategies_works_with_a_dangling_tail() {
+        let vacio = write_cursor(GameType::MusGameTwoPlayers, 0, HashMap::new());
+        let entries = tree_entries(&vacio, 0, &[]);
+        let mut cursor = write_cursor(GameType::MusGameTwoPlayers, 0, entries);
         while cursor.phase().is_some() && cursor.act(CursorMove::Play(Accion::Paso)).is_ok() {}
-        // Con pares y juego se juegan grande, chica, pares y juego.
-        assert_eq!(cursor.moves.len(), 8);
-        assert_eq!(cursor.phase(), None);
 
-        // Sin pares ni juego quedan grande, chica y punto: sobran dos movimientos.
         let sin_jugadas = HandConfig {
             pares: false,
             juego: false,
@@ -2149,45 +2155,96 @@ mod strategies_tests {
         cursor
             .set_hand_configs(&[sin_jugadas, sin_jugadas])
             .unwrap();
-        assert_eq!(cursor.moves.len(), 6);
-        assert_eq!(cursor.history_len(), 7);
-        assert_eq!(cursor.position(), 6);
-        assert_eq!(cursor.phase(), None);
+        assert!(
+            cursor.moves.len() > cursor.history_len() - 1,
+            "hay cola sin jugar"
+        );
+
+        cursor.seek(0);
+        assert!(!cursor.strategies().unwrap().is_empty());
     }
 
-    /// Cambiar las manos de una en una recorta más: con una sola sin pares ni juego, el lance de
-    /// pares tampoco se juega porque solo quedaría un participante.
+    /// Si la nueva configuración acorta la secuencia de lances, la cola del registro deja de ser
+    /// jugable pero no se borra: deshacer el cambio devuelve la línea entera.
     #[test]
-    fn setting_hands_one_at_a_time_truncates_more() {
+    fn a_shorter_lance_sequence_is_reversible() {
         let mut cursor = write_cursor(GameType::MusGameTwoPlayers, 0, HashMap::new());
         while cursor.phase().is_some() && cursor.act(CursorMove::Play(Accion::Paso)).is_ok() {}
+        // Con pares y juego se juegan grande, chica, pares y juego.
         assert_eq!(cursor.moves.len(), 8);
+        assert_eq!(cursor.history_len(), 9);
 
+        let con_jugadas = HandConfig {
+            pares: true,
+            juego: true,
+        };
         let sin_jugadas = HandConfig {
             pares: false,
             juego: false,
         };
-        cursor.set_hand_config(0, sin_jugadas).unwrap();
-        assert_eq!(cursor.moves.len(), 4, "solo quedan grande y chica");
-        // La segunda llamada ya no puede recuperar lo que recortó la primera.
-        cursor.set_hand_config(1, sin_jugadas).unwrap();
-        assert_eq!(cursor.moves.len(), 4);
+        cursor
+            .set_hand_configs(&[sin_jugadas, sin_jugadas])
+            .unwrap();
+        // Sin pares ni juego quedan grande, chica y punto: dos movimientos dejan de jugarse.
+        assert_eq!(cursor.moves.len(), 8, "el registro se conserva");
+        assert_eq!(cursor.history_len(), 7);
+        assert_eq!(cursor.position(), 6);
+
+        cursor
+            .set_hand_configs(&[con_jugadas, con_jugadas])
+            .unwrap();
+        assert_eq!(cursor.history_len(), 9, "la línea vuelve entera");
+    }
+
+    /// Cambiar las manos de una en una tiene que dar lo mismo que cambiarlas de golpe. Es lo que
+    /// permite manejar la configuración con casillas de verificación, una por jugada y jugador.
+    #[test]
+    fn setting_hands_one_at_a_time_is_not_destructive() {
+        let sin_jugadas = HandConfig {
+            pares: false,
+            juego: false,
+        };
+        let linea = |mut cursor: Cursor, de_golpe: bool| {
+            while cursor.phase().is_some() && cursor.act(CursorMove::Play(Accion::Paso)).is_ok() {}
+            if de_golpe {
+                cursor
+                    .set_hand_configs(&[sin_jugadas, sin_jugadas])
+                    .unwrap();
+            } else {
+                // El estado intermedio tiene menos lances que el inicial y que el final: con solo
+                // una mano con pares el lance no se juega.
+                cursor.set_hand_config(0, sin_jugadas).unwrap();
+                assert_eq!(cursor.history_len(), 5, "solo quedan grande y chica");
+                cursor.set_hand_config(1, sin_jugadas).unwrap();
+            }
+            (cursor.moves.len(), cursor.history_len())
+        };
+        assert_eq!(
+            linea(
+                write_cursor(GameType::MusGameTwoPlayers, 0, HashMap::new()),
+                false
+            ),
+            linea(
+                write_cursor(GameType::MusGameTwoPlayers, 0, HashMap::new()),
+                true
+            )
+        );
     }
 
     /// La apuesta máxima de un lance son los tantos que le quedan al equipo más rezagado
     /// (`crear_estado_lance`), y el filtrado por ella es común a todos los tipos de partida. Si un
-    /// envite guardado deja de caber, el movimiento se descarta aunque el nodo siga siendo de
-    /// jugador.
+    /// envite guardado deja de caber, el movimiento deja de jugarse, pero vuelve al restaurar los
+    /// tantos.
     #[test]
-    fn an_action_that_stops_being_legal_truncates_the_line() {
+    fn an_action_that_stops_being_legal_is_reversible() {
         for game_type in [GameType::MusGameTwoPlayers, GameType::MusGame] {
             let mut cursor = write_cursor(game_type, 0, HashMap::new());
             cursor.act(CursorMove::Play(Accion::Envido(10))).unwrap();
-            assert_eq!(cursor.moves.len(), 1);
+            assert_eq!(cursor.history_len(), 2);
 
             // Con [39, 0] al segundo equipo aún le quedan 40 tantos y el envite cabe.
             cursor.set_tantos([39, 0]);
-            assert_eq!(cursor.moves.len(), 1, "{game_type:?}");
+            assert_eq!(cursor.history_len(), 2, "{game_type:?}");
 
             // Con [39, 39] la apuesta máxima baja a 1 y ya no cabe.
             cursor.set_tantos([39, 39]);
@@ -2195,8 +2252,12 @@ mod strategies_tests {
                 panic!("se esperaba un nodo de jugador");
             };
             assert!(!actions.contains(&Accion::Envido(10)), "{actions:?}");
-            assert!(cursor.moves.is_empty(), "{game_type:?}");
+            assert_eq!(cursor.history_len(), 1, "{game_type:?}");
             assert_eq!(cursor.position(), 0);
+            assert_eq!(cursor.moves.len(), 1, "el registro se conserva");
+
+            cursor.set_tantos([0, 0]);
+            assert_eq!(cursor.history_len(), 2, "la línea vuelve");
         }
     }
 

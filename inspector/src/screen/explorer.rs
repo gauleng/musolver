@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, iter::zip};
+use std::{collections::HashMap, fmt::Display, iter::zip, sync::Arc};
 
 use iced::{
     Color, Element,
@@ -12,7 +12,7 @@ use iced::{
     widget::{
         Canvas, Column, Container, Row,
         canvas::{self, Stroke, Text},
-        column, pick_list, row, scrollable, text,
+        checkbox, column, pick_list, row, scrollable, text,
     },
 };
 use itertools::Itertools;
@@ -20,7 +20,7 @@ use musolver::{
     mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        GameStateResult, GameType, HandConfiguration, StrategyReader,
+        Cursor, GameStateResult, GameType, HandConfig, HandConfiguration, HandKind, StrategyReader,
     },
 };
 
@@ -31,7 +31,7 @@ pub enum ViewMode {
 }
 
 pub struct ActionPath {
-    pub strategy: StrategyReader,
+    pub cursor: Cursor,
     pub buckets: Buckets,
 
     pub selected_tantos_mano: Option<u8>,
@@ -46,14 +46,11 @@ pub struct ActionPath {
     pub one_hand_squares: Vec<(AbstractJugada, SquareData<ExplorerEvent>)>,
     pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
     pub hovered_square: Option<usize>,
-    pub jugadas_pares: Vec<HayJugada>,
-    pub jugadas_juego: Vec<HayJugada>,
-    pub selected_pares: Option<HayJugada>,
-    pub selected_juego: Option<HayJugada>,
+    pub jugadas: Vec<HandConfig>,
 }
 
 impl ActionPath {
-    pub fn new(strategy: StrategyReader) -> Self {
+    pub fn new(strategy: Arc<StrategyReader>) -> Self {
         let game_type = strategy.strategy_config().game_config.game_type;
         let strategies = match game_type {
             GameType::LanceGame(lance) | GameType::LanceGameTwoHands(lance) => match lance {
@@ -68,65 +65,7 @@ impl ActionPath {
             },
             _ => vec![],
         };
-
-        let (jugadas_pares, selected_pares) = match game_type {
-            GameType::MusGameTwoPlayers => (
-                vec![
-                    HayJugada::TwoPlayers([false, false]),
-                    HayJugada::TwoPlayers([true, false]),
-                    HayJugada::TwoPlayers([false, true]),
-                    HayJugada::TwoPlayers([true, true]),
-                ],
-                Some(HayJugada::TwoPlayers([true, true])),
-            ),
-            GameType::MusGame => (
-                vec![
-                    HayJugada::FourPlayers([true, true, true, true]),
-                    HayJugada::FourPlayers([true, true, true, false]),
-                    HayJugada::FourPlayers([true, true, false, true]),
-                    HayJugada::FourPlayers([true, false, true, true]),
-                    HayJugada::FourPlayers([false, true, true, true]),
-                    HayJugada::FourPlayers([true, true, false, false]),
-                    HayJugada::FourPlayers([true, false, true, false]),
-                    HayJugada::FourPlayers([true, false, false, true]),
-                    HayJugada::FourPlayers([false, true, true, false]),
-                    HayJugada::FourPlayers([false, true, false, true]),
-                    HayJugada::FourPlayers([false, false, true, true]),
-                    HayJugada::FourPlayers([true, false, false, false]),
-                    HayJugada::FourPlayers([false, true, false, false]),
-                    HayJugada::FourPlayers([false, false, true, false]),
-                    HayJugada::FourPlayers([false, false, false, true]),
-                    HayJugada::FourPlayers([false, false, false, false]),
-                ],
-                Some(HayJugada::FourPlayers([true, true, true, true])),
-            ),
-            _ => todo!(),
-        };
-        let (jugadas_juego, selected_juego) = match game_type {
-            GameType::MusGameTwoPlayers => (
-                vec![
-                    HayJugada::TwoPlayers([false, false]),
-                    HayJugada::TwoPlayers([true, true]),
-                ],
-                Some(HayJugada::TwoPlayers([true, true])),
-            ),
-            GameType::MusGame => (
-                vec![
-                    HayJugada::FourPlayers([true, true, true, true]),
-                    HayJugada::FourPlayers([true, true, true, false]),
-                    HayJugada::FourPlayers([true, true, false, true]),
-                    HayJugada::FourPlayers([true, false, true, true]),
-                    HayJugada::FourPlayers([false, true, true, true]),
-                    HayJugada::FourPlayers([true, true, false, false]),
-                    HayJugada::FourPlayers([true, false, false, true]),
-                    HayJugada::FourPlayers([false, true, true, false]),
-                    HayJugada::FourPlayers([false, false, true, true]),
-                    HayJugada::FourPlayers([false, false, false, false]),
-                ],
-                Some(HayJugada::FourPlayers([true, true, true, true])),
-            ),
-            _ => todo!(),
-        };
+        let cursor = strategy.cursor();
 
         let mut action_path = Self {
             one_hand_squares: vec![],
@@ -136,7 +75,7 @@ impl ActionPath {
                 GameType::MusGameTwoHands => ViewMode::TwoHands,
                 _ => ViewMode::OneHand,
             },
-            strategy,
+            cursor,
             selected_tantos_mano: Some(0),
             tantos_mano: Vec::from_iter(0..40),
             selected_tantos_postre: Some(0),
@@ -146,15 +85,11 @@ impl ActionPath {
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
             hovered_square: None,
-            jugadas_pares,
-            jugadas_juego,
-            selected_pares,
-            selected_juego,
+            jugadas: vec![HandConfig {
+                pares: true,
+                juego: true,
+            }],
         };
-        let GameStateResult(fase_partida, turn, actions) = action_path.game_state();
-        if let musolver::NodeType::Player(player, _) = turn {
-            action_path.append_action_picklists(fase_partida, player as u8, &actions);
-        }
         action_path.update_squares();
         action_path
     }
@@ -164,17 +99,6 @@ impl ActionPath {
         valores.extend(actions.iter().map(|c| OptionalAction(Some(*c))));
         self.selected_actions.push(None);
         self.actions.push((lance, player, valores));
-    }
-
-    fn strategy_node(&self, mano1: &Mano, mano2: Option<&Mano>) -> Option<(Vec<Accion>, Vec<f64>)> {
-        let history: Vec<Accion> = self.selected_history();
-        let tantos = [
-            self.selected_tantos_mano.unwrap_or_default(),
-            self.selected_tantos_postre.unwrap_or_default(),
-        ];
-        let jugadas = self.selected_jugadas();
-        self.strategy
-            .strategy_node(mano1, mano2, tantos, &jugadas, &history)
     }
 
     fn selected_history(&self) -> Vec<Accion> {
@@ -196,14 +120,32 @@ impl ActionPath {
             ExplorerEvent::SetStrategy(strategy) => {
                 self.selected_strategy = Some(strategy);
             }
-            ExplorerEvent::SetTantosMano(tantos) => self.selected_tantos_mano = Some(tantos),
-            ExplorerEvent::SetTantosPostre(tantos) => self.selected_tantos_postre = Some(tantos),
+            ExplorerEvent::SetTantosMano(tantos) => {
+                self.selected_tantos_mano = Some(tantos);
+                self.cursor.set_tantos([
+                    self.selected_tantos_mano.unwrap(),
+                    self.selected_tantos_postre.unwrap(),
+                ]);
+            }
+            ExplorerEvent::SetTantosPostre(tantos) => {
+                self.selected_tantos_postre = Some(tantos);
+                self.cursor.set_tantos([
+                    self.selected_tantos_mano.unwrap(),
+                    self.selected_tantos_postre.unwrap(),
+                ]);
+            }
             ExplorerEvent::SelectBucket(bucket_id) => {
                 self.hovered_square = bucket_id;
                 return;
             }
-            ExplorerEvent::SetPares(hay_jugada) => self.selected_pares = Some(hay_jugada),
-            ExplorerEvent::SetJuego(hay_jugada) => self.selected_juego = Some(hay_jugada),
+            ExplorerEvent::SetPares(player, jugada) => {
+                self.jugadas[player].pares = jugada;
+                self.cursor.set_hand_config(player, self.jugadas[player]);
+            }
+            ExplorerEvent::SetJuego(player, jugada) => {
+                self.jugadas[player].juego = jugada;
+                self.cursor.set_hand_config(player, self.jugadas[player]);
+            }
         }
         if let Some(None) = self.selected_actions.last() {
             self.selected_actions.pop();
@@ -211,172 +153,151 @@ impl ActionPath {
         }
 
         self.update_squares();
-        // let strategy_node = match game_type {
-        //     GameType::LanceGame(_) | GameType::MusGame | GameType::MusGameTwoPlayers => {
-        //         self.strategy_node(mano, None)
-        //     }
-        //     GameType::LanceGameTwoHands(_) => todo!(),
-        //     GameType::MusGameTwoHands => self.strategy_node(mano, Some(mano)),
-        // };
-        // if let Some((actions, _)) = strategy_node {
-        //     self.append_action_picklists(&actions);
-        // } else {
-        //     self.actions.clear();
-        //     self.selected_actions.clear();
-        // }
-        // let turn = self.selected_action_node().to_play();
-        // self.view_mode = match self.selected_strategy {
-        //     Some(HandConfiguration::DosManos) => ViewMode::OneHand,
-        //     Some(HandConfiguration::CuatroManos) => ViewMode::TwoHands,
-        //     Some(HandConfiguration::TresManos1vs2)
-        //     | Some(HandConfiguration::TresManos1vs2Intermedio) => {
-        //         if turn.unwrap() == 0 {
-        //             ViewMode::OneHand
-        //         } else {
-        //             ViewMode::TwoHands
-        //         }
-        //     }
-        //     Some(HandConfiguration::TresManos2vs1) => {
-        //         if turn.unwrap() == 0 {
-        //             ViewMode::TwoHands
-        //         } else {
-        //             ViewMode::OneHand
-        //         }
-        //     }
-        //     Some(HandConfiguration::SinLance) | None => ViewMode::OneHand,
-        // };
     }
 
     fn update_squares(&mut self) {
-        let GameStateResult(fase_partida, turn, actions) = self.game_state();
-        if let musolver::NodeType::Player(player, _) = turn {
-            let has_pares = if matches!(
-                fase_partida,
-                FasePartida::Envites(Lance::Juego | Lance::Punto)
-            ) {
-                match self.selected_pares {
-                    Some(HayJugada::TwoPlayers(v)) => Some(v[player]),
-                    Some(HayJugada::FourPlayers(v)) => Some(v[player]),
-                    _ => None,
-                }
-            } else {
-                None
+        let phase = self.cursor.phase();
+        let turn = self.cursor.turn();
+        let actions = self.cursor.cursor_node();
+        if let Some(player) = turn {
+            let lance = match phase {
+                Some(FasePartida::Envites(lance)) => lance,
+                _ => Lance::Grande,
             };
-            self.buckets = if let FasePartida::Envites(lance) = fase_partida {
-                Buckets::new(&lance, has_pares)
-            } else {
-                Buckets::new(&Lance::Grande, has_pares)
-            };
-
             match self.view_mode {
                 ViewMode::OneHand => {
-                    self.update_squares_one_hand();
+                    self.update_squares_one_hand(&lance);
                 }
                 ViewMode::TwoHands => {
-                    self.update_squares_two_hands();
+                    self.update_squares_two_hands(&lance);
                 }
             }
 
-            self.append_action_picklists(fase_partida, player as u8, &actions);
+            match actions {
+                musolver::solver::CursorNode::Play(actions) => {
+                    self.append_action_picklists(
+                        phase.unwrap(),
+                        player.player_id() as u8,
+                        &actions,
+                    );
+                }
+                musolver::solver::CursorNode::Discard => todo!(),
+                musolver::solver::CursorNode::Terminal => todo!(),
+            }
         }
     }
 
-    fn update_squares_two_hands(&mut self) {
-        let avg_probability = |probabilities: Vec<(Vec<_>, Vec<_>)>| {
-            let n_hands = probabilities.len();
-            if n_hands > 0 {
-                let actions = probabilities[0].0.clone();
-                let n_actions = actions.len();
-                let avg_probability =
-                    probabilities
-                        .into_iter()
-                        .fold(vec![0.; n_actions], |avg, v| {
-                            zip(avg, &v.1)
-                                .map(|(a, &v)| a + v / n_hands as f64)
-                                .collect()
-                        });
-                Some((actions, avg_probability))
-            } else {
-                None
-            }
+    fn update_squares_two_hands(&mut self, lance: &Lance) {
+        let Ok(strategies) = self.cursor.strategies() else {
+            self.two_hands_squares.clear();
+            return;
         };
-        let n_jugadas = self.buckets.jugadas().len();
-        let mut two_hands_squares = Vec::with_capacity(n_jugadas);
-        let mut bucket_id = 0;
-        for jugada in self.buckets.jugadas() {
-            let Some(_) = self.buckets.hands(jugada) else {
+
+        let mut squares: HashMap<(AbstractJugada, AbstractJugada), (Vec<Accion>, Vec<f64>, usize)> =
+            HashMap::new();
+        for strategy in strategies {
+            let HandKind::TwoHands(mano1, mano2) = strategy.hand() else {
                 continue;
             };
-            let mut row = Vec::with_capacity(n_jugadas);
-            for jugada2 in self.buckets.jugadas() {
-                row.push(
-                    SquareData::new(format!("{},{}", jugada, jugada2))
-                        .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id))),
-                );
-                bucket_id += 1;
+            let (Some(jugada1), Some(jugada2)) = (
+                AbstractJugada::to_abstract(mano1, lance),
+                AbstractJugada::to_abstract(mano2, lance),
+            ) else {
+                continue;
+            };
+            let celda = squares.entry((jugada1, jugada2)).or_insert_with(|| {
+                (
+                    strategy.actions().to_vec(),
+                    vec![0.; strategy.strategy().len()],
+                    0,
+                )
+            });
+            for (acumulado, probabilidad) in zip(&mut celda.1, strategy.strategy()) {
+                *acumulado += probabilidad;
             }
-            two_hands_squares.push(row);
+            celda.2 += 1;
         }
-        self.two_hands_squares = two_hands_squares;
-        for column in 0..self.buckets.jugadas().len() {
-            for row in 0..self.buckets.jugadas().len() {
-                let jugada1 = &self.buckets.jugadas()[row];
-                let jugada2 = &self.buckets.jugadas()[column];
-                let (manos1, manos2) = self
-                    .buckets
-                    .hands(jugada1)
-                    .zip(self.buckets.hands(jugada2))
-                    .unwrap();
-                let probabilities: Vec<(Vec<Accion>, Vec<f64>)> = manos1
+
+        let jugadas: Vec<AbstractJugada> = squares
+            .keys()
+            .flat_map(|(jugada1, jugada2)| [*jugada1, *jugada2])
+            .sorted()
+            .dedup()
+            .collect();
+
+        let mut bucket_id = 0;
+        self.two_hands_squares = jugadas
+            .iter()
+            .map(|jugada1| {
+                jugadas
                     .iter()
-                    .cartesian_product(manos2.iter())
-                    .filter_map(|(hand1, hand2)| self.strategy_node(hand1, Some(hand2)))
-                    .collect();
-                let square = &mut self.two_hands_squares[row][column];
-                match avg_probability(probabilities) {
-                    Some((actions, avg_probability)) => {
-                        square.update_with_node(&actions, &avg_probability);
-                        square.label = format!("{jugada1},{jugada2}");
-                    }
-                    None => square.reset_probabilities(),
-                }
-            }
-        }
+                    .map(|jugada2| {
+                        let mut square = SquareData::new(format!("{jugada1},{jugada2}"))
+                            .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
+                        bucket_id += 1;
+                        if let Some((actions, suma, num_pares)) = squares.get(&(*jugada1, *jugada2))
+                        {
+                            let media: Vec<f64> =
+                                suma.iter().map(|v| v / *num_pares as f64).collect();
+                            square.update_with_node(actions, &media);
+                        }
+                        square
+                    })
+                    .collect()
+            })
+            .collect();
     }
 
-    fn update_squares_one_hand(&mut self) {
-        let n_jugadas = self.buckets.jugadas().len();
-        let mut one_hand_squares = Vec::with_capacity(n_jugadas);
-        let mut bucket_id = 0;
-        self.one_hand_squares.clear();
-        for jugada in self.buckets.jugadas() {
-            let Some(hands) = self.buckets.hands(jugada) else {
-                continue;
-            };
-            let squares = hands.iter().map(|hand| {
-                let mut square_data = SquareData::new(hand.to_string())
-                    .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
-                if let Some((actions, probabilities)) = self.strategy_node(hand, None) {
-                    square_data.update_with_node(&actions, &probabilities);
+    fn update_squares_one_hand(&mut self, lance: &Lance) {
+        let Ok(strategies) = self.cursor.strategies() else {
+            self.one_hand_squares.clear();
+            return;
+        };
+        self.one_hand_squares = strategies
+            .into_iter()
+            .filter_map(|strategy| match strategy.hand() {
+                HandKind::OneHand(mano) => {
+                    let jugada = AbstractJugada::to_abstract(mano, lance)?;
+                    Some((jugada, mano.clone(), strategy))
                 }
-                let square = (jugada.to_owned(), square_data);
-                bucket_id += 1;
-                square
-            });
-            one_hand_squares.extend(squares);
-        }
-
-        self.one_hand_squares = one_hand_squares;
+                HandKind::TwoHands(_, _) => None,
+            })
+            .sorted_by(|(jugada1, mano1, _), (jugada2, mano2, _)| {
+                jugada1
+                    .cmp(jugada2)
+                    .then_with(|| lance.compara_manos(mano1, mano2))
+            })
+            .enumerate()
+            .map(|(bucket_id, (jugada, mano, strategy))| {
+                let mut square_data = SquareData::new(mano.to_string())
+                    .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
+                square_data.update_with_node(strategy.actions(), strategy.strategy());
+                (jugada, square_data)
+            })
+            .collect();
     }
 
     pub fn view(&self) -> Element<'_, ExplorerEvent> {
-        let top_row = match self.strategy.strategy_config().game_config.game_type {
+        let top_row = match self.cursor.game_type() {
             GameType::LanceGame(_) | GameType::LanceGameTwoHands(_) => self.nav_bar_lance_game(),
             _ => self.nav_bar_mus_game(),
         };
 
         let legend =
             Container::new(Canvas::new(Legend::default()).width(700).height(60)).padding(20);
+
+        let jugadas = column(self.jugadas.iter().enumerate().map(|(i, jugada)| {
+            column![
+                text(format!("Jugador {}", i + 1)),
+                row![
+                    checkbox("Pares", jugada.pares)
+                        .on_toggle(move |v| ExplorerEvent::SetPares(i, v)),
+                    checkbox("Juego", jugada.juego)
+                        .on_toggle(move |v| ExplorerEvent::SetJuego(i, v))
+                ]
+            ]
+            .into()
+        }));
 
         let bucket_info = self
             .hovered_square
@@ -393,7 +314,7 @@ impl ActionPath {
                             .map(|(action, probability)| {
                                 text(format!(
                                     "{}: {:.1}%",
-                                    action_style(action).1,
+                                    action_text(action),
                                     probability * 100.
                                 ))
                             })
@@ -403,6 +324,8 @@ impl ActionPath {
             )
             .width(300)
             .padding(20);
+
+        let sidebar = column![jugadas, bucket_info];
 
         let mut matrix = Column::new();
         if self.view_mode == ViewMode::OneHand {
@@ -430,7 +353,7 @@ impl ActionPath {
         }
 
         let scrollable_matrix = row![
-            bucket_info,
+            sidebar,
             scrollable(matrix)
                 .direction(scrollable::Direction::Both {
                     vertical: scrollable::Scrollbar::default(),
@@ -504,26 +427,6 @@ impl ActionPath {
         ];
         top_row = top_row.push(pick_tantos_postre);
 
-        let pick_pares = column![
-            text("Pares").size(14),
-            pick_list(
-                &self.jugadas_pares[..],
-                self.selected_pares,
-                ExplorerEvent::SetPares,
-            )
-        ];
-        top_row = top_row.push(pick_pares);
-
-        let pick_juego = column![
-            text("Juego").size(14),
-            pick_list(
-                &self.jugadas_juego[..],
-                self.selected_juego,
-                ExplorerEvent::SetJuego,
-            )
-        ];
-        top_row = top_row.push(pick_juego);
-
         let mut level = 0;
         let picklists = row(self
             .actions
@@ -555,34 +458,6 @@ impl ActionPath {
         top_row = top_row.width(Fill).align_y(Top).spacing(10);
         top_row
     }
-
-    fn game_state(&self) -> GameStateResult {
-        let tantos = [
-            self.selected_tantos_mano.unwrap(),
-            self.selected_tantos_postre.unwrap(),
-        ];
-        let history = self.selected_history();
-        let jugadas = self.selected_jugadas();
-        self.strategy.game_state(tantos, &jugadas, &history)
-    }
-
-    fn selected_jugadas(&self) -> Vec<(bool, bool)> {
-        let (pares, juego) = (self.selected_pares, self.selected_juego);
-        match (pares, juego) {
-            (Some(HayJugada::TwoPlayers([p1, p2])), Some(HayJugada::TwoPlayers([j1, j2]))) => {
-                vec![(p1, j1), (p2, j2)]
-            }
-            (
-                Some(HayJugada::FourPlayers([p1, p2, p3, p4])),
-                Some(HayJugada::FourPlayers([j1, j2, j3, j4])),
-            ) => {
-                vec![(p1, j1), (p2, j2), (p3, j3), (p4, j4)]
-            }
-            _ => {
-                vec![]
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -592,8 +467,8 @@ pub enum ExplorerEvent {
     SetTantosMano(u8),
     SetTantosPostre(u8),
     SelectBucket(Option<usize>),
-    SetPares(HayJugada),
-    SetJuego(HayJugada),
+    SetPares(usize, bool),
+    SetJuego(usize, bool),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -604,32 +479,6 @@ impl Display for OptionalAction {
         match self.0 {
             Some(a) => write!(f, "{}", a),
             None => write!(f, ""),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum HayJugada {
-    TwoPlayers([bool; 2]),
-    FourPlayers([bool; 4]),
-}
-
-impl Display for HayJugada {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TwoPlayers([a, b]) => {
-                write!(f, "{}{}", if *a { 1 } else { 0 }, if *b { 1 } else { 0 })
-            }
-            Self::FourPlayers([a, b, c, d]) => {
-                write!(
-                    f,
-                    "{}{}{}{}",
-                    if *a { 1 } else { 0 },
-                    if *b { 1 } else { 0 },
-                    if *c { 1 } else { 0 },
-                    if *d { 1 } else { 0 }
-                )
-            }
         }
     }
 }
@@ -697,21 +546,36 @@ impl<AppEvent> canvas::Program<AppEvent> for Legend {
     }
 }
 
-fn action_style(action: &Accion) -> (Color, String) {
+fn action_text(action: &Accion) -> String {
     match action {
-        Accion::Paso => (Color::parse("006E90").unwrap(), "Paso".to_string()),
-        Accion::Quiero => (Color::parse("2F9332").unwrap(), "Quiero".to_string()),
-        Accion::Envido(2) => (Color::parse("FABC3F").unwrap(), "Envido 2".to_string()),
-        Accion::Envido(5) => (Color::parse("E85C0D").unwrap(), "Envido 5".to_string()),
-        Accion::Envido(10) => (Color::parse("C7253E").unwrap(), "Envido 10".to_string()),
-        Accion::Ordago => (Color::parse("821131").unwrap(), "Órdago".to_string()),
-        Accion::Mus => (Color::parse("ADD8E6").unwrap(), "Mus".to_string()),
-        Accion::NoMus => (Color::parse("6495ED").unwrap(), "No mus".to_string()),
-        Accion::Descartar([c1, c2, c3, c4]) => (
-            Color::parse("800000").unwrap(),
-            format!("Descartar {}{}{}{}", c1, c2, c3, c4),
+        Accion::Paso => "Paso".to_string(),
+        Accion::Quiero => "Quiero".to_string(),
+        Accion::Envido(2) => "Envido 2".to_string(),
+        Accion::Envido(5) => "Envido 5".to_string(),
+        Accion::Envido(10) => "Envido 10".to_string(),
+        Accion::Ordago => "Órdago".to_string(),
+        Accion::Mus => "Mus".to_string(),
+        Accion::NoMus => "No mus".to_string(),
+        Accion::Descartar([c1, c2, c3, c4]) => format!(
+            "Descartar {}{}{}{}",
+            *c1 as u8, *c2 as u8, *c3 as u8, *c4 as u8
         ),
-        _ => (Color::new(0., 0., 0., 0.), "".to_string()),
+        _ => "".to_string(),
+    }
+}
+
+fn action_style(action: &Accion) -> Color {
+    match action {
+        Accion::Paso => Color::parse("006E90").unwrap(),
+        Accion::Quiero => Color::parse("2F9332").unwrap(),
+        Accion::Envido(2) => Color::parse("FABC3F").unwrap(),
+        Accion::Envido(5) => Color::parse("E85C0D").unwrap(),
+        Accion::Envido(10) => Color::parse("C7253E").unwrap(),
+        Accion::Ordago => Color::parse("821131").unwrap(),
+        Accion::Mus => Color::parse("ADD8E6").unwrap(),
+        Accion::NoMus => Color::parse("6495ED").unwrap(),
+        Accion::Descartar(_) => Color::parse("800000").unwrap(),
+        _ => Color::new(0., 0., 0., 0.),
     }
 }
 
@@ -787,7 +651,7 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
             let region_colors: Vec<Color> = self
                 .dist
                 .iter()
-                .map(|(action, _)| action_style(action).0)
+                .map(|(action, _)| action_style(action))
                 .collect();
             let region_x_position: Vec<f32> = region_widths
                 .iter()
@@ -840,57 +704,5 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
             }
         }
         (canvas::event::Status::Ignored, None)
-    }
-}
-
-pub struct Buckets {
-    buckets: HashMap<AbstractJugada, (Vec<Mano>, f64)>,
-    jugadas: Vec<AbstractJugada>,
-}
-
-impl Buckets {
-    pub fn new(lance: &Lance, has_pares: Option<bool>) -> Self {
-        let one_hand_list = Self::one_hand_list(lance);
-        let mut buckets = HashMap::new();
-        one_hand_list
-            .iter()
-            .filter(|(hand, _)| has_pares.is_none_or(|required| hand.pares().is_some() == required))
-            .filter_map(|(hand, probability)| match lance {
-                Lance::Grande => Some((AbstractGrande::abstract_hand(hand), (hand, probability))),
-                Lance::Chica => Some((AbstractChica::abstract_hand(hand), (hand, probability))),
-                Lance::Pares => AbstractPares::abstract_hand(hand).zip(Some((hand, probability))),
-                Lance::Juego => AbstractJuego::abstract_hand(hand).zip(Some((hand, probability))),
-                Lance::Punto => Some((AbstractPunto::abstract_hand(hand), (hand, probability))),
-            })
-            .for_each(|(jugada, (hand, probability))| {
-                let entry = buckets.entry(jugada).or_insert((vec![], 0.));
-                entry.0.push(hand.to_owned());
-                entry.1 += probability;
-            });
-        let mut jugadas: Vec<_> = buckets.keys().cloned().collect();
-        jugadas.sort();
-
-        Self { jugadas, buckets }
-    }
-
-    pub fn hands(&self, jugada: &AbstractJugada) -> Option<&Vec<Mano>> {
-        self.buckets.get(jugada).map(|(hands, _)| hands)
-    }
-
-    pub fn probability(&self, jugada: &AbstractJugada) -> Option<&f64> {
-        self.buckets.get(jugada).map(|(_, probability)| probability)
-    }
-
-    pub fn jugadas(&self) -> &Vec<AbstractJugada> {
-        &self.jugadas
-    }
-
-    fn one_hand_list(lance: &Lance) -> Vec<(Mano, f64)> {
-        let manos = DistribucionCartaIter::new(Baraja::FREC_BARAJA_MUS)
-            .map(|(cards, prob)| (Mano::new(cards), prob));
-        manos
-            .filter(|(hand, _)| hand.jugada(lance).is_some())
-            .sorted_by(|(a, _), (b, _)| lance.compara_manos(a, b))
-            .collect()
     }
 }
