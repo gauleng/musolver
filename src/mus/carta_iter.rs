@@ -34,6 +34,69 @@ fn binomial(n: usize, k: usize) -> usize {
     num_integer::binomial(n, k)
 }
 
+/// Índices en `cartas` de cada carta de la mano. `None` si alguna no está en la distribución.
+fn indices_de<const M: usize>(cartas: &[(Carta, u8); M], mano: &[Carta]) -> Option<Vec<usize>> {
+    mano.iter()
+        .map(|carta| cartas.iter().position(|(c, _)| c == carta))
+        .collect()
+}
+
+/// Número de repartos que dan exactamente esta mano, junto con las frecuencias que quedan tras
+/// retirarla. `None` si la mano no cabe en la distribución.
+fn combinaciones_mano(frecuencias: &[usize], indices: &[usize]) -> Option<(usize, Vec<usize>)> {
+    let mut restantes = frecuencias.to_vec();
+    for idx in indices {
+        restantes[*idx] = restantes[*idx].checked_sub(1)?;
+    }
+    let combinaciones = restantes
+        .iter()
+        .zip(frecuencias)
+        .filter(|(restante, max)| restante < max)
+        .map(|(restante, max)| binomial(*max, *max - *restante))
+        .reduce(|acum, v| acum * v)
+        .unwrap_or(1);
+    Some((combinaciones, restantes))
+}
+
+/// Probabilidad de repartir exactamente esta mano.
+///
+/// Es la misma que devuelve [`DistribucionCartaIter`] para esa mano, en forma cerrada para no
+/// tener que recorrer el iterador entero.
+pub fn probabilidad_mano<const M: usize>(cartas: [(Carta, u8); M], mano: &[Carta]) -> f64 {
+    let frecuencias: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
+    let Some(indices) = indices_de(&cartas, mano) else {
+        return 0.;
+    };
+    let Some((combinaciones, _)) = combinaciones_mano(&frecuencias, &indices) else {
+        return 0.;
+    };
+    combinaciones as f64 / binomial(frecuencias.iter().sum(), mano.len()) as f64
+}
+
+/// Probabilidad conjunta de repartir las dos manos, la misma que devuelve
+/// [`DistribucionDobleCartaIter`]. La segunda se reparte con las cartas que deja la primera, así
+/// que no es el producto de las dos probabilidades por separado.
+pub fn probabilidad_dos_manos<const M: usize>(
+    cartas: [(Carta, u8); M],
+    mano1: &[Carta],
+    mano2: &[Carta],
+) -> f64 {
+    let frecuencias: Vec<usize> = cartas.iter().map(|(_, f)| *f as usize).collect();
+    let (Some(indices1), Some(indices2)) = (indices_de(&cartas, mano1), indices_de(&cartas, mano2))
+    else {
+        return 0.;
+    };
+    let Some((combinaciones1, restantes)) = combinaciones_mano(&frecuencias, &indices1) else {
+        return 0.;
+    };
+    let Some((combinaciones2, _)) = combinaciones_mano(&restantes, &indices2) else {
+        return 0.;
+    };
+    let total1 = binomial(frecuencias.iter().sum(), mano1.len());
+    let total2 = binomial(restantes.iter().sum(), mano2.len());
+    (combinaciones1 as f64 / total1 as f64) * (combinaciones2 as f64 / total2 as f64)
+}
+
 /// Iterador de manos de cartas de mus.
 ///
 /// Este iterador asume que las cartas se pueden repetir. Por ejemplo, si
@@ -514,5 +577,52 @@ mod tests {
         let reparto = RepartoMusDosJugadoresIter::new();
         let total_probability = reparto.fold(0., |accum, (_, _, prob, _)| accum + prob);
         assert!((total_probability - 1.).abs() < 1e-9);
+    }
+
+    /// La forma cerrada tiene que dar exactamente lo mismo que el iterador para todas las manos.
+    #[test]
+    fn probabilidad_mano_coincide_con_el_iterador() {
+        let mut manos = 0;
+        for (cartas, prior) in DistribucionCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS) {
+            let cerrada = probabilidad_mano(Baraja::FREC_BARAJA_MUS, &cartas);
+            assert!(
+                (cerrada - prior).abs() < 1e-12,
+                "{cartas:?}: {cerrada} != {prior}"
+            );
+            manos += 1;
+        }
+        assert!(manos > 300);
+    }
+
+    #[test]
+    fn probabilidad_dos_manos_coincide_con_el_iterador() {
+        let mut pares = 0;
+        for (cartas1, cartas2, prior) in
+            DistribucionDobleCartaIter::<4, 8>::new(Baraja::FREC_BARAJA_MUS)
+        {
+            let cerrada = probabilidad_dos_manos(Baraja::FREC_BARAJA_MUS, &cartas1, &cartas2);
+            assert!(
+                (cerrada - prior).abs() < 1e-12,
+                "{cartas1:?} {cartas2:?}: {cerrada} != {prior}"
+            );
+            pares += 1;
+        }
+        assert!(pares > 1000);
+    }
+
+    /// Una mano que no cabe en la baraja tiene probabilidad cero.
+    #[test]
+    fn probabilidad_de_una_mano_imposible_es_cero() {
+        // Solo hay cuatro Sotas.
+        let cinco_sotas = [Carta::Sota; 5];
+        assert_eq!(probabilidad_mano(Baraja::FREC_BARAJA_MUS, &cinco_sotas), 0.);
+        // Ocho Reyes en total: dos manos de cuatro son posibles, tres no.
+        let reyes = [Carta::Rey; 4];
+        assert!(probabilidad_dos_manos(Baraja::FREC_BARAJA_MUS, &reyes, &reyes) > 0.);
+        let sotas = [Carta::Sota; 4];
+        assert_eq!(
+            probabilidad_dos_manos(Baraja::FREC_BARAJA_MUS, &sotas, &sotas),
+            0.
+        );
     }
 }

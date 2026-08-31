@@ -489,10 +489,21 @@ impl MusGameTwoHands {
             let phase = partida.fase();
             let turno = partida.turno().expect("some player must be active");
             let player_id = turno.player_id() as usize;
+            // El jugador decide por sus dos manos a la vez, así que la misma acción se aplica a
+            // las dos y solo hay un nodo de decisión por pareja. La fase de mus también: aunque
+            // `PartidaMus` pida un voto por mano porque está preparada para cuatro jugadores
+            // distintos, aquí las dos manos son del mismo jugador.
+            let repetir = match phase {
+                Some(FasePartida::Envites(_)) => matches!(turno, Turno::Pareja(0 | 1)),
+                // Un NoMus termina la fase de mus en la primera llamada: ya no queda segunda mano
+                // a la que preguntar.
+                Some(FasePartida::Mus) => {
+                    matches!(turno, Turno::Pareja(0 | 1)) && action != Accion::NoMus
+                }
+                _ => false,
+            };
             let _ = partida.actuar(action);
-            if matches!(turno, Turno::Pareja(0 | 1))
-                && matches!(phase, Some(FasePartida::Envites(_)))
-            {
+            if repetir {
                 partida
                     .actuar(action)
                     .expect("segunda mano de la pareja debe aceptar la misma acción");
@@ -500,15 +511,9 @@ impl MusGameTwoHands {
             let new_phase = partida.fase();
             (player_id, phase, new_phase)
         };
-        let is_first_partner = player_id == 0 || player_id == 1;
         match phase {
             Some(FasePartida::Mus) => {
-                if is_first_partner && action != Accion::NoMus {
-                    self.info_set_builder.set_hidden_action(Some(action))?;
-                } else {
-                    self.info_set_builder.step_mus(action)?;
-                    self.info_set_builder.set_hidden_action(None)?;
-                }
+                self.info_set_builder.step_mus(action)?;
             }
             Some(FasePartida::Envites(_)) => {
                 self.info_set_builder.step_lance(action)?;
@@ -976,6 +981,22 @@ pub trait GenericMus {
     fn info_set_builder(&self) -> &MusInfoSetBuilder;
 
     fn phase(&self) -> Option<FasePartida>;
+
+    /// Conjunto de información del jugador en el estado actual. Cada tipo de partida lo compone a
+    /// su manera ([`MusGameTwoHands`] mezcla el de la pareja), así que no puede hacerlo quien
+    /// llama.
+    ///
+    /// No se llama `info_set` para no chocar con [`Game::info_set`] en los tipos que implementan
+    /// ambos rasgos.
+    fn mus_info_set(&self, player: usize) -> MusInfoSet;
+
+    fn turn(&self) -> Option<Turno>;
+
+    fn hands(&self) -> &[Mano];
+
+    /// Resuelve el nodo de azar [`FasePartida::DescartePendiente`] repartiendo `nuevas` al
+    /// jugador que acaba de descartar.
+    fn deal_new_cards(&mut self, nuevas: &[Carta]) -> Result<(), SolverError>;
 }
 
 impl Clone for Box<dyn GenericMus> {
@@ -1004,6 +1025,33 @@ impl GenericMus for MusGame {
     fn phase(&self) -> Option<FasePartida> {
         self.partida.as_ref().and_then(|partida| partida.fase())
     }
+
+    fn mus_info_set(&self, player: usize) -> MusInfoSet {
+        <Self as Game>::info_set(self, player)
+    }
+
+    fn turn(&self) -> Option<Turno> {
+        self.partida.as_ref().and_then(|partida| partida.turno())
+    }
+
+    fn hands(&self) -> &[Mano] {
+        self.partida
+            .as_ref()
+            .expect("La partida debe estar repartida.")
+            .manos()
+            .as_ref()
+    }
+
+    fn deal_new_cards(&mut self, nuevas: &[Carta]) -> Result<(), SolverError> {
+        self.partida
+            .as_mut()
+            .expect("La partida debe estar repartida.")
+            .descartar_con_nuevas(nuevas)?;
+        // Las cartas nuevas cambian la mano de quien descartó.
+        self.update_hands(Lance::Grande);
+        self.enforce_max_mus_rounds();
+        Ok(())
+    }
 }
 
 impl GenericMus for MusGameTwoHands {
@@ -1026,6 +1074,33 @@ impl GenericMus for MusGameTwoHands {
     fn phase(&self) -> Option<FasePartida> {
         self.partida.as_ref().and_then(|partida| partida.fase())
     }
+
+    fn mus_info_set(&self, player: usize) -> MusInfoSet {
+        <Self as Game>::info_set(self, player)
+    }
+
+    fn turn(&self) -> Option<Turno> {
+        self.partida.as_ref().and_then(|partida| partida.turno())
+    }
+
+    fn hands(&self) -> &[Mano] {
+        self.partida
+            .as_ref()
+            .expect("La partida debe estar repartida.")
+            .manos()
+            .as_ref()
+    }
+
+    fn deal_new_cards(&mut self, nuevas: &[Carta]) -> Result<(), SolverError> {
+        self.partida
+            .as_mut()
+            .expect("La partida debe estar repartida.")
+            .descartar_con_nuevas(nuevas)?;
+        // Las cartas nuevas cambian la mano de quien descartó.
+        self.update_hands(Lance::Grande);
+        self.enforce_max_mus_rounds();
+        Ok(())
+    }
 }
 
 impl GenericMus for MusGameTwoPlayers {
@@ -1047,6 +1122,33 @@ impl GenericMus for MusGameTwoPlayers {
 
     fn phase(&self) -> Option<FasePartida> {
         self.partida.as_ref().and_then(|partida| partida.fase())
+    }
+
+    fn mus_info_set(&self, player: usize) -> MusInfoSet {
+        <Self as Game>::info_set(self, player)
+    }
+
+    fn turn(&self) -> Option<Turno> {
+        self.partida.as_ref().and_then(|partida| partida.turno())
+    }
+
+    fn hands(&self) -> &[Mano] {
+        self.partida
+            .as_ref()
+            .expect("La partida debe estar repartida.")
+            .manos()
+            .as_ref()
+    }
+
+    fn deal_new_cards(&mut self, nuevas: &[Carta]) -> Result<(), SolverError> {
+        self.partida
+            .as_mut()
+            .expect("La partida debe estar repartida.")
+            .descartar_con_nuevas(nuevas)?;
+        // Las cartas nuevas cambian la mano de quien descartó.
+        self.update_hands(Lance::Grande);
+        self.enforce_max_mus_rounds();
+        Ok(())
     }
 }
 fn actions<T: ModalidadMus>(partida: &PartidaMus<T>) -> ArrayVec<Accion, 15> {
@@ -1217,18 +1319,23 @@ pub struct MusInfoSetBuilder {
 }
 
 impl MusInfoSetBuilder {
-    fn to_mus_infoset(&self, player_id: usize) -> MusInfoSet {
+    pub(crate) fn to_mus_infoset(&self, player_id: usize) -> MusInfoSet {
         (self.public_history, self.private_history[player_id])
     }
 
-    fn to_mus_infoset_two_hands(&self, player_id: usize) -> MusInfoSet {
+    #[cfg(test)]
+    pub(crate) fn public_history(&self) -> u64 {
+        self.public_history
+    }
+
+    pub(crate) fn to_mus_infoset_two_hands(&self, player_id: usize) -> MusInfoSet {
         (
             self.public_history,
             self.private_history[player_id] | (self.private_history[player_id + 2] << 32),
         )
     }
 
-    fn set_hand(&mut self, player_id: usize, mano: &Mano, lance: &Lance) {
+    pub(crate) fn set_hand(&mut self, player_id: usize, mano: &Mano, lance: &Lance) {
         let value = self.tables.rank_hand(mano, lance);
         Self::put(
             &mut self.private_history[player_id],
@@ -1758,6 +1865,77 @@ mod tests {
         game.act_with_action(Accion::Ordago).unwrap();
         assert!(matches!(game.current_node(), NodeType::Player(2, _)));
         assert_eq!(game.actions().to_vec(), vec![Accion::Ordago]);
+    }
+
+    /// El jugador decide por sus dos manos a la vez, así que la fase de mus tiene un solo nodo por
+    /// jugador aunque `PartidaMus` pida un voto por mano.
+    #[test]
+    fn two_hands_mus_is_one_decision_per_player() {
+        let mut game = MusGameTwoHands::new([0, 0], false, 1).with_hands(cuatro_manos());
+        let mut nodos = Vec::new();
+        while matches!(
+            game.partida.as_ref().unwrap().fase(),
+            Some(FasePartida::Mus)
+        ) {
+            nodos.push(game.current_node());
+            game.act_with_action(Accion::Mus).unwrap();
+        }
+        assert!(
+            matches!(nodos[..], [NodeType::Player(0, 2), NodeType::Player(1, 2)]),
+            "se esperaba un nodo por jugador, no uno por mano: {nodos:?}"
+        );
+        assert_eq!(
+            game.partida.as_ref().unwrap().fase(),
+            Some(FasePartida::Descartes)
+        );
+        // Sin nodo intermedio no hay acción de compañero que ocultar.
+        assert_eq!((game.info_set_builder.public_history() >> 48) & 0b111, 0);
+    }
+
+    /// Un NoMus termina la fase en la primera llamada, así que no se repite la acción sobre la
+    /// segunda mano.
+    #[test]
+    fn two_hands_no_mus_ends_the_phase() {
+        let mut game = MusGameTwoHands::new([0, 0], false, 1).with_hands(cuatro_manos());
+        game.act_with_action(Accion::NoMus).unwrap();
+        assert!(matches!(
+            game.partida.as_ref().unwrap().fase(),
+            Some(FasePartida::Envites(_))
+        ));
+    }
+
+    /// En los descartes sí hay un nodo por mano: cada una tira cartas distintas. Los dos nodos del
+    /// mismo jugador tienen que distinguirse sin recurrir a la acción oculta.
+    #[test]
+    fn two_hands_discard_nodes_do_not_collide() {
+        let mut game = MusGameTwoHands::new([0, 0], false, 1).with_hands(cuatro_manos());
+        while matches!(
+            game.partida.as_ref().unwrap().fase(),
+            Some(FasePartida::Mus)
+        ) {
+            game.act_with_action(Accion::Mus).unwrap();
+        }
+        let mut info_sets = Vec::new();
+        let mut turnos = Vec::new();
+        for _ in 0..4 {
+            turnos.push(game.partida.as_ref().unwrap().turno());
+            info_sets.push(game.info_set(0));
+            game.act_with_action(Accion::Descartar([true, false, false, false]))
+                .unwrap();
+            let descartadas = game.partida.as_ref().unwrap().descartadas().unwrap();
+            game.deal_new_cards(&descartadas).unwrap();
+        }
+        assert!(matches!(
+            turnos[..],
+            [
+                Some(Turno::Jugador(0)),
+                Some(Turno::Jugador(1)),
+                Some(Turno::Jugador(2)),
+                Some(Turno::Jugador(3))
+            ]
+        ));
+        // Las manos 0 y 2 las decide el jugador 0: sus dos nodos deben ser distintos.
+        assert_ne!(info_sets[0], info_sets[2]);
     }
 
     #[test]

@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::mus::Accion;
+use crate::{
+    mus::{Accion, MusError},
+    solver::CursorMove,
+};
 
 #[derive(Debug, Error)]
 pub enum SolverError {
@@ -24,4 +27,16 @@ pub enum SolverError {
 
     #[error("Invalid number of discarded cards: {0}")]
     InvalidDiscardsNumber(usize),
+
+    #[error("Invalid cursor move in the current node: {0}")]
+    InvalidCursorMove(CursorMove),
+
+    #[error("Invalid hand index {0}: the game has {1} hands")]
+    InvalidHandIndex(usize, usize),
+
+    #[error("This game type needs {0} hands per player")]
+    WrongHandCount(usize),
+
+    #[error("Mus error.")]
+    Mus(#[from] MusError),
 }
