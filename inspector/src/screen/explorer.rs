@@ -17,10 +17,10 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, Carta, FasePartida, Lance, RankingManos},
+    mus::{Accion, Carta, FasePartida, Lance, Mano, RankingManos},
     solver::{
         AbstractJugada, Cursor, CursorMove, CursorNode, DiscardAction, GameType, HandConfig,
-        HandConfiguration, HandKind, SolverError, StrategyReader,
+        HandConfiguration, HandKind, HandStrategy, SolverError, StrategyReader,
     },
 };
 
@@ -285,14 +285,21 @@ impl ActionPath {
         }
     }
 
+    /// Mayor alcance de un grupo de estrategias, con el que se gradúa el oscurecido de las
+    /// casillas. Los alcances no están normalizados, así que solo valen unos frente a otros.
+    fn max_reach<'a>(strategies: impl Iterator<Item = &'a HandStrategy>) -> f64 {
+        strategies
+            .map(|strategy| strategy.reach_probability())
+            .fold(0., f64::max)
+    }
+
     fn update_squares_two_hands(&mut self, lance: &Lance) {
         let Ok(strategies) = self.cursor.strategies() else {
             self.two_hands_squares.clear();
             return;
         };
 
-        let mut squares: HashMap<(AbstractJugada, AbstractJugada), (Vec<Accion>, Vec<f64>, usize)> =
-            HashMap::new();
+        let mut squares: HashMap<(AbstractJugada, AbstractJugada), CeldaDosManos> = HashMap::new();
         for strategy in strategies {
             let HandKind::TwoHands(mano1, mano2) = strategy.hand() else {
                 continue;
@@ -303,18 +310,23 @@ impl ActionPath {
             ) else {
                 continue;
             };
-            let celda = squares.entry((jugada1, jugada2)).or_insert_with(|| {
-                (
-                    strategy.actions().to_vec(),
-                    vec![0.; strategy.strategy().len()],
-                    0,
-                )
-            });
-            for (acumulado, probabilidad) in zip(&mut celda.1, strategy.strategy()) {
+            let celda = squares
+                .entry((jugada1, jugada2))
+                .or_insert_with(|| CeldaDosManos {
+                    actions: strategy.actions().to_vec(),
+                    suma: vec![0.; strategy.strategy().len()],
+                    num_pares: 0,
+                    reach: 0.,
+                });
+            for (acumulado, probabilidad) in zip(&mut celda.suma, strategy.strategy()) {
                 *acumulado += probabilidad;
             }
-            celda.2 += 1;
+            celda.num_pares += 1;
+            // El alcance de la casilla es el de todos los pares que caen en ella.
+            celda.reach += strategy.reach_probability();
         }
+        // El oscurecido es relativo a lo que hay en pantalla: los alcances no están normalizados.
+        let max_reach = squares.values().map(|celda| celda.reach).fold(0., f64::max);
 
         let jugadas: Vec<AbstractJugada> = squares
             .keys()
@@ -333,11 +345,14 @@ impl ActionPath {
                         let mut square = SquareData::new(format!("{jugada1},{jugada2}"))
                             .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
                         bucket_id += 1;
-                        if let Some((actions, suma, num_pares)) = squares.get(&(*jugada1, *jugada2))
-                        {
-                            let media: Vec<f64> =
-                                suma.iter().map(|v| v / *num_pares as f64).collect();
-                            square.update_with_node(actions, &media);
+                        if let Some(celda) = squares.get(&(*jugada1, *jugada2)) {
+                            let media: Vec<f64> = celda
+                                .suma
+                                .iter()
+                                .map(|v| v / celda.num_pares as f64)
+                                .collect();
+                            square.update_with_node(&celda.actions, &media);
+                            square.set_reach(celda.reach, max_reach);
                         }
                         square
                     })
@@ -351,7 +366,7 @@ impl ActionPath {
             self.one_hand_squares.clear();
             return;
         };
-        self.one_hand_squares = strategies
+        let manos: Vec<(AbstractJugada, Mano, HandStrategy)> = strategies
             .into_iter()
             .filter_map(|strategy| match strategy.hand() {
                 HandKind::OneHand(mano) => {
@@ -365,11 +380,18 @@ impl ActionPath {
                     .cmp(jugada2)
                     .then_with(|| lance.compara_manos(mano1, mano2))
             })
+            .collect();
+        // El oscurecido es relativo a lo que hay en pantalla: los alcances no están normalizados.
+        let max_reach = Self::max_reach(manos.iter().map(|(_, _, strategy)| strategy));
+
+        self.one_hand_squares = manos
+            .into_iter()
             .enumerate()
             .map(|(bucket_id, (jugada, mano, strategy))| {
                 let mut square_data = SquareData::new(mano.to_string())
                     .on_hover(move || ExplorerEvent::SelectBucket(Some(bucket_id)));
                 square_data.update_with_node(strategy.actions(), strategy.strategy());
+                square_data.set_reach(strategy.reach_probability(), max_reach);
                 (jugada, square_data)
             })
             .collect();
@@ -678,6 +700,31 @@ fn action_style(action: &Accion) -> Color {
     }
 }
 
+/// Acumulado de una casilla de la vista de dos manos: la estrategia media de los pares de manos
+/// que caen en ella y el alcance de todos ellos.
+struct CeldaDosManos {
+    actions: Vec<Accion>,
+    suma: Vec<f64>,
+    num_pares: usize,
+    reach: f64,
+}
+
+/// Décadas de alcance entre la casilla más probable y la más oscura.
+const DECADAS_HASTA_OSCURO: f32 = 3.;
+
+/// Brillo de la casilla más oscura: no llega a negro para que el color siga distinguiéndose.
+const BRILLO_MINIMO: f32 = 0.2;
+
+/// Acerca un color a negro conservando el alfa. `brillo` va de 0 (negro) a 1 (sin tocar).
+fn oscurecer(color: Color, brillo: f32) -> Color {
+    Color {
+        r: color.r * brillo,
+        g: color.g * brillo,
+        b: color.b * brillo,
+        ..color
+    }
+}
+
 fn draw_order(action: &Accion) -> u8 {
     match action {
         Accion::Paso => 3,
@@ -694,6 +741,8 @@ fn draw_order(action: &Accion) -> u8 {
 }
 pub struct SquareData<Message> {
     dist: Vec<(Accion, f64)>,
+    /// Brillo del relleno, de [`BRILLO_MINIMO`] a 1. Ver [`SquareData::set_reach`].
+    brillo: f32,
     pub label: String,
     pub cache: canvas::Cache,
     on_hover: Option<Box<dyn Fn() -> Message + 'static>>,
@@ -703,10 +752,28 @@ impl<Message> SquareData<Message> {
     pub fn new(label: String) -> Self {
         Self {
             dist: vec![],
+            brillo: 1.,
             label,
             cache: canvas::Cache::default(),
             on_hover: None,
         }
+    }
+
+    /// Oscurece la casilla según su probabilidad de alcance, relativa a la mayor de las que se
+    /// enseñan: la más probable se pinta a todo color.
+    ///
+    /// La escala es logarítmica porque los alcances se reparten por órdenes de magnitud: a
+    /// [`DECADAS_HASTA_OSCURO`] décadas de la mejor se llega a [`BRILLO_MINIMO`], y de ahí no baja
+    /// para que el color siga distinguiéndose. Una casilla inalcanzable se pinta igual de oscura
+    /// que la peor, no invisible.
+    pub fn set_reach(&mut self, reach: f64, max_reach: f64) {
+        let decadas = if reach > 0. && max_reach > 0. {
+            (max_reach / reach).log10() as f32 / DECADAS_HASTA_OSCURO
+        } else {
+            1.
+        };
+        self.brillo = 1. - decadas.clamp(0., 1.) * (1. - BRILLO_MINIMO);
+        self.cache.clear();
     }
 
     pub fn on_hover(mut self, on_hover: impl Fn() -> Message + 'static) -> Self {
@@ -750,7 +817,7 @@ impl<Message> canvas::Program<Message> for SquareData<Message> {
             let region_colors: Vec<Color> = self
                 .dist
                 .iter()
-                .map(|(action, _)| action_style(action))
+                .map(|(action, _)| oscurecer(action_style(action), self.brillo))
                 .collect();
             let region_x_position: Vec<f32> = region_widths
                 .iter()
