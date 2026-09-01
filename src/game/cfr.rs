@@ -6,7 +6,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
-use std::sync::Mutex;
+use std::sync::mpsc;
+use std::thread;
 use std::{collections::HashMap, str::FromStr};
 
 use super::{GameError, GameGraph};
@@ -285,12 +286,13 @@ pub struct Cfr<G: Game + Send + Sync> {
     nodes: DashMap<G::InfoSet, Node, FxBuildHasher>,
     discount_round_size: usize,
     method: CfrMethod,
-    on_progress: Option<ProgressFn>,
+    on_progress: Option<(ProgressFn, usize)>,
     utility: Vec<f64>,
     mode: ExecutionMode,
 }
 
 type ProgressFn = Box<dyn Fn(usize, Vec<f64>) + Send + Sync>;
+type ProgressReport = (usize, Vec<f64>);
 
 #[derive(PartialEq, Eq)]
 enum ExecutionMode {
@@ -330,8 +332,17 @@ impl<G: Game + Send + Sync> Cfr<G> {
 
     /// Sets a callback function to report the progress of the algorithm. This callback receives the
     /// iteration number and the current estimated expected value.
-    pub fn on_progress(mut self, f: impl Fn(usize, Vec<f64>) + Send + Sync + 'static) -> Self {
-        self.on_progress = Some(Box::new(f));
+    ///
+    /// `period` is the approximate number of iterations between reports: the last chunk of a batch,
+    /// or a batch smaller than `workers * period`, reports sooner. What is guaranteed is that the
+    /// reported counts add up to the number of iterations requested, so the last report always
+    /// carries the total.
+    pub fn on_progress(
+        mut self,
+        f: impl Fn(usize, Vec<f64>) + Send + Sync + 'static,
+        period: usize,
+    ) -> Self {
+        self.on_progress = Some((Box::new(f), period));
         self
     }
 
@@ -399,25 +410,58 @@ impl<G: Game + Send + Sync> Cfr<G> {
         G::InfoSet: Send + Sync,
     {
         let mut game_graph = GameGraph::new(game);
-        let progress = Mutex::new((0usize, vec![0.; G::N_PLAYERS]));
         let num_rounds = iterations / self.discount_round_size;
         let leftover = iterations % self.discount_round_size;
-        for round in 0..num_rounds {
-            let utility =
-                self.run_batch(game, &mut game_graph, self.discount_round_size, &progress);
-            self.utility
-                .iter_mut()
-                .zip(utility)
-                .for_each(|(x, y)| *x += y);
-            self.discount((round as f64 + 1.) / (round as f64 + 2.));
-        }
-        if leftover > 0 {
-            let utility = self.run_batch(game, &mut game_graph, leftover, &progress);
-            self.utility
-                .iter_mut()
-                .zip(utility)
-                .for_each(|(x, y)| *x += y);
-        }
+        thread::scope(|scope| {
+            let (tx, rx) = mpsc::channel::<ProgressReport>();
+            if let Some((progress, _)) = &self.on_progress {
+                scope.spawn(move || {
+                    let mut iterations = 0;
+                    let mut utility = vec![0.; G::N_PLAYERS];
+                    while let Ok((iter, util)) = rx.recv() {
+                        iterations += iter;
+                        utility.iter_mut().zip(&util).for_each(|(u1, u2)| *u1 += u2);
+                        progress(
+                            iterations,
+                            utility.iter().map(|u| u / iterations as f64).collect(),
+                        );
+                    }
+                });
+            }
+            for round in 0..num_rounds {
+                let utility = self.run_batch(game, &mut game_graph, self.discount_round_size, &tx);
+                self.utility
+                    .iter_mut()
+                    .zip(utility)
+                    .for_each(|(x, y)| *x += y);
+                self.discount((round as f64 + 1.) / (round as f64 + 2.));
+            }
+            if leftover > 0 {
+                let utility = self.run_batch(game, &mut game_graph, leftover, &tx);
+                self.utility
+                    .iter_mut()
+                    .zip(utility)
+                    .for_each(|(x, y)| *x += y);
+            }
+        });
+    }
+
+    /// Iteraciones que agrupa cada mensaje de progreso.
+    ///
+    /// Sale del periodo indicado en [`Cfr::on_progress`]: agrupar así evita mandar un mensaje por
+    /// iteración y hace que el consumidor reciba justo lo que necesita para informar. Sin callback
+    /// no hay nada que informar y solo se agrupa para no partir el trabajo de más.
+    ///
+    /// Se recorta a `count / workers` para que un `count` pequeño no acabe en un solo trozo, que
+    /// dejaría el resto de workers sin trabajo. Con ese recorte, y con el último trozo del lote, se
+    /// informa antes de tiempo; da igual mientras la suma de los avisos sea el número de
+    /// iteraciones pedido.
+    fn report_chunk(&self, count: usize, workers: usize) -> usize {
+        let period = self
+            .on_progress
+            .as_ref()
+            .map_or(count, |(_, period)| *period);
+        period.min(count.div_ceil(workers)).max(1)
     }
 
     fn run_batch(
@@ -425,7 +469,7 @@ impl<G: Game + Send + Sync> Cfr<G> {
         game: &G,
         game_graph: &mut GameGraph<G, CfrData>,
         count: usize,
-        progress: &Mutex<(usize, Vec<f64>)>,
+        progress: &mpsc::Sender<ProgressReport>,
     ) -> Vec<f64>
     where
         G: Clone,
@@ -435,24 +479,49 @@ impl<G: Game + Send + Sync> Cfr<G> {
             a.iter_mut().zip(b).for_each(|(x, y)| *x += y);
             a
         };
-        if let ExecutionMode::ParallelIterations { workers: _ } = self.mode {
-            (0..count)
+        if let ExecutionMode::ParallelIterations { workers } = self.mode {
+            let chunk = self.report_chunk(count, workers);
+            // Se reparten los trozos, no las iteraciones: `IndexedParallelIterator::chunks`
+            // materializaría un `Vec` de índices por trozo que aquí no sirve para nada.
+            (0..count.div_ceil(chunk))
+                // `mpsc::Sender` es `Send` pero no `Sync`, así que cada worker necesita su clon.
                 .into_par_iter()
-                .map(|_| self.run_once(game, None, progress))
+                .map_with(progress.clone(), |p, c| {
+                    // El último trozo es más corto si `chunk` no divide a `count`.
+                    let len = chunk.min(count - c * chunk);
+                    let mut accum = vec![0.; G::N_PLAYERS];
+                    for _ in 0..len {
+                        let utility = self.run_once(game, None);
+                        accum.iter_mut().zip(&utility).for_each(|(a, b)| *a += b);
+                    }
+                    if self.on_progress.is_some() {
+                        let _ = p.send((len, accum.clone()));
+                    }
+                    accum
+                })
                 .reduce(|| vec![0.; G::N_PLAYERS], sum)
         } else {
-            (0..count)
-                .map(|_| self.run_once(game, Some(&mut *game_graph), progress))
+            // Mismo reparto en trozos que en el caso paralelo, aunque aquí solo sirva para informar
+            // cada `period` iteraciones en vez de una vez al terminar el lote.
+            let chunk = self.report_chunk(count, 1);
+            (0..count.div_ceil(chunk))
+                .map(|c| {
+                    let len = chunk.min(count - c * chunk);
+                    let mut accum = vec![0.; G::N_PLAYERS];
+                    for _ in 0..len {
+                        let utility = self.run_once(game, Some(&mut *game_graph));
+                        accum.iter_mut().zip(&utility).for_each(|(a, b)| *a += b);
+                    }
+                    if self.on_progress.is_some() {
+                        let _ = progress.send((len, accum.clone()));
+                    }
+                    accum
+                })
                 .fold(vec![0.; G::N_PLAYERS], sum)
         }
     }
 
-    fn run_once(
-        &self,
-        game: &G,
-        game_graph: Option<&mut GameGraph<G, CfrData>>,
-        progress: &Mutex<(usize, Vec<f64>)>,
-    ) -> Vec<f64>
+    fn run_once(&self, game: &G, game_graph: Option<&mut GameGraph<G, CfrData>>) -> Vec<f64>
     where
         G: Clone,
         G::InfoSet: Send + Sync,
@@ -495,24 +564,10 @@ impl<G: Game + Send + Sync> Cfr<G> {
                 }
             }
         }
-        if let Some(on_progress) = &self.on_progress {
-            let (count, avg) = {
-                let mut guard = progress.lock().unwrap();
-                guard.0 += 1;
-                guard
-                    .1
-                    .iter_mut()
-                    .zip(&utility)
-                    .for_each(|(total, u)| *total += u);
-                let avg = guard.1.iter().map(|u| u / guard.0 as f64).collect();
-                (guard.0, avg)
-            };
-            on_progress(count, avg);
-        }
         utility
     }
 
-    fn discount(&mut self, weight: f64) {
+    fn discount(&self, weight: f64) {
         self.nodes.iter_mut().for_each(|mut value| {
             value.data.iter_mut().for_each(|r| *r *= weight);
         })

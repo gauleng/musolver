@@ -192,8 +192,9 @@ where
     );
     let mut cfr = Cfr::new()
         .method(trainer_config.method)
-        .on_progress(move |i, util| {
-            if i.is_multiple_of(1000) {
+        .discount_round_size(10_000_000)
+        .on_progress(
+            move |i, util| {
                 pb.set_position(i as u64);
                 pb.set_message(format!(
                     "Utility: {}",
@@ -202,8 +203,9 @@ where
                         .collect::<Vec<String>>()
                         .join(" "),
                 ));
-            }
-        });
+            },
+            100_000,
+        );
     if trainer_config.workers > 1 {
         cfr = cfr.parallel_iterations(trainer_config.workers);
     }
