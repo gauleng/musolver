@@ -777,7 +777,25 @@ impl Cursor {
     }
 
     pub fn cursor_node(&self) -> CursorNode {
-        Self::node_of(&*self.history[self.position()])
+        self.node_at(self.position)
+    }
+
+    /// Movimientos pedidos, incluidos los que ahora mismo no se juegan. Ver [`Cursor`].
+    pub fn moves(&self) -> &[CursorMove] {
+        &self.moves
+    }
+
+    /// Nodo en una posición cualquiera del recorrido, para reconstruir la línea entera.
+    pub fn node_at(&self, position: usize) -> CursorNode {
+        Self::node_of(&*self.history[position])
+    }
+
+    pub fn phase_at(&self, position: usize) -> Option<FasePartida> {
+        self.history[position].phase()
+    }
+
+    pub fn turn_at(&self, position: usize) -> Option<Turno> {
+        self.history[position].turn()
     }
 
     fn node_of(game: &dyn GenericMus) -> CursorNode {
@@ -796,15 +814,23 @@ impl Cursor {
     }
 
     pub fn turn(&self) -> Option<Turno> {
-        self.history[self.position].turn()
+        self.turn_at(self.position)
     }
 
     pub fn phase(&self) -> Option<FasePartida> {
-        self.history[self.position].phase()
+        self.phase_at(self.position)
     }
 
     pub fn seek(&mut self, new_position: usize) {
         self.position = new_position.min(self.history.len() - 1)
+    }
+
+    /// Descarta los movimientos posteriores a la posición actual, incluida la cola que el cursor
+    /// conservaba sin jugar. Es lo mismo que hace [`Cursor::act`] antes de añadir su movimiento,
+    /// para cuando se quiere cortar el recorrido sin elegir ninguna acción.
+    pub fn truncate(&mut self) {
+        self.moves.truncate(self.position);
+        self.history.truncate(self.position + 1);
     }
 
     pub fn go_back(&mut self) {
@@ -1621,6 +1647,75 @@ mod cursor_tests {
     }
 
     /// `act` mantiene la invariante `history.len() == moves.len() + 1` y avanza la posición.
+    /// Los accesos por posición son los que permiten reconstruir la línea entera: el nodo `k`
+    /// ofrece las acciones legales y `moves()[k]` es la que se eligió.
+    #[test]
+    fn node_at_describes_every_position() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 0);
+        cursor.act(CursorMove::Play(Accion::Paso)).unwrap();
+        cursor.act(CursorMove::Play(Accion::Paso)).unwrap();
+        assert_eq!(cursor.history_len(), 3);
+
+        for level in 0..cursor.history_len() {
+            assert!(matches!(cursor.node_at(level), CursorNode::Play(_)));
+            assert!(cursor.phase_at(level).is_some());
+            assert!(cursor.turn_at(level).is_some());
+        }
+        // Cada movimiento es legal en su nodo.
+        for (level, movimiento) in cursor.moves().iter().enumerate() {
+            let CursorNode::Play(actions) = cursor.node_at(level) else {
+                panic!("se esperaba un nodo de jugador");
+            };
+            let CursorMove::Play(accion) = movimiento else {
+                panic!("se esperaba una acción");
+            };
+            assert!(actions.contains(accion));
+        }
+        // Y coinciden con los de la posición actual.
+        assert_eq!(cursor.phase_at(cursor.position()), cursor.phase());
+        assert_eq!(cursor.turn_at(cursor.position()), cursor.turn());
+    }
+
+    /// Cortar el recorrido en la posición actual deja el nodo donde está y borra lo que venía
+    /// después, incluida la cola que se conservaba sin jugar.
+    #[test]
+    fn truncate_cuts_the_continuation() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 0);
+        for _ in 0..4 {
+            cursor.act(CursorMove::Play(Accion::Paso)).unwrap();
+        }
+        assert_eq!(cursor.moves().len(), 4);
+        assert_eq!(cursor.history_len(), 5);
+
+        cursor.seek(2);
+        cursor.truncate();
+        assert_eq!(cursor.moves().len(), 2);
+        assert_eq!(cursor.history_len(), 3);
+        assert_eq!(cursor.position(), 2);
+        // El nodo donde se corta sigue siendo de jugador: se puede volver a elegir ahí.
+        assert!(matches!(cursor.cursor_node(), CursorNode::Play(_)));
+    }
+
+    /// También borra la cola que un cambio de configuración había dejado sin jugar.
+    #[test]
+    fn truncate_drops_the_dangling_tail() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 0);
+        while cursor.phase().is_some() && cursor.act(CursorMove::Play(Accion::Paso)).is_ok() {}
+        let sin_jugadas = HandConfig {
+            pares: false,
+            juego: false,
+        };
+        cursor
+            .set_hand_configs(&[sin_jugadas, sin_jugadas])
+            .unwrap();
+        assert_eq!(cursor.moves().len(), 8);
+        assert_eq!(cursor.history_len(), 7);
+
+        cursor.truncate();
+        assert_eq!(cursor.moves().len(), 6, "la cola sin jugar desaparece");
+        assert_eq!(cursor.history_len(), 7);
+    }
+
     #[test]
     fn act_advances_the_position() {
         let mut cursor = cursor(GameType::MusGameTwoPlayers, 1);

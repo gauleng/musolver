@@ -17,10 +17,10 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, Baraja, DistribucionCartaIter, FasePartida, Lance, Mano, RankingManos},
+    mus::{Accion, FasePartida, Lance, RankingManos},
     solver::{
-        AbstractChica, AbstractGrande, AbstractJuego, AbstractJugada, AbstractPares, AbstractPunto,
-        Cursor, GameStateResult, GameType, HandConfig, HandConfiguration, HandKind, StrategyReader,
+        AbstractJugada, Cursor, CursorMove, CursorNode, GameType, HandConfig, HandConfiguration,
+        HandKind, SolverError, StrategyReader,
     },
 };
 
@@ -32,8 +32,6 @@ pub enum ViewMode {
 
 pub struct ActionPath {
     pub cursor: Cursor,
-    pub buckets: Buckets,
-
     pub selected_tantos_mano: Option<u8>,
     pub tantos_mano: Vec<u8>,
     pub selected_tantos_postre: Option<u8>,
@@ -47,6 +45,9 @@ pub struct ActionPath {
     pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
     pub hovered_square: Option<usize>,
     pub jugadas: Vec<HandConfig>,
+    /// Último error del cursor: los eventos de la interfaz no pueden propagarlo, así que se
+    /// guarda para mostrarlo.
+    pub error: Option<String>,
 }
 
 impl ActionPath {
@@ -70,7 +71,6 @@ impl ActionPath {
         let mut action_path = Self {
             one_hand_squares: vec![],
             two_hands_squares: vec![],
-            buckets: Buckets::new(&Lance::Grande, None),
             view_mode: match game_type {
                 GameType::MusGameTwoHands => ViewMode::TwoHands,
                 _ => ViewMode::OneHand,
@@ -85,37 +85,35 @@ impl ActionPath {
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
             hovered_square: None,
-            jugadas: vec![HandConfig {
-                pares: true,
-                juego: true,
-            }],
+            error: None,
+            jugadas: vec![
+                HandConfig {
+                    pares: true,
+                    juego: true,
+                };
+                game_type.num_hands()
+            ],
         };
         action_path.update_squares();
         action_path
-    }
-
-    fn append_action_picklists(&mut self, lance: FasePartida, player: u8, actions: &[Accion]) {
-        let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-        valores.extend(actions.iter().map(|c| OptionalAction(Some(*c))));
-        self.selected_actions.push(None);
-        self.actions.push((lance, player, valores));
-    }
-
-    fn selected_history(&self) -> Vec<Accion> {
-        self.selected_actions
-            .iter()
-            .filter_map(|optional_action| optional_action.as_ref())
-            .map(|optional_action| optional_action.0.unwrap())
-            .collect()
     }
 
     pub fn update(&mut self, message: ExplorerEvent) {
         self.hovered_square = None;
         match message {
             ExplorerEvent::SetAction(level, action) => {
-                self.selected_actions[level] = action.0.map(|_| action);
-                self.selected_actions.drain(level + 1..);
-                self.actions.drain(level + 1..);
+                // El nivel del desplegable es la posición en el recorrido del cursor: se retrocede
+                // hasta él y se actúa, lo que descarta por su cuenta lo que hubiera después.
+                self.cursor.seek(level);
+                match action.0 {
+                    Some(accion) => {
+                        // Puede fallar si el desplegable se quedó obsoleto respecto al cursor.
+                        let resultado = self.cursor.act(CursorMove::Play(accion));
+                        self.report(resultado);
+                    }
+                    // La opción vacía corta el recorrido en ese desplegable.
+                    None => self.cursor.truncate(),
+                }
             }
             ExplorerEvent::SetStrategy(strategy) => {
                 self.selected_strategy = Some(strategy);
@@ -140,50 +138,71 @@ impl ActionPath {
             }
             ExplorerEvent::SetPares(player, jugada) => {
                 self.jugadas[player].pares = jugada;
-                self.cursor.set_hand_config(player, self.jugadas[player]);
+                let resultado = self.cursor.set_hand_config(player, self.jugadas[player]);
+                self.report(resultado);
             }
             ExplorerEvent::SetJuego(player, jugada) => {
                 self.jugadas[player].juego = jugada;
-                self.cursor.set_hand_config(player, self.jugadas[player]);
+                let resultado = self.cursor.set_hand_config(player, self.jugadas[player]);
+                self.report(resultado);
             }
         }
-        if let Some(None) = self.selected_actions.last() {
-            self.selected_actions.pop();
-            self.actions.pop();
-        }
-
+        // Los desplegables se rehacen desde el cursor, así que no hay que recortarlos a mano.
         self.update_squares();
     }
 
-    fn update_squares(&mut self) {
-        let phase = self.cursor.phase();
-        let turn = self.cursor.turn();
-        let actions = self.cursor.cursor_node();
-        if let Some(player) = turn {
-            let lance = match phase {
-                Some(FasePartida::Envites(lance)) => lance,
-                _ => Lance::Grande,
-            };
-            match self.view_mode {
-                ViewMode::OneHand => {
-                    self.update_squares_one_hand(&lance);
-                }
-                ViewMode::TwoHands => {
-                    self.update_squares_two_hands(&lance);
-                }
-            }
+    /// Guarda el resultado de una operación del cursor para enseñarlo: si sale bien, borra el
+    /// mensaje anterior.
+    fn report(&mut self, resultado: Result<(), SolverError>) {
+        self.error = resultado.err().map(|err| err.to_string());
+    }
 
-            match actions {
-                musolver::solver::CursorNode::Play(actions) => {
-                    self.append_action_picklists(
-                        phase.unwrap(),
-                        player.player_id() as u8,
-                        &actions,
-                    );
-                }
-                musolver::solver::CursorNode::Discard => todo!(),
-                musolver::solver::CursorNode::Terminal => todo!(),
-            }
+    fn update_squares(&mut self) {
+        let lance = match self.cursor.phase() {
+            Some(FasePartida::Envites(lance)) => lance,
+            _ => Lance::Grande,
+        };
+        match self.view_mode {
+            ViewMode::OneHand => self.update_squares_one_hand(&lance),
+            ViewMode::TwoHands => self.update_squares_two_hands(&lance),
+        }
+        self.rebuild_action_picklists();
+    }
+
+    /// Rehace los desplegables a partir del cursor: uno por nodo del recorrido, con la accion
+    /// elegida en cada uno.
+    ///
+    /// Antes se acumulaban desplegable a desplegable, lo que se desincroniza en cuanto el
+    /// cursor recorta la linea por su cuenta al cambiar los tantos o una jugada. El nivel de cada
+    /// desplegable es la posicion en el cursor, asi que no se salta ninguna.
+    fn rebuild_action_picklists(&mut self) {
+        self.actions.clear();
+        self.selected_actions.clear();
+        for level in 0..self.cursor.history_len() {
+            let (Some(phase), Some(turno)) =
+                (self.cursor.phase_at(level), self.cursor.turn_at(level))
+            else {
+                continue;
+            };
+            // TODO: en la fase de descartes hay que ofrecer `DiscardAction`, no acciones sueltas.
+            let opciones = match self.cursor.node_at(level) {
+                CursorNode::Play(actions) => actions,
+                CursorNode::Discard | CursorNode::Terminal => vec![],
+            };
+            let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
+            valores.extend(opciones.iter().map(|accion| OptionalAction(Some(*accion))));
+            self.actions.push((phase, turno.player_id(), valores));
+
+            // Solo los movimientos que llegan a jugarse cuentan como elegidos: la cola que el
+            // cursor conserva sin realizar se muestra vacia.
+            let seleccionada = (level + 1 < self.cursor.history_len())
+                .then(|| self.cursor.moves().get(level))
+                .flatten()
+                .and_then(|movimiento| match movimiento {
+                    CursorMove::Play(accion) => Some(OptionalAction(Some(*accion))),
+                    CursorMove::Discard(_) => None,
+                });
+            self.selected_actions.push(seleccionada);
         }
     }
 
@@ -304,8 +323,6 @@ impl ActionPath {
             .map_or_else(
                 || column![text("-")],
                 |bucket_id| {
-                    //let jugada = self.one_hand_squares[bucket_id];
-                    //let bucket_probability = 100. * self.buckets.probability(&jugada).unwrap();
                     column(
                         self.one_hand_squares[bucket_id]
                             .1
@@ -361,7 +378,11 @@ impl ActionPath {
                 })
                 .width(Length::Fill)
         ];
-        let layout = column![top_row, legend, scrollable_matrix].align_x(Horizontal::Center);
+        let error: Element<_> = match &self.error {
+            Some(mensaje) => text(mensaje).color(Color::parse("C7253E").unwrap()).into(),
+            None => text("").into(),
+        };
+        let layout = column![top_row, error, legend, scrollable_matrix].align_x(Horizontal::Center);
 
         layout.into()
     }
