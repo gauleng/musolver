@@ -84,6 +84,12 @@ impl From<&Carta> for char {
     }
 }
 
+impl std::fmt::Display for Carta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", char::from(self))
+    }
+}
+
 impl TryFrom<char> for Carta {
     type Error = MusError;
 

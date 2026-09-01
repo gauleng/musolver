@@ -17,10 +17,10 @@ use iced::{
 };
 use itertools::Itertools;
 use musolver::{
-    mus::{Accion, FasePartida, Lance, RankingManos},
+    mus::{Accion, Carta, FasePartida, Lance, RankingManos},
     solver::{
-        AbstractJugada, Cursor, CursorMove, CursorNode, GameType, HandConfig, HandConfiguration,
-        HandKind, SolverError, StrategyReader,
+        AbstractJugada, Cursor, CursorMove, CursorNode, DiscardAction, GameType, HandConfig,
+        HandConfiguration, HandKind, SolverError, StrategyReader,
     },
 };
 
@@ -38,8 +38,12 @@ pub struct ActionPath {
     pub tantos_postre: Vec<u8>,
     pub selected_strategy: Option<HandConfiguration>,
     pub strategies: Vec<HandConfiguration>,
-    pub selected_actions: Vec<Option<OptionalAction>>,
-    pub actions: Vec<(FasePartida, u8, Vec<OptionalAction>)>,
+    /// Movimiento elegido en cada nivel, alineado con [`ActionPath::nodes`].
+    pub selected_moves: Vec<Option<OptionalMove>>,
+    /// Un nodo por posición del cursor, terminales incluidos: el índice de un desplegable es la
+    /// posición a la que salta [`Cursor::seek`], así que saltarse nodos aquí desplazaría el resto.
+    /// Los terminales se descartan al pintar.
+    pub nodes: Vec<CursorNode>,
     pub view_mode: ViewMode,
     pub one_hand_squares: Vec<(AbstractJugada, SquareData<ExplorerEvent>)>,
     pub two_hands_squares: Vec<Vec<SquareData<ExplorerEvent>>>,
@@ -80,8 +84,8 @@ impl ActionPath {
             tantos_mano: Vec::from_iter(0..40),
             selected_tantos_postre: Some(0),
             tantos_postre: Vec::from_iter(0..40),
-            selected_actions: vec![],
-            actions: vec![],
+            selected_moves: vec![],
+            nodes: vec![],
             selected_strategy: Some(HandConfiguration::CuatroManos),
             strategies,
             hovered_square: None,
@@ -101,19 +105,36 @@ impl ActionPath {
     pub fn update(&mut self, message: ExplorerEvent) {
         self.hovered_square = None;
         match message {
-            ExplorerEvent::SetAction(level, action) => {
+            ExplorerEvent::SetMove(level, movimiento) => {
                 // El nivel del desplegable es la posición en el recorrido del cursor: se retrocede
                 // hasta él y se actúa, lo que descarta por su cuenta lo que hubiera después.
                 self.cursor.seek(level);
-                match action.0 {
-                    Some(accion) => {
-                        // Puede fallar si el desplegable se quedó obsoleto respecto al cursor.
-                        let resultado = self.cursor.act(CursorMove::Play(accion));
+                match movimiento.0 {
+                    // El desplegable ya ofrece el movimiento hecho, así que se pasa tal cual.
+                    // Puede fallar si se quedó obsoleto respecto al cursor.
+                    Some(movimiento) => {
+                        let resultado = self.cursor.act(movimiento);
                         self.report(resultado);
                     }
                     // La opción vacía corta el recorrido en ese desplegable.
                     None => self.cursor.truncate(),
                 }
+            }
+            ExplorerEvent::SetDiscardCard(level, slot, carta) => {
+                let Some(mut slots) = self.cursor.discard_slots_at(level) else {
+                    return;
+                };
+                // Elegir la carta de una ranura la da por tirada: es lo único que hace que la
+                // elección llegue al movimiento.
+                slots[slot] = (carta, true);
+                self.act_discard(level, &slots);
+            }
+            ExplorerEvent::SetDiscard(level, slot, marcada) => {
+                let Some(mut slots) = self.cursor.discard_slots_at(level) else {
+                    return;
+                };
+                slots[slot].1 = marcada;
+                self.act_discard(level, &slots);
             }
             ExplorerEvent::SetStrategy(strategy) => {
                 self.selected_strategy = Some(strategy);
@@ -176,33 +197,91 @@ impl ActionPath {
     /// cursor recorta la linea por su cuenta al cambiar los tantos o una jugada. El nivel de cada
     /// desplegable es la posicion en el cursor, asi que no se salta ninguna.
     fn rebuild_action_picklists(&mut self) {
-        self.actions.clear();
-        self.selected_actions.clear();
+        self.nodes.clear();
+        self.selected_moves.clear();
         for level in 0..self.cursor.history_len() {
-            let (Some(phase), Some(turno)) =
-                (self.cursor.phase_at(level), self.cursor.turn_at(level))
-            else {
-                continue;
-            };
-            // TODO: en la fase de descartes hay que ofrecer `DiscardAction`, no acciones sueltas.
-            let opciones = match self.cursor.node_at(level) {
-                CursorNode::Play(actions) => actions,
-                CursorNode::Discard | CursorNode::Terminal => vec![],
-            };
-            let mut valores: Vec<OptionalAction> = vec![OptionalAction(None)];
-            valores.extend(opciones.iter().map(|accion| OptionalAction(Some(*accion))));
-            self.actions.push((phase, turno.player_id(), valores));
+            self.nodes.push(self.cursor.node_at(level));
 
             // Solo los movimientos que llegan a jugarse cuentan como elegidos: la cola que el
             // cursor conserva sin realizar se muestra vacia.
-            let seleccionada = (level + 1 < self.cursor.history_len())
-                .then(|| self.cursor.moves().get(level))
-                .flatten()
-                .and_then(|movimiento| match movimiento {
-                    CursorMove::Play(accion) => Some(OptionalAction(Some(*accion))),
-                    CursorMove::Discard(_) => None,
-                });
-            self.selected_actions.push(seleccionada);
+            let seleccionado = self
+                .cursor
+                .move_at(level)
+                .map(|movimiento| OptionalMove(Some(movimiento.clone())));
+            self.selected_moves.push(seleccionado);
+        }
+    }
+
+    /// Opciones del desplegable de un nodo de jugador: sus acciones, precedidas de la opción vacía
+    /// que corta el recorrido. Los descartes no usan desplegable de movimientos, sino las cuatro
+    /// ranuras de [`ActionPath::discard_widget`].
+    fn move_options(node: &CursorNode) -> Vec<OptionalMove> {
+        std::iter::once(OptionalMove(None))
+            .chain(
+                node.actions()
+                    .iter()
+                    .map(|accion| OptionalMove(Some(CursorMove::Play(*accion)))),
+            )
+            .collect()
+    }
+
+    /// Controles de un nivel del recorrido: un desplegable con las acciones en un nodo de jugador y
+    /// las cuatro ranuras de cartas en uno de descarte. Un nodo terminal no se pinta.
+    fn level_widget(&self, level: usize, node: &CursorNode) -> Element<'_, ExplorerEvent> {
+        match node {
+            CursorNode::Play { .. } => pick_list(
+                Self::move_options(node),
+                self.selected_moves[level].clone(),
+                move |elem| ExplorerEvent::SetMove(level, elem),
+            )
+            .placeholder("Select an action")
+            .into(),
+            CursorNode::Discard { .. } => self.discard_widget(level),
+            CursorNode::Terminal => Row::new().into(),
+        }
+    }
+
+    /// Las cuatro cartas de la mano del jugador que descarta, cada una con la casilla que la tira.
+    ///
+    /// El desplegable de una ranura cambia la carta y da por marcada la ranura: elegir una carta
+    /// que no se tira no significa nada, porque solo las tiradas viajan en el movimiento. Las que
+    /// se conservan salen de la mano de ejemplo de la configuración.
+    fn discard_widget(&self, level: usize) -> Element<'_, ExplorerEvent> {
+        let Some(slots) = self.cursor.discard_slots_at(level) else {
+            return Row::new().into();
+        };
+        row(slots
+            .into_iter()
+            .enumerate()
+            .map(|(slot, (carta, tirada))| {
+                column![
+                    pick_list(Carta::CARTAS_MUS, Some(carta), move |elem| {
+                        ExplorerEvent::SetDiscardCard(level, slot, elem)
+                    }),
+                    checkbox("", tirada)
+                        .on_toggle(move |marcada| ExplorerEvent::SetDiscard(level, slot, marcada))
+                ]
+                .into()
+            }))
+        .into()
+    }
+
+    /// Juega el descarte que describen las ranuras: las cartas marcadas. Sin ninguna marcada no hay
+    /// descarte que jugar, así que se corta el recorrido, igual que la opción vacía de un
+    /// desplegable.
+    fn act_discard(&mut self, level: usize, slots: &[(Carta, bool)]) {
+        let cartas: Vec<Carta> = slots
+            .iter()
+            .filter_map(|(carta, tirada)| tirada.then_some(*carta))
+            .collect();
+        self.cursor.seek(level);
+        if cartas.is_empty() {
+            self.cursor.truncate();
+        } else {
+            let resultado = self
+                .cursor
+                .act(CursorMove::Discard(DiscardAction::Cards(cartas)));
+            self.report(resultado);
         }
     }
 
@@ -412,14 +491,11 @@ impl ActionPath {
         );
         top_row = top_row.push(pick_tantos_postre);
 
-        for level in 0..self.selected_actions.len() {
-            let pick_action_n = pick_list(
-                &self.actions[level].2[..],
-                self.selected_actions[level],
-                move |elem| ExplorerEvent::SetAction(level, elem),
-            )
-            .placeholder("Select an action");
-            top_row = top_row.push(pick_action_n);
+        for (level, node) in self.nodes.iter().enumerate() {
+            if matches!(node, CursorNode::Terminal) {
+                continue;
+            }
+            top_row = top_row.push(self.level_widget(level, node));
         }
         top_row = top_row.width(Fill).align_y(Top).spacing(10);
         top_row
@@ -448,29 +524,26 @@ impl ActionPath {
         ];
         top_row = top_row.push(pick_tantos_postre);
 
-        let mut level = 0;
-        let picklists = row(self
-            .actions
-            .chunk_by(|a, b| a.0 == b.0)
+        // El nivel de cada desplegable es su posición en el cursor, no su orden en la fila: los
+        // nodos terminales no se pintan pero sí ocupan posición. `filter_map` sobre la fase
+        // descarta justo esos y deja la fase con la que se agrupan los desplegables por lances.
+        let niveles: Vec<(usize, FasePartida, &CursorNode)> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(level, node)| node.phase().map(|phase| (level, phase, node)))
+            .collect();
+        let picklists = row(niveles
+            .chunk_by(|(_, fase_a, _), (_, fase_b, _)| fase_a == fase_b)
             .map(|chunk| {
                 column(
-                    std::iter::once(format!("{:?}", chunk[0].0))
+                    std::iter::once(format!("{:?}", chunk[0].1))
                         .map(text)
                         .map(Element::from)
                         .chain(
                             chunk
                                 .iter()
-                                .map(|(_, _, actions)| {
-                                    let picklist = pick_list(
-                                        &actions[..],
-                                        self.selected_actions[level],
-                                        move |elem| ExplorerEvent::SetAction(level, elem),
-                                    )
-                                    .placeholder("Select an action");
-                                    level += 1;
-                                    picklist
-                                })
-                                .map(Element::from),
+                                .map(|(level, _, node)| self.level_widget(*level, node)),
                         ),
                 )
             })
@@ -483,7 +556,11 @@ impl ActionPath {
 
 #[derive(Clone, Debug)]
 pub enum ExplorerEvent {
-    SetAction(usize, OptionalAction),
+    SetMove(usize, OptionalMove),
+    /// Nivel, ranura y carta nueva de esa ranura.
+    SetDiscardCard(usize, usize, Carta),
+    /// Nivel, ranura y si la carta de esa ranura se tira.
+    SetDiscard(usize, usize, bool),
     SetStrategy(HandConfiguration),
     SetTantosMano(u8),
     SetTantosPostre(u8),
@@ -492,13 +569,14 @@ pub enum ExplorerEvent {
     SetJuego(usize, bool),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct OptionalAction(Option<Accion>);
+/// Movimiento de un desplegable, con la opción vacía que corta el recorrido.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OptionalMove(Option<CursorMove>);
 
-impl Display for OptionalAction {
+impl Display for OptionalMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            Some(a) => write!(f, "{}", a),
+        match &self.0 {
+            Some(movimiento) => write!(f, "{movimiento}"),
             None => write!(f, ""),
         }
     }

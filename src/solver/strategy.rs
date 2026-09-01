@@ -169,13 +169,53 @@ impl HandStrategy {
     }
 }
 
+/// Nodo del recorrido del cursor.
+///
+/// Lleva dentro la fase y el turno porque quien mira un nodo suele necesitar los tres datos a la
+/// vez. Además hace estructural el invariante de que un nodo no terminal tiene jugador de turno,
+/// que antes se afirmaba con un `expect` en cada sitio que lo necesitaba.
+#[derive(Debug, Clone)]
 pub enum CursorNode {
-    Play(Vec<Accion>),
-    Discard,
+    Play {
+        phase: FasePartida,
+        turn: Turno,
+        actions: Vec<Accion>,
+    },
+    Discard {
+        turn: Turno,
+    },
     Terminal,
 }
 
-#[derive(Debug, Clone)]
+impl CursorNode {
+    /// La fase de un nodo de descarte es siempre [`FasePartida::Descartes`], así que no se guarda:
+    /// un campo que no puede discrepar de su variante sobra.
+    pub fn phase(&self) -> Option<FasePartida> {
+        match self {
+            CursorNode::Play { phase, .. } => Some(phase.clone()),
+            CursorNode::Discard { .. } => Some(FasePartida::Descartes),
+            CursorNode::Terminal => None,
+        }
+    }
+
+    pub fn turn(&self) -> Option<Turno> {
+        match self {
+            CursorNode::Play { turn, .. } | CursorNode::Discard { turn } => Some(*turn),
+            CursorNode::Terminal => None,
+        }
+    }
+
+    /// Acciones legales en el nodo. Vacío donde no se elige una [`Accion`] suelta: en los descartes
+    /// el movimiento es un [`DiscardAction`], y en un nodo terminal no hay nada que jugar.
+    pub fn actions(&self) -> &[Accion] {
+        match self {
+            CursorNode::Play { actions, .. } => actions,
+            CursorNode::Discard { .. } | CursorNode::Terminal => &[],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CursorMove {
     Play(Accion),
     Discard(DiscardAction),
@@ -196,7 +236,7 @@ impl Display for CursorMove {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiscardAction {
     Count(usize),
     Cards(Vec<Carta>),
@@ -324,8 +364,8 @@ impl Cursor {
 
     pub fn act(&mut self, action: CursorMove) -> Result<(), SolverError> {
         match (self.cursor_node(), &action) {
-            (CursorNode::Play(_), CursorMove::Play(_)) => {}
-            (CursorNode::Discard, CursorMove::Discard(discard)) => {
+            (CursorNode::Play { .. }, CursorMove::Play(_)) => {}
+            (CursorNode::Discard { .. }, CursorMove::Discard(discard)) => {
                 let num_descartes = discard.len();
                 if !(1..=4).contains(&num_descartes) {
                     return Err(SolverError::InvalidDiscardsNumber(num_descartes));
@@ -384,12 +424,12 @@ impl Cursor {
             // dejar movimientos que ya no valen o que sobran. Hay que detectarlo antes de actuar:
             // `act_with_action` da por hecho que hay jugador de turno y revienta si no lo hay.
             match (Self::node_of(&*game), movimiento) {
-                (CursorNode::Play(actions), CursorMove::Play(accion))
+                (CursorNode::Play { actions, .. }, CursorMove::Play(accion))
                     if actions.contains(accion) =>
                 {
                     game.act_with_action(*accion)?
                 }
-                (CursorNode::Discard, CursorMove::Discard(discard)) => {
+                (CursorNode::Discard { .. }, CursorMove::Discard(discard)) => {
                     // La fase de descartes recorre a los jugadores en orden 0..N-1, cada uno
                     // exactamente una vez, así que el descarte j-ésimo es del jugador j.
                     let hand = num_descartes;
@@ -581,14 +621,10 @@ impl Cursor {
     /// [`Cursor::accepts_hand`]. En grande y chica no hay ninguna declarada, así que se puede
     /// preguntar por cualquier mano.
     pub fn strategy_for_hand(&self, hand: &HandKind) -> Result<Option<HandStrategy>, SolverError> {
-        if matches!(self.cursor_node(), CursorNode::Terminal) {
+        let Some(turn) = self.cursor_node().turn() else {
             return Ok(None);
-        }
-        let player = self.decision_maker_of(
-            self.turn()
-                .expect("un nodo no terminal tiene jugador de turno")
-                .player_id() as usize,
-        );
+        };
+        let player = self.decision_maker_of(turn.player_id() as usize);
         let two_hands = matches!(
             self.reader.strategy_config.game_config.game_type,
             GameType::MusGameTwoHands
@@ -627,14 +663,10 @@ impl Cursor {
     ///
     /// Se omiten las manos cuyo conjunto de información no está en la estrategia entrenada.
     pub fn strategies(&self) -> Result<Vec<HandStrategy>, SolverError> {
-        if matches!(self.cursor_node(), CursorNode::Terminal) {
+        let Some(turn) = self.cursor_node().turn() else {
             return Ok(Vec::new());
-        }
-        let hand = self
-            .turn()
-            .expect("un nodo no terminal tiene jugador de turno")
-            .player_id() as usize;
-        let player = self.decision_maker_of(hand);
+        };
+        let player = self.decision_maker_of(turn.player_id() as usize);
 
         if matches!(
             self.reader.strategy_config.game_config.game_type,
@@ -785,6 +817,35 @@ impl Cursor {
         &self.moves
     }
 
+    /// Movimiento realmente jugado en una posición, o `None` si ahí no se juega ninguno: la cola
+    /// que el cursor conserva sin realizar no cuenta, aunque siga en [`Cursor::moves`].
+    pub fn move_at(&self, position: usize) -> Option<&CursorMove> {
+        (position + 1 < self.history.len())
+            .then(|| self.moves.get(position))
+            .flatten()
+    }
+
+    /// Cartas del jugador de turno en un nodo de descarte, marcadas las que tira el movimiento
+    /// jugado ahí. `None` si la posición no es un nodo de descarte.
+    ///
+    /// Las cartas salen de la mano repartida en ese nodo, así que ya reflejan un descarte de cartas
+    /// concretas: [`Cursor::dealt_hands`] reparte una mano que las contiene. Sin movimiento jugado
+    /// no hay ninguna marcada.
+    pub fn discard_slots_at(&self, position: usize) -> Option<[(Carta, bool); 4]> {
+        let CursorNode::Discard { turn } = self.node_at(position) else {
+            return None;
+        };
+        let mano = self.history[position].hands()[turn.player_id() as usize].clone();
+        let mask = self
+            .move_at(position)
+            .and_then(|movimiento| match movimiento {
+                CursorMove::Discard(discard) => Self::discard_mask_for(&mano, discard).ok(),
+                CursorMove::Play(_) => None,
+            })
+            .unwrap_or([false; 4]);
+        Some(std::array::from_fn(|idx| (mano.cartas()[idx], mask[idx])))
+    }
+
     /// Nodo en una posición cualquiera del recorrido, para reconstruir la línea entera.
     pub fn node_at(&self, position: usize) -> CursorNode {
         Self::node_of(&*self.history[position])
@@ -799,17 +860,24 @@ impl Cursor {
     }
 
     fn node_of(game: &dyn GenericMus) -> CursorNode {
-        match game.phase() {
-            Some(phase) => match phase {
-                FasePartida::Mus | FasePartida::Envites(_) => {
-                    CursorNode::Play(game.actions().to_vec())
-                }
-                FasePartida::Descartes => CursorNode::Discard,
-                FasePartida::DescartePendiente => {
-                    unreachable!("apply_discard resuelve decisión y azar en un solo paso")
-                }
+        let Some(phase) = game.phase() else {
+            return CursorNode::Terminal;
+        };
+        // Único sitio donde se afirma que un nodo no terminal tiene turno: el resto de la API lo
+        // recibe ya resuelto dentro del nodo.
+        let turn = game
+            .turn()
+            .expect("un nodo no terminal tiene jugador de turno");
+        match phase {
+            FasePartida::Mus | FasePartida::Envites(_) => CursorNode::Play {
+                phase,
+                turn,
+                actions: game.actions().to_vec(),
             },
-            None => CursorNode::Terminal,
+            FasePartida::Descartes => CursorNode::Discard { turn },
+            FasePartida::DescartePendiente => {
+                unreachable!("apply_discard resuelve decisión y azar en un solo paso")
+            }
         }
     }
 
@@ -1542,6 +1610,82 @@ mod cursor_tests {
         assert_eq!(cursor.phase(), Some(FasePartida::Descartes));
     }
 
+    /// Un nodo de descarte deduce su fase de la variante y lleva turno como cualquier otro nodo no
+    /// terminal, aunque no ofrezca acciones sueltas: ahí se juega un [`DiscardAction`].
+    #[test]
+    fn discard_node_carries_phase_and_turn() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 1);
+        go_to_descartes(&mut cursor);
+
+        let node = cursor.cursor_node();
+        assert!(matches!(node, CursorNode::Discard { .. }));
+        assert_eq!(node.phase(), Some(FasePartida::Descartes));
+        assert_eq!(node.turn(), cursor.turn());
+        assert!(node.turn().is_some());
+        assert!(node.actions().is_empty());
+    }
+
+    /// Las ranuras de un nodo de descarte enseñan la mano del jugador de turno y marcan justo las
+    /// cartas que tira su movimiento. Antes de jugar ninguno no hay nada marcado.
+    #[test]
+    fn discard_slots_show_the_hand_and_what_it_throws() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 1);
+        go_to_descartes(&mut cursor);
+        let level = cursor.position();
+
+        let slots = cursor.discard_slots_at(level).unwrap();
+        assert!(slots.iter().all(|(_, tirada)| !tirada));
+
+        let descartes = vec![Carta::As, Carta::Rey];
+        cursor
+            .act(CursorMove::Discard(DiscardAction::Cards(descartes.clone())))
+            .unwrap();
+
+        // La mano repartida en el nodo contiene las cartas tiradas, así que salen marcadas.
+        let slots = cursor.discard_slots_at(level).unwrap();
+        let mut marcadas: Vec<Carta> = slots
+            .iter()
+            .filter_map(|(carta, tirada)| tirada.then_some(*carta))
+            .collect();
+        marcadas.sort();
+        let mut esperadas = descartes;
+        esperadas.sort();
+        assert_eq!(marcadas, esperadas);
+    }
+
+    /// Un descarte por número marca las primeras cartas, que son las que tira su máscara prefijo.
+    #[test]
+    fn count_discard_marks_the_first_slots() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 1);
+        go_to_descartes(&mut cursor);
+        let level = cursor.position();
+        cursor
+            .act(CursorMove::Discard(DiscardAction::Count(2)))
+            .unwrap();
+
+        let slots = cursor.discard_slots_at(level).unwrap();
+        assert_eq!(slots.map(|(_, tirada)| tirada), [true, true, false, false]);
+    }
+
+    /// Solo los nodos de descarte tienen ranuras.
+    #[test]
+    fn discard_slots_only_exist_at_discard_nodes() {
+        let cursor = cursor(GameType::MusGameTwoPlayers, 1);
+        assert!(matches!(cursor.cursor_node(), CursorNode::Play { .. }));
+        assert!(cursor.discard_slots_at(cursor.position()).is_none());
+    }
+
+    /// `move_at` solo devuelve los movimientos que se llegan a jugar: en la última posición no hay
+    /// ninguno, porque nada se ha aplicado todavía sobre ella.
+    #[test]
+    fn move_at_skips_the_position_with_no_move_applied() {
+        let mut cursor = cursor(GameType::MusGameTwoPlayers, 0);
+        cursor.act(CursorMove::Play(Accion::Paso)).unwrap();
+
+        assert_eq!(cursor.move_at(0), Some(&CursorMove::Play(Accion::Paso)));
+        assert_eq!(cursor.move_at(cursor.position()), None);
+    }
+
     #[test]
     fn hand_configs_are_sized_by_game_type() {
         assert_eq!(
@@ -1657,13 +1801,17 @@ mod cursor_tests {
         assert_eq!(cursor.history_len(), 3);
 
         for level in 0..cursor.history_len() {
-            assert!(matches!(cursor.node_at(level), CursorNode::Play(_)));
-            assert!(cursor.phase_at(level).is_some());
-            assert!(cursor.turn_at(level).is_some());
+            let node = cursor.node_at(level);
+            assert!(matches!(node, CursorNode::Play { .. }));
+            // La fase y el turno que lleva el nodo son los mismos que se piden por posición.
+            assert_eq!(node.phase(), cursor.phase_at(level));
+            assert_eq!(node.turn(), cursor.turn_at(level));
+            assert!(node.phase().is_some());
+            assert!(node.turn().is_some());
         }
         // Cada movimiento es legal en su nodo.
         for (level, movimiento) in cursor.moves().iter().enumerate() {
-            let CursorNode::Play(actions) = cursor.node_at(level) else {
+            let CursorNode::Play { actions, .. } = cursor.node_at(level) else {
                 panic!("se esperaba un nodo de jugador");
             };
             let CursorMove::Play(accion) = movimiento else {
@@ -1693,7 +1841,7 @@ mod cursor_tests {
         assert_eq!(cursor.history_len(), 3);
         assert_eq!(cursor.position(), 2);
         // El nodo donde se corta sigue siendo de jugador: se puede volver a elegir ahí.
-        assert!(matches!(cursor.cursor_node(), CursorNode::Play(_)));
+        assert!(matches!(cursor.cursor_node(), CursorNode::Play { .. }));
     }
 
     /// También borra la cola que un cambio de configuración había dejado sin jugar.
@@ -2186,6 +2334,50 @@ mod strategies_tests {
         ));
     }
 
+    /// Las cartas descartadas son información privada del que descarta: los demás solo ven cuántas.
+    ///
+    /// Explica por qué en grande no siempre se enumeran las mismas manos. Con la misma mano final,
+    /// cada descarte da un conjunto de información distinto, así que `strategies()` consulta una
+    /// porción distinta de la estrategia entrenada y se queda solo con las manos que estén en ella.
+    #[test]
+    fn the_discarded_cards_are_private_information() {
+        let cursor = write_cursor(GameType::MusGameTwoPlayers, 1, HashMap::new());
+        let mut overrides: ArrayVec<Option<Mano>, 4> =
+            cursor.hand_configs.iter().map(|_| None).collect();
+        overrides[0] = Some(Mano::new([
+            Carta::Rey,
+            Carta::Sota,
+            Carta::Cinco,
+            Carta::Cuatro,
+        ]));
+
+        // Conjunto de información del jugador 0 en grande tras tirar `descartes`.
+        let en_grande = |descartes: DiscardAction| {
+            let moves = vec![
+                CursorMove::Play(Accion::Mus),
+                CursorMove::Play(Accion::Mus),
+                CursorMove::Discard(descartes),
+                CursorMove::Discard(DiscardAction::Count(1)),
+            ];
+            let history = cursor.replay_with(&moves, &overrides).unwrap();
+            let game = history.last().unwrap();
+            assert_eq!(game.phase(), Some(FasePartida::Envites(Lance::Grande)));
+            // La mano final es la misma en todos los casos: solo cambia lo que se tiró.
+            assert_eq!(game.hands()[0], overrides[0].clone().unwrap());
+            game.mus_info_set(0)
+        };
+
+        let un_as = en_grande(DiscardAction::Cards(vec![Carta::As]));
+        let un_rey = en_grande(DiscardAction::Cards(vec![Carta::Rey]));
+        let dos = en_grande(DiscardAction::Cards(vec![Carta::As, Carta::Rey]));
+
+        // Mismo número de descartes: la parte pública coincide y la privada no.
+        assert_eq!(un_as.0, un_rey.0);
+        assert_ne!(un_as.1, un_rey.1);
+        // Número distinto: hasta la parte pública cambia.
+        assert_ne!(un_as.0, dos.0);
+    }
+
     /// `strategies()` en grande enumera todas las manos, no solo las de la configuración.
     #[test]
     fn strategies_before_pares_covers_every_hand() {
@@ -2343,7 +2535,7 @@ mod strategies_tests {
 
             // Con [39, 39] la apuesta máxima baja a 1 y ya no cabe.
             cursor.set_tantos([39, 39]);
-            let CursorNode::Play(actions) = cursor.cursor_node() else {
+            let CursorNode::Play { actions, .. } = cursor.cursor_node() else {
                 panic!("se esperaba un nodo de jugador");
             };
             assert!(!actions.contains(&Accion::Envido(10)), "{actions:?}");
