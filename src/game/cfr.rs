@@ -1008,7 +1008,13 @@ impl<G: Game + Send + Sync> Cfr<G> {
     fn strategy(&self, info_set: &G::InfoSet, num_actions: usize) -> Vec<f64> {
         self.nodes
             .get(info_set)
-            .map(|node| node.matched_strategy())
+            .map(|node| {
+                debug_assert!(
+                    node.data.len() == num_actions * 2,
+                    "number of actions passed must match the number of actions in the CFR node"
+                );
+                node.matched_strategy()
+            })
             .unwrap_or_else(|| vec![1. / num_actions as f64; num_actions])
     }
 

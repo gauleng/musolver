@@ -57,13 +57,13 @@ impl MusGame {
     }
 
     pub fn with_hands(mut self, manos: [Mano; 4]) -> Self {
-        self.set_hands(manos);
+        self.deal_hands(manos);
         self
     }
 
-    fn set_hands(&mut self, manos: [Mano; 4]) {
+    fn deal_hands(&mut self, manos: [Mano; 4]) {
         self.partida = Some(PartidaMus::<CuatroJugadores>::new(manos, self.tantos));
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
@@ -81,30 +81,29 @@ impl MusGame {
             return;
         }
         let _ = partida.actuar(Accion::NoMus);
-        if let Some(FasePartida::Envites(lance)) = partida.fase() {
+        if let Some(FasePartida::Envites(_lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.transition_to_envites(lance);
+            self.transition_to_envites();
         }
     }
 
-    fn transition_to_envites(&mut self, lance: Lance) {
-        self.info_set_builder.begin_lance(&lance);
-        self.update_hands(lance);
+    fn transition_to_envites(&mut self) {
+        self.info_set_builder.begin_lance(&Lance::Grande);
+        self.update_info_set_hands();
         self.cards = None;
     }
 
-    /// Refresca las manos del conjunto de información con las que hay ahora sobre la mesa. Se
-    /// llama al entrar en la fase de envites porque los descartes pueden haber cambiado las manos
-    /// repartidas.
-    fn update_hands(&mut self, lance: Lance) {
-        let manos = self
+    fn update_info_set_hands(&mut self) {
+        let partida = self
             .partida
             .as_ref()
-            .expect("La partida debe estar repartida.")
-            .manos();
-        for (player_idx, mano) in manos.iter().enumerate() {
-            self.info_set_builder.set_hand(player_idx, mano, &lance);
+            .expect("La partida debe estar repartida.");
+        let fase = partida
+            .fase()
+            .expect("La partida no puede haber terminado al actualizar las manos.");
+        for (player_idx, mano) in partida.manos().iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &fase);
         }
     }
 
@@ -142,7 +141,7 @@ impl MusGame {
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            new_game.update_hands(Lance::Grande);
+            new_game.update_info_set_hands();
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
         })
@@ -224,15 +223,15 @@ impl MusGame {
                 self.info_set_builder
                     .set_descartes(turno.player_id() as usize, &descartes)?;
             }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.transition_to_envites(lance);
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(_lance))) => {
+                self.transition_to_envites();
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
                 Some(FasePartida::Envites(lance_siguiente)),
             ) if lance_previo != lance_siguiente => {
                 self.info_set_builder.begin_lance(&lance_siguiente);
-                self.update_hands(lance_siguiente);
+                self.update_info_set_hands();
                 let manos = self
                     .partida
                     .as_ref()
@@ -265,7 +264,7 @@ impl Game for MusGame {
             None => {
                 let mut baraja = Baraja::baraja_mus();
                 let manos = baraja.repartir_manos();
-                new_game.set_hands(manos);
+                new_game.deal_hands(manos);
                 new_game.set_card_source(CardSource::Baraja(baraja));
             }
             Some(p) => {
@@ -274,7 +273,7 @@ impl Game for MusGame {
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.update_hands(Lance::Grande);
+                    new_game.update_info_set_hands();
                 }
             }
         }
@@ -385,13 +384,13 @@ impl MusGameTwoHands {
     }
     pub fn with_hands(self, manos: [Mano; 4]) -> Self {
         let mut new_game = self.clone();
-        new_game.set_hands(manos);
+        new_game.deal_hands(manos);
         new_game
     }
 
-    fn set_hands(&mut self, manos: [Mano; 4]) {
+    fn deal_hands(&mut self, manos: [Mano; 4]) {
         self.partida = Some(PartidaMus::<CuatroJugadores>::new(manos, self.tantos));
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
@@ -415,27 +414,29 @@ impl MusGameTwoHands {
             return;
         }
         let _ = partida.actuar(Accion::NoMus);
-        if let Some(FasePartida::Envites(lance)) = partida.fase() {
+        if let Some(FasePartida::Envites(_lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.transition_to_envites(lance);
+            self.transition_to_envites();
         }
     }
 
-    fn transition_to_envites(&mut self, lance: Lance) {
-        self.info_set_builder.begin_lance(&lance);
-        self.update_hands(lance);
+    fn transition_to_envites(&mut self) {
+        self.info_set_builder.begin_lance(&Lance::Grande);
+        self.update_info_set_hands();
         self.cards = None;
     }
 
-    fn update_hands(&mut self, lance: Lance) {
-        let manos = self
+    fn update_info_set_hands(&mut self) {
+        let partida = self
             .partida
             .as_ref()
-            .expect("La partida debe estar repartida.")
-            .manos();
-        for (player_idx, mano) in manos.iter().enumerate() {
-            self.info_set_builder.set_hand(player_idx, mano, &lance);
+            .expect("La partida debe estar repartida.");
+        let fase = partida
+            .fase()
+            .expect("La partida no puede haber terminado al actualizar las manos.");
+        for (player_idx, mano) in partida.manos().iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &fase);
         }
     }
 
@@ -464,7 +465,8 @@ impl MusGameTwoHands {
                 .descartar_con_nuevas(&nuevas)
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
-            new_game.update_hands(Lance::Grande);
+            // Las cartas nuevas cambian la mano de quien descartó.
+            new_game.update_info_set_hands();
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
         })
@@ -532,15 +534,15 @@ impl MusGameTwoHands {
                 let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
                 self.info_set_builder.set_descartes(player_id, &descartes)?;
             }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.transition_to_envites(lance);
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(_lance))) => {
+                self.transition_to_envites();
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
                 Some(FasePartida::Envites(lance_siguiente)),
             ) if lance_previo != lance_siguiente => {
                 self.info_set_builder.begin_lance(&lance_siguiente);
-                self.update_hands(lance_siguiente);
+                self.update_info_set_hands();
                 let manos = self
                     .partida
                     .as_ref()
@@ -575,7 +577,7 @@ impl Game for MusGameTwoHands {
             None => {
                 let mut baraja = Baraja::baraja_mus();
                 let manos = baraja.repartir_manos();
-                new_game.set_hands(manos);
+                new_game.deal_hands(manos);
                 new_game.set_card_source(CardSource::Baraja(baraja));
             }
             Some(p) => {
@@ -584,7 +586,7 @@ impl Game for MusGameTwoHands {
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.update_hands(Lance::Grande);
+                    new_game.update_info_set_hands();
                 }
             }
         }
@@ -707,13 +709,13 @@ impl MusGameTwoPlayers {
 
     pub fn with_hands(self, manos: [Mano; 2]) -> Self {
         let mut new_game = self.clone();
-        new_game.init_partida_mus(manos);
+        new_game.deal_hands(manos);
         new_game
     }
 
-    fn init_partida_mus(&mut self, manos: [Mano; 2]) {
+    fn deal_hands(&mut self, manos: [Mano; 2]) {
         self.partida = Some(PartidaMus::<DosJugadores>::new(manos, self.tantos));
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.info_set_builder.begin_mus();
         self.enforce_max_mus_rounds();
     }
@@ -737,38 +739,30 @@ impl MusGameTwoPlayers {
             return;
         }
         let _ = partida.actuar(Accion::NoMus);
-        if let Some(FasePartida::Envites(lance)) = partida.fase() {
+        if let Some(FasePartida::Envites(_lance)) = partida.fase() {
             // El mus se salta sin pasar por `act`, así que hay que abrir aquí la secuencia de
             // apuestas del primer lance igual que haría la transición Mus -> Envites.
-            self.transition_to_envites(lance);
+            self.transition_to_envites();
         }
     }
 
-    fn transition_to_envites(&mut self, lance: Lance) {
-        self.info_set_builder.begin_lance(&lance);
-        self.update_hands(lance);
+    fn transition_to_envites(&mut self) {
+        self.info_set_builder.begin_lance(&Lance::Grande);
+        self.update_info_set_hands();
         self.cards = None;
     }
 
-    fn update_hands(&mut self, lance: Lance) {
-        let manos = self
+    fn update_info_set_hands(&mut self) {
+        let partida = self
             .partida
             .as_ref()
-            .expect("La partida debe estar repartida.")
-            .manos();
-        for (player_idx, mano) in manos.iter().enumerate() {
-            self.info_set_builder.set_hand(player_idx, mano, &lance);
+            .expect("La partida debe estar repartida.");
+        let fase = partida
+            .fase()
+            .expect("La partida no puede haber terminado al actualizar las manos.");
+        for (player_idx, mano) in partida.manos().iter().enumerate() {
+            self.info_set_builder.set_hand(player_idx, mano, &fase);
         }
-    }
-
-    fn update_hand(&mut self, player_id: usize, lance: Lance) {
-        let manos = self
-            .partida
-            .as_ref()
-            .expect("La partida debe estar repartida.")
-            .manos();
-        self.info_set_builder
-            .set_hand(player_id, &manos[player_id], &lance);
     }
 
     fn set_card_source(&mut self, cartas: CardSource) {
@@ -794,7 +788,7 @@ impl MusGameTwoPlayers {
                 .expect("Game must be expecting a discard but it doesn't");
             new_game.set_card_source(CardSource::Iterable(dist));
             // Las cartas nuevas cambian la mano de quien descartó.
-            new_game.update_hands(Lance::Grande);
+            new_game.update_info_set_hands();
             new_game.enforce_max_mus_rounds();
             (new_game, probability)
         })
@@ -846,15 +840,15 @@ impl MusGameTwoPlayers {
                 let descartes = self.partida.as_ref().unwrap().descartadas().unwrap();
                 self.info_set_builder.set_descartes(turno, &descartes)?;
             }
-            (Some(FasePartida::Mus), Some(FasePartida::Envites(lance))) => {
-                self.transition_to_envites(lance);
+            (Some(FasePartida::Mus), Some(FasePartida::Envites(_lance))) => {
+                self.transition_to_envites();
             }
             (
                 Some(FasePartida::Envites(lance_previo)),
                 Some(FasePartida::Envites(lance_siguiente)),
             ) if lance_previo != lance_siguiente => {
                 self.info_set_builder.begin_lance(&lance_siguiente);
-                self.update_hands(lance_siguiente);
+                self.update_info_set_hands();
                 let manos = self
                     .partida
                     .as_ref()
@@ -887,7 +881,7 @@ impl Game for MusGameTwoPlayers {
             None => {
                 let mut baraja = Baraja::baraja_mus();
                 let manos = baraja.repartir_manos();
-                new_game.init_partida_mus(manos);
+                new_game.deal_hands(manos);
                 new_game.set_card_source(CardSource::Baraja(baraja));
             }
             Some(p) => {
@@ -896,7 +890,7 @@ impl Game for MusGameTwoPlayers {
                     let nuevas = baraja.descartar(descartes.into_iter());
                     let _ = p.descartar_con_nuevas(&nuevas);
                     // Las cartas nuevas cambian la mano de quien descartó.
-                    new_game.update_hands(Lance::Grande);
+                    new_game.update_info_set_hands();
                 }
             }
         }
@@ -1048,7 +1042,7 @@ impl GenericMus for MusGame {
             .expect("La partida debe estar repartida.")
             .descartar_con_nuevas(nuevas)?;
         // Las cartas nuevas cambian la mano de quien descartó.
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.enforce_max_mus_rounds();
         Ok(())
     }
@@ -1097,7 +1091,7 @@ impl GenericMus for MusGameTwoHands {
             .expect("La partida debe estar repartida.")
             .descartar_con_nuevas(nuevas)?;
         // Las cartas nuevas cambian la mano de quien descartó.
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.enforce_max_mus_rounds();
         Ok(())
     }
@@ -1146,7 +1140,7 @@ impl GenericMus for MusGameTwoPlayers {
             .expect("La partida debe estar repartida.")
             .descartar_con_nuevas(nuevas)?;
         // Las cartas nuevas cambian la mano de quien descartó.
-        self.update_hands(Lance::Grande);
+        self.update_info_set_hands();
         self.enforce_max_mus_rounds();
         Ok(())
     }
@@ -1335,8 +1329,8 @@ impl MusInfoSetBuilder {
         )
     }
 
-    pub(crate) fn set_hand(&mut self, player_id: usize, mano: &Mano, lance: &Lance) {
-        let value = self.tables.rank_hand(mano, lance);
+    pub(crate) fn set_hand(&mut self, player_id: usize, mano: &Mano, fase: &FasePartida) {
+        let value = self.tables.rank_hand(mano, fase);
         Self::put(
             &mut self.private_history[player_id],
             value,
@@ -1581,14 +1575,20 @@ impl MusInfoSetTables {
         combinations
     }
 
-    pub(crate) fn rank_hand(&self, mano: &Mano, lance: &Lance) -> u64 {
+    pub(crate) fn rank_hand(&self, mano: &Mano, fase: &FasePartida) -> u64 {
         match &self.abstract_hands {
-            Some(maps) => {
-                let idx = Self::lance_abstract_index(lance);
-                AbstractJugada::to_abstract(mano, lance)
-                    .and_then(|jugada| maps[idx].get(&jugada).copied())
-                    .unwrap_or(0) as u64
-            }
+            Some(maps) => match fase {
+                FasePartida::Mus | FasePartida::Descartes => self.rank_complete_hand(mano.cartas()),
+                FasePartida::Envites(lance) => {
+                    let idx = Self::lance_abstract_index(lance);
+                    AbstractJugada::to_abstract(mano, lance)
+                        .and_then(|jugada| maps[idx].get(&jugada).copied())
+                        .unwrap_or(0) as u64
+                }
+                FasePartida::DescartePendiente => {
+                    unreachable!("rank_hand cannot be called in DescartePendiente case")
+                }
+            },
             None => self.rank_complete_hand(mano.cartas()),
         }
     }

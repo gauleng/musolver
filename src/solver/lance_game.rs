@@ -8,7 +8,7 @@ use crate::{
     Game, NodeType,
     mus::{
         Accion, Apuesta, Baraja, CuatroJugadores, DistribucionDobleCartaIter, EstadoLance,
-        FaseEnvites, Juego, Lance, Mano, Pares, Turno,
+        FaseEnvites, FasePartida, Juego, Lance, Mano, Pares, Turno,
     },
 };
 
@@ -397,7 +397,8 @@ impl LanceGame {
         let config = ManosNormalizadas::normalizar_mano(manos, &self.lance).hand_configuration();
         self.hand_config_code = hand_config_code(config);
         for (i, mano) in manos.iter().enumerate() {
-            self.private_history[i] = self.tables.rank_hand(mano, &self.lance);
+            self.private_history[i] =
+                self.tables.rank_hand(mano, &FasePartida::Envites(self.lance));
         }
     }
 
